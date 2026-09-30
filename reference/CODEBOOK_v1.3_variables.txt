@@ -1,0 +1,699 @@
+WARNING FAILURE DATABASE (WFD) CODEBOOK v1.3 (April 14, 2026) — DATABASE VARIABLES SECTION
+[Plain-text excerpt of the variable definitions, copied from "CODEBOOK v1.3.docx" in the project so the app has a default schema.
+Narrative "Analytical Relevance" paragraphs are omitted; variable headings, definitions, values and coding notes are kept as written.
+For the authoritative full text, upload the original .docx on the app's Schema page.]
+
+I. WFD ID AND DATE
+
+Variable: WFD_ID
+Definition:
+A unique alphanumeric identifier assigned to each verified instance of public warning failure.
+Format:
+YYYYMMDD-LLNN
+- YYYYMMDD = approximate or exact date of the event
+- LL = two-letter state or jurisdictional code (e.g., CO, CA, HI)
+- NN = sequential numbering of failures on the same date within that jurisdiction
+Example:
+20180113-HI01 — Hawaii false missile alert
+Coding Notes:
+- IDs remain permanent across all dataset versions.
+- Linked or related events share a Series ID for cross-reference (see Section IX).
+- If a precise date cannot be established, use the first day of the month and mark DATE_APPROX = 1.
+
+Variable: EVENT_DATE (Primary)
+Definition:
+The date on which the warning failure occurred or became publicly identifiable.
+Coding Options:
+- Use ISO 8601 format: YYYY-MM-DD.
+- When an event extends across multiple days, record the start date and use END_DATE to mark completion.
+- If documentation is imprecise (e.g., "late July 2020"), coders should estimate the date and mark DATE_APPROX = 1.
+
+Variable: END_DATE
+Definition:
+The final date on which the failure persisted or its effects were observed.
+Purpose:
+Captures duration for failures involving system outages, ongoing misinformation, or delayed public correction.
+Coding Notes:
+- Required if the failure extended over more than one day.
+- If the failure was momentary (e.g., one false alert transmission), END_DATE = EVENT_DATE.
+
+Variable: DATE_APPROX
+Definition:
+Indicator of whether the recorded date(s) are estimated.
+Values:
+- 0 = Exact date known
+- 1 = Approximate date
+
+Variable: INCIDENT_DURATION
+Definition:
+Total number of days between EVENT_DATE and END_DATE.
+Calculation:
+INCIDENT_DURATION = (END_DATE – EVENT_DATE) + 1
+
+Variable: VERSION_ENTRY_DATE
+Definition:
+Date when the case was added or last modified in the WFD.
+Format:
+YYYY-MM-DD
+
+II. INSTANCE INFORMATION
+
+Variable: SUMMARY
+Definition:
+A concise, factual narrative (150–250 words) summarizing the circumstances, nature, and consequences of the warning failure.
+Content Guidelines:
+- Identify the hazard or perceived hazard (e.g., wildfire, flash flood, false missile warning).
+- Describe what the responsible alerting authority intended or failed to do.
+- Specify what type of breakdown occurred (technical, organizational, message design).
+- Note observable outcomes (public confusion, lack of response, policy inquiry, etc.).
+- Reference the key sources used for verification.
+
+Variable: INCLUSION_CRITERIA_INDICATORS
+Definition:
+Flags indicating which of the WFD inclusion criteria were met for the event.
+Values (multi-select):
+- 1 = Public System Involvement
+- 2 = Documented Breakdown
+- 3 = Affecting a Defined Population
+- 4 = Temporal Specificity
+- 5 = Verifiable Documentation
+
+Variable: UNCERTAINTY_FLAG
+Definition:
+Binary variable indicating whether the event's classification as a failure is provisional.
+Values:
+- 0 = Confirmed Failure
+- 1 = Uncertain Failure
+Notes:
+When UNCERTAINTY_FLAG = 1, the case must also specify UNCERTAINTY_TYPE (see next variable).
+
+Variable: UNCERTAINTY_TYPE
+Definition:
+A categorical code indicating the specific source of uncertainty in classification.
+Values:
+- UF-A = Ambiguous Failure (conflicting accounts)
+- UF-D = Data Insufficient
+- UF-N = Non-Failure Operational Anomaly
+- UF-P = Policy-Limited Action
+
+Variable: RELATED_EVENT_FLAG
+Definition:
+Indicates whether the failure is related to another WFD entry.
+Values:
+- 0 = No known related event
+- 1 = Linked or cascading event (see Related_ID field)
+
+Variable: RELATED_ID
+Definition:
+Identifier(s) of directly connected WFD cases.
+Format:
+WFD_ID(s) separated by semicolons (e.g., 20230722-CA01; 20230722-CA02).
+
+Variable: SERIES_ID
+Definition:
+A unique identifier used to group multiple, recurring failures that share a common technical or organizational root cause.
+Format:
+SER#### (e.g., SER0012)
+
+Variable: COMMENT_ANALYST
+Definition:
+Free-text field for coder notes, interpretive rationale, and documentation of coding decisions.
+
+III. INSTANCE LOCATION
+
+Variable: COUNTRY
+Definition:
+The country in which the warning failure occurred.
+Values (Pilot Dataset):
+- United States
+Notes:
+- All entries must include a country value, even when only one is possible.
+
+Variable: STATE_OR_TERRITORY
+Definition:
+The U.S. state, territory, or district in which the failure occurred.
+Coding Notes:
+- Use official two-letter U.S. Postal Service abbreviations (e.g., CA, TX, PR, DC).
+- For multi-state events, list all applicable abbreviations separated by commas.
+
+Variable: COUNTY_OR_PARISH
+Definition:
+The U.S. county, parish, or equivalent substate jurisdiction in which the warning failure occurred or was most prominent.
+Coding Notes:
+- Enter full county or parish name (e.g., Boulder County, Los Angeles County).
+- For multi-county events, list up to three primary counties separated by commas; if more, record "Multi-county" and specify in the LOCATION_DETAILS field.
+
+Variable: CITY_OR_TOWN
+Definition:
+The city, town, or unincorporated community most directly affected by the warning failure.
+Notes:
+If the failure affected a broad rural area, list the nearest identifiable locality or leave blank and include descriptive information under VICINITY.
+
+Variable: VICINITY
+Definition:
+Narrative or coded description of nearby or relevant geographic features that help locate the failure when precise administrative boundaries are unclear.
+
+Variable: LATITUDE / LONGITUDE
+Definition:
+Decimal degree coordinates representing the approximate centroid of the affected area.
+Coding Notes:
+- Precision should correspond to the event's scale (e.g., ±0.05° for local events, ±0.5° for statewide).
+- Coordinates should reference the most relevant jurisdictional point, not the hazard origin (e.g., emergency management office or community center).
+- When unavailable, leave blank and flag GEOCODE_SPECIFICITY = 0.
+
+Variable: GEOCODE_SPECIFICITY
+Definition:
+A numerical index indicating the spatial precision of the latitude/longitude entry.
+Values:
+- 3 = Exact city/town or known facility (high precision)
+- 2 = County or regional centroid (moderate precision)
+- 1 = State-level only (low precision)
+- 0 = Unknown
+
+Variable: LOCATION_DETAILS
+Definition:
+Free-text field for additional spatial context or notes about boundary overlap, jurisdictional complexity, or special conditions (e.g., multi-state broadcast networks, tribal jurisdictions).
+
+IV. FAILURE INFORMATION
+
+Variable: FAILURE_TYPE
+Definition:
+Primary classification of the warning failure according to its dominant causal mechanism.
+Values (single-select, though multiple secondary codes may be noted):
+- 1 = Technical Failure — system malfunction, hardware/software error, signal transmission disruption.
+- 2 = Organizational/Process Failure — procedural lapse, delayed authorization, interagency miscoordination.
+- 3 = Message Design/Content Failure — unclear, incomplete, or misleading message content or structure.
+- 4 = Geotargeting Failure — alert broadcast to wrong area or failure to reach affected population.
+- 5 = Timing Failure — delayed issuance, premature cancellation, or excessive persistence of an alert.
+- 6 = Channel Selection/Redundancy Failure — insufficient use of multiple alerting modalities when primary system failed.
+- 7 = Other/Composite Failure — multi-causal or atypical breakdown not captured above.
+
+Variable: FAILURE_SUBTYPE
+Definition:
+Optional secondary classification describing the specific manifestation or mechanism of failure. Multiple values permitted
+Values (examples):
+- T1 = System outage
+- T2 = Software update bug
+- T3 = automated or system-triggered events caused by setting/configuration issues
+- O1 = Interagency approval delay
+- O2 = Human procedural error
+- M1 = Message lacked protective guidance
+- M2 = Message caused public confusion
+- G1 = Over-alerting outside hazard boundary
+- G2 = Under-alerting affected population
+- C1 = Non-WEA use despite authorization
+
+Variable: TRIGGER_OR_HAZARD_CONTEXT
+Definition:
+The hazard, perceived hazard, or event type that prompted (or should have prompted) an alert.
+Values (multi-select):
+- Natural hazards: wildfire, flood, tornado, hurricane, earthquake, tsunami, extreme temperature, etc.
+- Technological hazards: chemical release, dam failure, utility outage, transportation incident.
+- Human-caused hazards: active shooter, terrorism, civil emergency, false missile alert, etc.
+- Other: AMBER alert, evacuation order, or system test misinterpreted as real.
+
+Variable: SYSTEM_INVOLVED
+Definition:
+The official public alerting system or platform implicated in the failure.
+Values (multi-select):
+- WEA = Wireless Emergency Alerts
+- EAS = Emergency Alert System
+- NWS = NOAA Weather Radio / Weather.gov
+- LOCAL = Local or regional alerting network (e.g., CodeRED, Everbridge)
+- SIREN = Local or regional siren network
+- MULTI = Multiple systems simultaneously affected
+
+Variable: SYSTEM_LEVEL
+Definition:
+Level of government or organizational authority responsible for issuing or managing the alert.
+Values:
+- 1 = Federal
+- 2 = State
+- 3 = County / Local
+- 4 = Tribal / Territorial
+- 5 = Multi-jurisdictional collaboration
+
+Variable: SUCCESS_NONUSE_PARTIALUSE
+Definition:
+Categorical indicator describing whether an alert was attempted, omitted, or partially successful. Multiple codes are permitted. Primary code first, followed by any relevant secondary codes.
+Values:
+- 1 = Nonuse (alert not issued)
+- 2 = Partial use (issued but incomplete or delayed)
+- 3 = Misuse (false or erroneous issuance)
+- 4 = Failure of correction or cancellation
+
+Variable: REDUNDANCY_AND_CHANNEL_BEHAVIOR
+Definition:
+Indicator of whether backup systems (e.g., EAS, NWS radio, social media, local sirens) were used or available when the primary system failed.
+Values:
+- 0 = No redundancy used
+- 1 = Redundancy partially used
+- 2 = Redundancy fully used
+- 3 = Not applicable (single system jurisdiction)
+
+Variable: FAILURE_VERIFICATION_SOURCE
+Definition:
+Source type confirming the occurrence and nature of the failure.
+Values (multi-select):
+- 1 = Government report / after-action review
+- 2 = Official press release or agency statement
+- 3 = Media investigation or coverage
+- 4 = Academic / NGO analysis
+- 5 = Public hearing or testimony
+
+Variable: TECHNICAL_NOTES
+Definition:
+Free-text field documenting additional technical details or infrastructure context relevant to the failure.
+
+V. COMMUNICATION / CHANNEL INFORMATION
+
+Variable: ALERT_ORIGINATOR_PLATFORM
+Definition:
+The software, interface, or alert origination tool used to create and send the message. Multiple values permitted.
+Values (examples):
+- AlertSense
+- Everbridge
+- CodeRED
+- EAS
+- WEA
+- Other (specify in free-text)
+
+Variable: TRANSMISSION_PATHWAY
+Definition:
+The technological path(s) through which the message was disseminated.
+Values (multi-select):
+- Cellular broadcast (WEA)
+- Sign-up-based (e.g., Everbridge)
+- Broadcast relay (EAS)
+- NOAA Weather Radio
+- Internet / Website
+- Social media post (official channel)
+- Third-party app alert
+- Siren / Public address
+- Other (specify)
+
+Variable: TRANSMISSION_LATENCY
+Definition:
+Time elapsed (in minutes) between official authorization of the alert and its successful transmission (or failure to transmit).
+Values:
+- Numeric (minutes)
+- Use -9 if unknown or inapplicable
+
+Variable: DELIVERY_COVERAGE
+Definition:
+Estimated proportion of the intended population that received the alert via the specified system. If exact figure is provided in AAR or other authoritative source, add the specific number.
+Values (estimated percentage):
+- 0–25% = Low coverage
+- 26–75% = Partial coverage
+- 76–100% = Full coverage
+- -9 = Unknown
+
+Variable: MESSAGE_CHARACTERISTICS
+Definition:
+Descriptive and categorical information about the content, structure, and design of the alert message.
+Subfields:
+- LENGTH (number of characters or seconds for audio/video alerts)
+- LANGUAGE (English, Spanish, bilingual, etc.)
+- PROTECTIVE_ACTION_PRESENT (0 = No, 1 = Yes)
+- EMOTIONAL_TONE (Neutral, Alarmist, Reassuring, Ambiguous)
+- CLARITY_ASSESSED (0 = Unclear, 1 = Mixed, 2 = Clear)
+Notes:
+Derived from direct message text, transcript, or media documentation where available.
+
+Variable: ALERT_CORRECTION_OR_UPDATE
+Definition:
+Indicates whether a corrective or follow-up message was issued after the initial failure.
+Values:
+- 0 = No correction issued
+- 1 = Correction issued (timely)
+- 2 = Correction issued (delayed)
+- 3 = Correction issued (erroneous or confusing)
+- 4 = Not applicable (alert never issued)
+
+Variable: MESSAGE_RECEPTION_DOCUMENTATION
+Definition:
+Evidence of how the public received or interpreted the alert message.
+Values (multi-select):
+- 2 = Media-reported public confusion
+- 3 = Social media reaction documented
+- 4 = Official acknowledgment of miscommunication
+- 5 = No documentation available
+
+Variable: MESSAGE_ARCHIVAL_STATUS
+Definition:
+Indicates whether the original alert message is archived or publicly accessible (text, screenshot, or audio recording).
+Values:
+- 0 = Not available
+- 1 = Archived and publicly accessible
+- 2 = Archived internally (restricted access)
+
+VI. AUTHORITY / ORIGINATOR INFORMATION
+
+Variable: ALERTING_AUTHORITY_TYPE
+Definition:
+The primary organization or entity authorized to issue the alert involved in the failure. Primary organization should be listed first, but contestation and multiple values are permitted.
+Values (single-select):
+- 1 = Federal agency (e.g., FEMA, NOAA/NWS, DHS)
+- 2 = State emergency management agency
+- 3 = County or municipal emergency management
+- 4 = Tribal or territorial government
+- 5 = Law enforcement or public safety agency
+- 6 = Multi-agency or joint authority
+- 7 = Other (specify)
+
+Variable: ALERTING_AUTHORITY_NAME
+Definition:
+Official name of the agency or organization associated with the event.
+Coding Notes:
+Use the most specific and official organizational name available at the time of the event.
+
+Variable: INTERAGENCY_COORDINATION
+Definition:
+Indicator of whether multiple agencies were involved in the decision to issue (or not issue) an alert and the degree of coordination achieved.
+Values:
+- 0 = Not applicable (single agency)
+- 1 = Coordinated effectively
+- 2 = Coordination delayed or incomplete
+- 3 = Coordination failed or contradictory actions occurred
+
+Variable: ALERT_INITIATION_AUTHORITY
+Definition:
+The level at which the decision to issue or withhold the alert was made.
+Values:
+- 1 = Individual operator / duty officer
+- 2 = Supervisor / management decision
+- 3 = Multi-person or cross-agency approval
+- 4 = Automated system trigger
+
+Variable: TRAINING_AND_PROCEDURAL_CONTEXT
+Definition:
+Indicates whether the failure involved gaps in training, unclear procedures, or deviation from established protocols.
+Values:
+- 0 = Not discussed in available sources
+- 1 = Explicitly cited lack of training or unclear procedure
+- 2 = Deviation from established or written protocol
+- 3 = Both (training and procedural deficiencies)
+
+Variable: ALERT_APPROVAL_PROCESS
+Definition:
+Describes whether the alert required prior approval or clearance before dissemination and whether that process contributed to failure.
+Values:
+- 0 = No approval required
+- 1 = Approval required, no delay
+- 2 = Approval required, caused delay
+- 3 = Approval required, prevented issuance
+
+Variable: AUTHORITY_COMMUNICATION_NOTES
+Definition:
+Free-text field for contextual information about authority performance, interagency communication issues, or statements by officials.
+
+Variable: REGULATORY_OR_POLICY_FRAMEWORK
+Definition:
+Indicates the policy, regulation, or guideline under which the alerting authority operated at the time of failure.
+Examples:
+- FCC Part 10 (WEA rules)
+- State emergency alerting standard operating procedure (SOP)
+- FEMA IPAWS Alert Origination Policy
+
+VII. POPULATIONS AFFECTED
+
+Variable: POPULATION_SCOPE
+Definition:
+Estimated size and geographic extent of the population that the alert was intended to reach or that was affected by its failure.
+Values:
+- 1 = Neighborhood or small community (<10,000 people)
+- 2 = Municipality or mid-sized city (10,000–100,000)
+- 3 = County or regional area (100,001–1,000,000)
+- 4 = Metropolitan or statewide (>1,000,000)
+- 5 = Multi-state or national coverage
+
+Variable: POPULATION_AFFECTED_ESTIMATE
+Definition:
+Estimated number of individuals directly impacted by the failure (missed, misinformed, or confused).
+Values:
+- Numeric (integer) or range if uncertain (e.g., 500–700).
+- Use -9 if unknown.
+Coding Notes:
+When multiple estimates exist, coders should prioritize official reports or conservative median figures from reliable sources.
+
+Variable: DEMOGRAPHIC_CHARACTERISTICS
+Definition:
+Key demographic or social characteristics of the affected population, as noted in available documentation.
+Values (multi-select):
+- 1 = General population
+- 2 = Tourists or transitory populations
+- 3 = Elderly or mobility-limited groups
+- 4 = Children / students
+- 5 = Linguistically diverse or limited English proficiency (LEP)
+- 6 = Low-income or high-vulnerability populations
+- 7 = Other (specify in notes)
+
+Variable: ACCESSIBILITY_ATTRIBUTES
+Definition:
+Indicator of whether accessibility considerations (e.g., language, disability, or device compatibility) influenced the outcome.
+Values:
+- 0 = Not mentioned
+- 1 = Accessibility limitation explicitly contributed to failure
+- 2 = Accessibility features mitigated failure
+- 3 = Unknown / no data
+
+Variable: EQUITY_IMPACT
+Definition:
+Assessed qualitative impact of the failure on socially or economically vulnerable groups.
+Values:
+- 0 = No documented disproportionate impact
+- 1 = Minor disproportionate impact
+- 2 = Significant disproportionate impact
+- 3 = Severe / systemic inequity evident
+Coding Notes:
+Determined through qualitative synthesis of media reports, academic studies, or official statements noting differential effects.
+
+Variable: COMMUNICATION_ACCESS_MODE
+Definition:
+Primary communication modes available to affected populations at the time of failure.
+Values (multi-select):
+- 1 = Cellular network
+- 2 = Radio / television broadcast
+- 3 = Internet / Wi-Fi access
+- 4 = Landline / alert phone tree
+- 5 = In-person public address or siren
+- 6 = None / limited access documented
+
+Variable: POPULATION_RESPONSE_OBSERVED
+Definition:
+Documented public reactions or behaviors resulting from the failure.
+Values (multi-select):
+- 1 = Confusion or misinformation spread
+- 2 = Panic or maladaptive protective behavior
+- 3 = Delayed protective action
+- 4 = Ignored or missed alert
+- 5 = Trust erosion / complaint or protest
+- 6 = No observable response
+
+Variable: COMMUNITY_FEEDBACK_MECHANISM
+Definition:
+Indicates whether community feedback, complaint, or participatory review processes occurred post-event. Multiple values permitted.
+Values:
+- 0 = None documented
+- 1 = Informal (public comments, social media)
+- 2 = Formal (public meeting, hearing, or citizen advisory panel)
+- 3 = Research-based community study
+
+VIII. CONSEQUENCES AND IMPACTS
+
+Variable: REPORTED_OUTCOMES
+Definition:
+Summary of tangible or observable effects directly attributed to the warning failure.
+Values (multi-select):
+- 1 = Public confusion or misinformation
+- 2 = Panic, distress, or behavioral disruption
+- 3 = Injury or loss of life (partially attributable)
+- 4 = Property or environmental damage exacerbated by delay
+- 5 = Economic disruption (e.g., business closure, tourism impact)
+- 6 = Political or reputational fallout for agencies
+- 7 = None reported / unclear
+
+Variable: HARM_LOSS_INDICATORS
+Definition:
+Quantitative or qualitative evidence of harm or loss linked to the failure.
+Values:
+- Numeric estimates (e.g., fatalities, injuries, property losses in USD).
+- -9 = Unknown / not applicable.
+Coding Notes:
+Record only when failure plausibly contributed to the outcome, as confirmed by official investigations or credible sources.
+
+Variable: MEDIA_FRAMING_AND_PUBLIC_RESPONSE
+Definition:
+Characterization of how the failure was portrayed in news and social media and how the public responded.
+Values (multi-select):
+- 1 = Focus on individual error (human blame)
+- 2 = Focus on systemic or organizational issues
+- 3 = Focus on technology malfunction
+- 4 = Public outrage or calls for accountability
+- 5 = Minimal or no media coverage
+
+Variable: POLICY_OR_ADMINISTRATIVE_ACTIONS
+Definition:
+Follow-up actions taken by relevant authorities to address the failure or prevent recurrence.
+Values (multi-select):
+- 1 = Internal review / after-action report
+- 2 = Public apology or press briefing
+- 3 = Procedural reform (new SOP or training)
+- 4 = Technological upgrade or vendor change
+- 5 = Disciplinary or personnel action
+- 6 = Legislative or regulatory amendment
+- 7 = None documented
+
+Variable: POLICY_CHANGE_LEVEL
+Definition:
+Indicates the level of governance at which any policy or procedural change occurred following the event.
+Values:
+- 1 = Local
+- 2 = State / Regional
+- 3 = Federal
+- 4 = Multi-level (cross-jurisdictional)
+
+Variable: TRUST_AND_LEGITIMACY_IMPACT
+Definition:
+Assessed degree of public trust erosion or confidence restoration following the failure.
+Values:
+- 0 = No documented impact
+- 1 = Temporary erosion (public criticism or skepticism)
+- 2 = Significant, sustained decline in trust
+- 3 = Trust restored through corrective measures
+Notes:
+[characterize the evidence and inference].
+
+Variable: REMEDIAL_ACTION_COMPLETION_STATUS
+Definition:
+Tracks whether promised reforms or corrective actions were completed.
+Values:
+- 0 = No reforms initiated
+- 1 = Reforms proposed / pending
+- 2 = Reforms implemented
+- 3 = Implementation verified
+
+Variable: LESSONS_IDENTIFIED
+Definition:
+Narrative summary (2–4 sentences) of key takeaways, best practices, or reform recommendations emerging from the case.
+
+IX. ADDITIONAL INFORMATION AND SOURCES
+
+Variable: SOURCE_COUNT_PRIMARY
+Definition:
+Number of primary sources used to verify the event (e.g., official reports, government statements, or agency data).
+Values:
+- Numeric (integer)
+- -9 = Unknown
+
+Variable: SOURCE_COUNT_SECONDARY
+Definition:
+Number of secondary or corroborative sources (e.g., news media, academic publications, NGO reports).
+Values:
+- Numeric (integer)
+- -9 = Unknown
+
+Variable: SOURCE_TYPE_SUMMARY
+Definition:
+Coded overview of the types of documentation consulted.
+Values (multi-select):
+- 1 = Official government / agency report
+- 2 = Media coverage
+- 3 = Peer-reviewed research
+- 4 = NGO or technical brief
+- 5 = Public hearing / transcript
+- 6 = Archival digital record (e.g., FCC filing, IPAWS log)
+- 7 = Other (specify)
+
+Variable: SOURCE_URLS_OR_DOIS
+Definition:
+List of hyperlinks, DOIs, or archival identifiers corresponding to the primary and secondary sources cited for the case.
+Format:
+Semicolon-separated URLs or persistent identifiers (e.g., DOI:10.xxxx).
+
+Variable: SOURCE_VALIDITY_ASSESSMENT
+Definition:
+Qualitative coder judgment of source credibility and consistency.
+Values:
+- 1 = High confidence (multiple independent confirmations)
+- 2 = Moderate confidence (some inconsistencies or limited documentation)
+- 3 = Low confidence (single source or unresolved contradictions)
+
+Variable: DATA_EXTRACTION_METHOD
+Definition:
+Indicates how the information was obtained or entered into the database.
+Values:
+- 1 = Manual human coding
+- 2 = Assisted by automated search / NLP tools
+- 3 = Derived from partner dataset
+- 4 = Mixed (manual + automated)
+
+Variable: REVISION_HISTORY
+Definition:
+Chronological record of edits, updates, or classification changes for the event across WFD versions.
+Format:
+[Version:Date:Change Description]
+
+Variable: ANALYST_COMMENTS
+Definition:
+Free-text field for coder observations, interpretive rationale, or unresolved issues.
+
+Variable: RECORD_STATUS
+Definition:
+Indicates current lifecycle status of the case record within the WFD.
+Values:
+- 0 = Active (included in current dataset)
+- 1 = Under review (pending verification or edit)
+- 2 = Archived (superseded or removed)
+
+Variable: PERCEIVED_TIMELINESS
+Definition:
+Analyst-coded assessment of whether the warning message was received by the intended audience in sufficient time to support protective action, based on available documentation of hazard onset, alert issuance, and public response.
+Values:
+0 = Not timely (arrived too late to support meaningful action)
+1 = Marginally timely (arrived with limited time for action)
+2 = Timely (arrived with adequate time for protective action)
+3 = Indeterminate / insufficient evidence
+Coding Notes:
+This variable reflects perception and outcome, not purely technical timing. Coders should consider reported delays, hazard speed, and whether recipients had actionable time.
+
+Variable: PERCEIVED_MESSAGE_CLARITY
+Definition:
+Analyst-coded evaluation of how clearly the warning message conveyed the nature of the threat and appropriate protective actions, as evidenced by message content and documented public interpretation.
+Values:
+0 = Unclear (confusing, ambiguous, or misleading)
+1 = Mixed clarity (partially understandable but lacking key elements)
+2 = Clear (specific, understandable, and actionable)
+3 = Indeterminate / insufficient evidence
+Coding Notes:
+Distinct from MESSAGE_CHARACTERISTICS.CLARITY_ASSESSED, which evaluates message structure; this variable incorporates audience reception and real-world interpretation.
+
+Variable: FAILURE_SEVERITY (Material Impact)
+Definition:
+Categorical assessment of the tangible, material consequences of the warning failure, including physical harm, economic loss, and infrastructure damage attributable (in whole or part) to the failure.
+Values:
+0 = No material impact documented
+1 = Minor impact (limited disruption or localized damage)
+2 = Moderate impact (measurable economic loss or limited injuries)
+3 = Major impact (significant damage, multiple injuries, or fatalities)
+4 = Severe / catastrophic impact (widespread loss of life or large-scale destruction)
+Coding Notes:
+Assessment should rely on documented evidence (e.g., after-action reports, official estimates). Attribution should be cautious and clearly supported.
+
+Variable: FAILURE_SEVERITY (Public Perception)
+Definition:
+Assessment of the perceived severity of the warning failure as reflected in media coverage, public discourse, and stakeholder reaction.
+Values:
+0 = Minimal attention or concern
+1 = Moderate concern (localized criticism or limited coverage)
+2 = High concern (sustained regional or national attention)
+3 = Extreme concern (widespread outrage, reputational crisis, or national scrutiny)
+
+Variable: MESSAGE_DISSEMINATION_TIME
+Definition:
+Elapsed time (in minutes) between the initial dissemination of the alert message by the originator system and its confirmed receipt by a substantial portion of the intended audience.
+Values:
+Numeric (minutes)
+-9 = Unknown or not documented
+Coding Notes:
+Where precise timing is unavailable, use best-supported estimates from delivery logs, carrier reports, or after-action documentation.

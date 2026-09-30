@@ -1,0 +1,124 @@
+# 上线指南 · Deployment guide (Render)
+
+这份指南把 WFD Coding Assistant 放到网上，得到一个团队都能打开的网址，例如 `https://wfd-coding-assistant.onrender.com`。
+This guide puts WFD Coding Assistant online at an address your team can open, such as `https://wfd-coding-assistant.onrender.com`.
+
+大约需要 30 分钟。你不需要安装任何开发工具。
+It takes about 30 minutes. You don't need to install any developer tools.
+
+## 费用 · Costs
+
+| 项目 · Item | 价格 · Price |
+|---|---|
+| Render 常驻实例（Starter，512 MB 内存） · Always-on instance (Starter, 512 MB RAM) | US$7 / 月 · month |
+| 永久存储 5 GB · Persistent disk 5 GB | US$1.25 / 月 · month（$0.25/GB） |
+| Render 工作区（Hobby） · Workspace (Hobby) | US$0 |
+| 搜索服务、Claude 模型 · Search service, Claude model | 按用量另计 · Billed separately by usage |
+
+价格来自 Render 官网，2026-09-30 查询。免费实例不能用：它会休眠，也不支持永久存储，研究数据会丢失。
+Prices are from Render's pricing page, checked 2026-09-30. The free instance won't work: it sleeps and has no persistent disk, so research data would be lost.
+
+## 第 1 步：准备密钥 · Step 1: Get your keys
+
+1. **团队密码** — 自己想一个长密码（建议 4 个以上单词），例如 `flood-siren-codebook-denver`。团队成员用它登录。
+   **Team password** — make up a long one (4+ words), e.g. `flood-siren-codebook-denver`. Team members sign in with it.
+2. **搜索服务密钥**（至少一个）· **Search key** (at least one):
+   - Tavily：在 https://tavily.com 注册 → 复制 API key。
+     Tavily: sign up at https://tavily.com → copy the API key.
+   - 或 Brave：https://brave.com/search/api/ → 订阅 → 复制 token。
+     Or Brave: https://brave.com/search/api/ → subscribe → copy the token.
+3. **Claude 密钥** · **Claude key**：https://console.anthropic.com → API Keys → Create Key，并在 Billing 里充值。
+   https://console.anthropic.com → API Keys → Create Key, then add credit under Billing.
+
+先把这几个值保存在安全的地方，第 3 步要用。不要发到群聊或邮件里。
+Keep these somewhere safe for step 3. Don't paste them into group chats or email.
+
+## 第 2 步：把代码放到 GitHub · Step 2: Put the code on GitHub
+
+Render 从 GitHub 读取代码。选一种方式：
+Render reads the code from GitHub. Choose one way:
+
+**方式 A（最简单）：让 Claude 帮你上传。**
+**Option A (easiest): let Claude upload it.**
+1. 登录 https://github.com（没有账号就先注册）。
+   Sign in at https://github.com (create an account if needed).
+2. 右上角 **+** → **New repository** → 名字填 `wfd-coding-assistant` → 选 **Private** → 不要勾选任何初始化选项 → **Create repository**。
+   Top right **+** → **New repository** → name `wfd-coding-assistant` → choose **Private** → leave all "initialize" boxes unticked → **Create repository**.
+3. 把仓库地址（例如 `你的用户名/wfd-coding-assistant`）告诉 Claude，Claude 会把代码推送上去。
+   Tell Claude the repository name (e.g. `your-username/wfd-coding-assistant`), and Claude will push the code.
+
+**方式 B：自己在网页上上传。**
+**Option B: upload it yourself in the browser.**
+1. 按上面第 1–2 步建一个空仓库。
+   Create an empty repository as in steps 1–2 above.
+2. 在新仓库页面点 **uploading an existing file**。
+   On the new repository page, click **uploading an existing file**.
+3. 解压 `WFD_Coding_Assistant.zip`，打开 `wfd-assistant` 文件夹，把里面**所有内容**（不是文件夹本身）拖进网页，然后点 **Commit changes**。
+   Unzip `WFD_Coding_Assistant.zip`, open the `wfd-assistant` folder, drag **everything inside it** (not the folder itself) onto the page, then click **Commit changes**.
+4. 确认仓库首页能看到 `Dockerfile`、`render.yaml`、`app/`、`web/`。
+   Check that the repository page shows `Dockerfile`, `render.yaml`, `app/` and `web/`.
+
+## 第 3 步：在 Render 创建网站 · Step 3: Create the site on Render
+
+1. 打开 https://render.com → **Get Started** → 选择 **GitHub** 登录，并允许 Render 访问 `wfd-coding-assistant` 仓库。
+   Open https://render.com → **Get Started** → sign in with **GitHub**, and allow Render to access the `wfd-coding-assistant` repository.
+2. 在 Render 控制台点 **New +** → **Blueprint** → 选择 `wfd-coding-assistant` 仓库。
+   In the Render dashboard click **New +** → **Blueprint** → pick the `wfd-coding-assistant` repository.
+3. Render 读取 `render.yaml` 后，会要求你填写这些值：
+   Render reads `render.yaml` and asks you for these values:
+
+   | 名称 · Name | 填什么 · What to enter |
+   |---|---|
+   | `WFD_PASSWORD` | 第 1 步的团队密码 · the team password from step 1 |
+   | `TAVILY_API_KEY` | Tavily 密钥（没用 Tavily 就留空）· Tavily key (leave blank if unused) |
+   | `BRAVE_API_KEY` | Brave 密钥（没用 Brave 就留空）· Brave key (leave blank if unused) |
+   | `ANTHROPIC_API_KEY` | Claude 密钥 · Claude key |
+
+4. 点 **Apply**，并按提示添加付款方式（Starter 实例每月 7 美元）。
+   Click **Apply** and add a payment method when asked (Starter is $7/month).
+5. 等 5–10 分钟构建完成。服务状态变成 **Live** 后，点页面上方的 `…onrender.com` 网址。
+   Wait 5–10 minutes for the build. When the service shows **Live**, click the `…onrender.com` address at the top.
+
+## 第 4 步：第一次登录与检查 · Step 4: First sign-in and checks
+
+1. 打开网址 → 输入你的名字和团队密码 → **登录**。
+   Open the address → enter your name and the team password → **Sign in**.
+2. 打开 **设置 / Settings**：至少一个搜索密钥和 `ANTHROPIC_API_KEY` 应显示为“是”（`WFD_PASSWORD` 不在这个列表里）。
+   Open **Settings**: `WFD_PASSWORD` isn't listed, but at least one search key and `ANTHROPIC_API_KEY` should show "yes".
+3. 在 **设置 → 价格** 填写你的搜索套餐单价（每 1,000 次搜索的美元价格）。
+   Under **Settings → Pricing**, enter your search plan's price per 1,000 queries.
+4. 在 **编码规则 / Schema** 页上传原始 `CODEBOOK v1.3.docx` 和工作簿。
+   On the **Schema** page, upload the original `CODEBOOK v1.3.docx` and the workbook.
+5. 用一个你已人工编码过的事件测试，并按 README 第 4 节的清单检查。第一次测试时把费用上限设成 1–2 美元。
+   Test with an incident you already coded by hand and follow the checklist in README section 4. Set the cost cap to $1–2 for the first test.
+
+## 给团队使用 · Sharing with your team
+
+- 把网址和团队密码告诉组员（当面或用安全的方式）。每个人用自己的名字登录，复核历史会记录是谁做的修改。
+  Give teammates the address and the team password (in person or another secure way). Each person signs in with their own name; review history records who made each change.
+- 有人离开团队时：在 Render → 服务 → **Environment** 里修改 `WFD_PASSWORD` 并保存。所有旧的登录会立即失效。
+  When someone leaves: change `WFD_PASSWORD` in Render → the service → **Environment** and save. All existing sign-ins stop working immediately.
+- 同一 IP 连续输错 8 次密码，会被锁定 15 分钟。
+  Eight wrong passwords from the same IP address lock it out for 15 minutes.
+
+## 维护 · Maintenance
+
+- **更新程序：** 代码推送到 GitHub 后，Render 会自动重新部署。数据保存在永久存储里，不会丢失。更新时网站会停机约 1–2 分钟；正在运行的研究任务会在重启后从上次完成的阶段继续。
+  **Updates:** after new code is pushed to GitHub, Render redeploys automatically. Data lives on the persistent disk and is kept. The site is down for about 1–2 minutes during an update; a running research job resumes from its last completed stage after the restart.
+- **备份：** Render 每 24 小时自动给永久存储做一次快照，至少保留 7 天，可在服务页的 **Disks** 里恢复。重要阶段也建议从“导出”页下载 Excel 和 JSON 自己保存。
+  **Backups:** Render snapshots the disk every 24 hours and keeps snapshots at least 7 days; restore them from the service's **Disks** tab. At key milestones, also download the Excel and JSON exports and keep your own copies.
+- **内存不足：** 如果处理大型 PDF 时服务重启（日志里出现 “out of memory”），在 Render 里把实例升级到 2 GB。
+  **Out of memory:** if the service restarts while processing large PDFs ("out of memory" in the logs), upgrade the instance to 2 GB in Render.
+- **暂停费用：** 不用时可以在 Render 里 **Suspend** 服务；永久存储仍会按容量计费。
+  **Pausing costs:** you can **Suspend** the service when unused; the disk is still billed by size.
+
+## 安全说明 · Security notes
+
+- 所有密钥只保存在 Render 的环境设置里，浏览器、日志和导出文件都看不到。
+  All keys stay in Render's environment settings; they never reach the browser, logs or exports.
+- 没有设置 `WFD_PASSWORD` 时，程序会拒绝在公开地址上启动。
+  Without `WFD_PASSWORD`, the program refuses to start on a public address.
+- 登录凭证是签名的 HttpOnly Cookie，14 天后过期。网站使用 HTTPS（Render 自动提供）。
+  Sessions use a signed HttpOnly cookie that expires after 14 days. The site uses HTTPS, provided automatically by Render.
+- 所有登录的人都能看到所有案例、修改设置和使用预算上限内的费用。这是为小型研究团队设计的，不适合公开给陌生人。
+  Everyone signed in can see all cases, change settings and spend within the budget caps. It's designed for a small research team, not for strangers.

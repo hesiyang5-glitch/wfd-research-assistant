@@ -1,0 +1,25 @@
+# Render Blueprint: creates the web service, a persistent disk, and the settings it needs.
+# In Render: New → Blueprint → pick this repository. You will be asked for the values marked "sync: false".
+services:
+  - type: web
+    name: wfd-coding-assistant
+    runtime: docker
+    plan: starter            # always-on instance; the free plan sleeps and cannot keep a disk
+    healthCheckPath: /healthz
+    disk:
+      name: wfd-data
+      mountPath: /var/data   # database, downloaded sources, uploads, edited prices
+      sizeGB: 5
+    envVars:
+      - key: WFD_PASSWORD    # team password for the login screen (choose a long one)
+        sync: false
+      - key: WFD_SECRET      # signs login sessions; generated automatically
+        generateValue: true
+      - key: WFD_SECURE_COOKIE
+        value: "1"
+      - key: TAVILY_API_KEY  # fill in at least one search service
+        sync: false
+      - key: BRAVE_API_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
