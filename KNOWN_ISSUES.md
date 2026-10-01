@@ -13,7 +13,7 @@ Last reviewed: 2026-10-01 (commit `33a0c5e`). Severity: **High** (blocks correct
 
 | ID | Issue | Severity |
 |---|---|---|
-| K-03 | **Live coding only partly successful.** Re-analysis of Marshall Fire (2026-10-01, `e02de43`): 7 of 16 batches coded; 9 cut off at the output limit (450 tokens/variable was too small). Cut-off replies are billed in full and discarded. Fix on branch `fix/output-limit` (1,500 + 1,200 tokens/variable, ≤12 variables per call); needs deploy approval and a live re-test. | High |
+| K-03 | **Output headroom is modest.** Live re-analysis (2026-10-01, `c57214a`) coded all 16 batches, 0 failed. Heaviest batch used 4,811 of 7,500 output tokens for 5 variables (~960/variable vs 1,200 allowed). Watch the logged token counts; raise `OUT_TOKENS_PER_VAR` if a cut-off recurs. | Low |
 | K-04 | Coding quality vs hand-coded benchmarks unmeasured (TEST_PLAN §4). | High |
 | K-05 | Live export, live causal-uncertainty handling, live review/reanalysis not yet exercised. | Medium |
 | K-06 | Recorded case spend vs Anthropic Console usage not yet reconciled. | Medium |

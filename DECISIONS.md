@@ -86,7 +86,7 @@ Dated decisions with rationale. Newest last. Status: **Active**, **Superseded**,
 **Question.** Project rule asks for server-side per-case limits on model attempts and search requests. Today only the dollar budget is per case; query count (`max_queries` = 40) is per run, and model attempts are bounded by batching and the dollar budget.
 **Proposal.** Add `max_model_attempts_per_case` and `max_search_requests_per_case`, counted from the `usage` table across all runs, including retries and possibly-billed failures.
 
-## D-022 · 2026-10-01 · Larger output allowance per variable — Active (pending deploy)
+## D-022 · 2026-10-01 · Larger output allowance per variable — Active (deployed `c57214a`)
 **Decision.** Output allowance per call = 1,500 + 1,200 tokens per variable (ceiling 16,000), at most 12 variables per call.
 **Why.** At 600 + 450 per variable, 9 of 16 live batches were cut off. A cut-off reply is billed in full and thrown away, while a generous limit costs nothing extra on a complete reply (only tokens produced are billed); it only raises the worst-case reserve checked against the case budget.
 **Not chosen.** Shortening the required evidence (fewer quotes, no counter-evidence) — that would weaken traceability and conflicting-evidence handling.

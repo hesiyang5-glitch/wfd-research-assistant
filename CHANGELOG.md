@@ -2,7 +2,11 @@
 
 Completed changes, newest first. Commit hashes refer to `hesiyang5-glitch/wfd-research-assistant`.
 
-## 2026-10-01 — Output limit fix (branch `fix/output-limit`, not yet deployed)
+## 2026-10-01 — First complete live coding run (docs only)
+- Marshall Fire re-analysis on `c57214a`: 16 calls, 0 failed, 7 reused from cache; output use up to ~960 tokens
+  per variable. Case total $1.49 (including ~$0.68 for the earlier partly cut-off run).
+
+## 2026-10-01 — `c57214a` Output limit fix (deployed)
 - First partly successful live coding run (Marshall Fire): 7 of 16 batches coded; 9 replies cut off at the old
   output limit (600 + 450 tokens per variable) and discarded.
 - Output allowance raised to 1,500 + 1,200 tokens per variable (ceiling 16,000); at most 12 variables per call so

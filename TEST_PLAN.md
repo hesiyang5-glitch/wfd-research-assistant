@@ -43,7 +43,7 @@ Run after each deploy that changes research or coding behavior. Set "Cost cap pe
 | L2 | Settings page | `TAVILY_API_KEY` and `ANTHROPIC_API_KEY` = yes; search `tavily`; model `anthropic: claude-sonnet-5-5`; OCR available | PASS (owner) |
 | L3 | Start research on benchmark B1 | search log provider `tavily`; templates cover AAR/.gov/corrections/reforms | PASS (13 queries) |
 | L4 | Sources | AAR found; failures listed with reasons; irrelevant sources flagged | PASS (S1 = Boulder County operational AAR PDF; 27 failures, many 403) |
-| L5 | Coding completes | coding line shows N calls, 0 failed | **PARTIAL**: in-page dialog works live; 16 calls, 9 cut off at the output limit (`e02de43`). Fix on `fix/output-limit`; re-test pending |
+| L5 | Coding completes | coding line shows N calls, 0 failed | **PASS** (2026-10-01, `c57214a`): 16 calls, 0 failed; 7 batches reused from cache at no charge; case spend $1.49 / $3 |
 | L6 | Review: 5 variables with values | citations open and support the code | pending |
 | L7 | Causal variable with conflicting accounts | `disputed`, alternatives shown | pending |
 | L8 | Edit a value, re-analyze | edit preserved; Δ where suggestion changed | pending |
