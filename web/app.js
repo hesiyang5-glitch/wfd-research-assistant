@@ -224,8 +224,8 @@ async function tabProgress(c, body) {
       <h3>${t("log")}</h3><div class="log">${(j.log || []).map((l) => `<div class="${l.level}">${new Date(l.at * 1000).toLocaleTimeString()} [${esc(l.stage)}] ${esc(l.message)}</div>`).join("")}</div></div>`;
     const on = (sel, fn) => { const el = $(sel, body); if (el) el.onclick = fn; };
     on("#cancelBtn", async () => { await api("POST", `/api/jobs/${j.id}/cancel`); draw(); });
-    on("#rerunBtn", () => startResearch(c.id));
-    on("#recodeBtn", () => startRecode(c.id));
+    on("#rerunBtn", (ev) => startResearch(c.id, ev.currentTarget));
+    on("#recodeBtn", (ev) => startRecode(c.id, null, ev.currentTarget));
     on("#approveBtn", async () => { await api("POST", `/api/jobs/${j.id}/resume`, { approve_over_budget: true }); draw(); });
     on("#raiseBtn", async () => { await api("POST", `/api/jobs/${j.id}/resume`, { budget_usd: +$("#newBudget").value }); draw(); });
     on("#manualBtn", async () => { await api("POST", `/api/jobs/${j.id}/resume`, { manual_only: true }); draw(); });
@@ -237,17 +237,54 @@ async function tabProgress(c, body) {
   };
   draw();
 }
-async function startResearch(id) { await api("POST", `/api/cases/${id}/research`, {}); location.hash = `#/case/${id}/progress`; route(); }
-async function startRecode(id, variables) {
+// In-page dialog. Browser confirm()/prompt() can be silently blocked (settings or extensions), which made buttons
+// look dead, so every confirmation is shown inside the page instead. Resolves to true / the typed text, or null.
+function askDialog({ title, body = "", okText, cancelText, input = null }) {
+  return new Promise((resolve) => {
+    $("#modalRoot").innerHTML = `<div class="modal-bg"><div class="modal" style="width:min(560px,100%)" role="dialog" aria-modal="true">
+      <header><b>${esc(title)}</b></header><div class="body">${body}
+      ${input !== null ? `<label for="dlgInput">${esc(input.label || "")}</label><input id="dlgInput" value="${esc(input.value || "")}">` : ""}
+      <div class="row" style="margin-top:14px"><button class="primary" id="dlgOk">${esc(okText || t("save"))}</button>
+      <button id="dlgCancel">${esc(cancelText || t("close"))}</button></div></div></div></div>`;
+    const done = (v) => { $("#modalRoot").innerHTML = ""; resolve(v); };
+    $("#dlgOk").onclick = () => done(input !== null ? $("#dlgInput").value : true);
+    $("#dlgCancel").onclick = () => done(null);
+    (input !== null ? $("#dlgInput") : $("#dlgOk")).focus();
+  });
+}
+function busy(btn, on, text) {
+  if (!btn) return;
+  if (on) { btn.dataset.label = btn.textContent; btn.disabled = true; if (text) btn.textContent = text; }
+  else { btn.disabled = false; if (btn.dataset.label) btn.textContent = btn.dataset.label; }
+}
+async function startResearch(id, btn) {
+  busy(btn, true);
+  try { await api("POST", `/api/cases/${id}/research`, {}); location.hash = `#/case/${id}/progress`; route(); }
+  catch (e) { toast(e.message, true); }
+  finally { busy(btn, false); }
+}
+async function startRecode(id, variables, btn) {
+  busy(btn, true, LANG === "zh" ? "正在估算费用…" : "Estimating cost…");
   try {
-    const e = await api("GET", `/api/cases/${id}/estimate`);
-    if (STATUS.model && e.cost_high != null) {
-      const ok = confirm((LANG === "zh" ? "预计模型费用 " : "Estimated model cost ") + `${money(e.cost_low)} – ${money(e.cost_high)} (${LANG === "zh" ? "最坏情况" : "worst case"}, ${e.calls} calls). ` + (LANG === "zh" ? "费用计入本案例的预算上限。继续？" : "This counts toward the case's budget cap. Continue?"));
+    let e = null;
+    try { e = await api("GET", `/api/cases/${id}/estimate`); }
+    catch (err) { toast((LANG === "zh" ? "无法估算费用：" : "Could not estimate the cost: ") + err.message, true); return; }
+    if (STATUS.model) {
+      if (e.cost_high == null) { toast(LANG === "zh" ? "缺少模型价格，无法估算费用。请在设置 → 价格中填写。" : "No model price, so the cost can't be estimated. Add it under Settings → Pricing.", true); return; }
+      const ok = await askDialog({
+        title: t("recode"),
+        body: `<div class="kv"><div>${t("calls")}</div><div>${e.calls}</div><div>${t("input_tokens")}</div><div>${(e.input_tokens || 0).toLocaleString()}</div>
+          <div>${t("est_cost")}</div><div>${money(e.cost_low)} – <b>${money(e.cost_high)}</b> ${t("worst_case")}</div></div>
+          <p class="small muted">${LANG === "zh" ? "费用计入本案例的预算上限。只使用已读取的资料，不会产生新的搜索费用。" : "This counts toward the case's budget cap. It uses the sources already read, with no new search cost."}</p>`,
+        okText: LANG === "zh" ? "开始重新分析" : "Start re-analysis", cancelText: LANG === "zh" ? "取消" : "Cancel",
+      });
       if (!ok) return;
     }
-  } catch (err) {}
-  await api("POST", `/api/cases/${id}/recode`, { variables: variables || null });
-  location.hash = `#/case/${id}/progress`; route();
+    await api("POST", `/api/cases/${id}/recode`, { variables: variables || null });
+    toast(LANG === "zh" ? "已开始重新分析" : "Re-analysis started");
+    location.hash = `#/case/${id}/progress`; route();
+  } catch (err) { toast(err.message, true); }
+  finally { busy(btn, false); }
 }
 
 // ------------------------------------------------------------------ review workbench
@@ -405,11 +442,16 @@ async function tabSources(c, body) {
   $("#addUrlBtn").onclick = () => add({ kind: "url", url: $("#addUrl").value.trim() });
   $("#addTextBtn").onclick = () => add({ kind: "text", title: $("#addTitle").value, text: $("#addText").value });
   $("#addFileBtn").onclick = async () => { for (const f of $("#addFile").files) await add({ kind: "file", filename: f.name, data: await fileToB64(f) }); };
-  $("#recodeAll").onclick = () => startRecode(c.id);
+  $("#recodeAll").onclick = (ev) => startRecode(c.id, null, ev.currentTarget);
   $$("[data-open]", body).forEach((b) => (b.onclick = () => openSource(+b.dataset.open)));
   const showAffected = (r) => { if (r.affected_variables && r.affected_variables.length) { $("#affBox").innerHTML = `<div class="callout warn">${t("affected")}: <span class="mono">${esc(r.affected_variables.join(", "))}</span> <button class="small" id="reAff">${t("reanalyze_affected")}</button></div>`; $("#reAff").onclick = () => startRecode(c.id, r.affected_variables); } };
   $$("[data-excl]", body).forEach((b) => (b.onclick = async () => {
-    const reason = b.dataset.on === "1" ? prompt(LANG === "zh" ? "排除理由：" : "Reason for excluding:") || "" : "";
+    let reason = "";
+    if (b.dataset.on === "1") {
+      reason = await askDialog({ title: LANG === "zh" ? "排除这份来源" : "Exclude this source", input: { label: LANG === "zh" ? "排除理由" : "Reason for excluding" },
+        okText: t("exclude"), cancelText: LANG === "zh" ? "取消" : "Cancel" });
+      if (reason === null) return;
+    }
     const r = await api("PATCH", `/api/sources/${b.dataset.excl}`, { excluded: b.dataset.on === "1", reason });
     await tabSources(c, body); showAffected(r);
   }));
@@ -444,7 +486,7 @@ async function tabExport(c, body) {
       <div>Search queries billed</div><div>${u.totals.search_queries_billed}</div><div>Search cost</div><div>${u.totals.search_price_unknown ? (LANG === "zh" ? "未知（未填写单价）" : "unknown (price not configured)") : money(u.totals.search_usd)}</div></div>
       <h3>${t("runs")}</h3>${u.runs.map((r) => `<div class="small">run ${r.id} · ${esc(r.mode)} · ${esc(r.model || "")} · schema v${r.schema_version_id} · ${fmtTime(r.created_at)}</div>`).join("") || t("none")}
       <div class="row" style="margin-top:10px"><button id="reBtn">${t("recode")}</button></div></div></div>`;
-  $("#reBtn").onclick = () => startRecode(c.id);
+  $("#reBtn").onclick = (ev) => startRecode(c.id, null, ev.currentTarget);
 }
 
 // ------------------------------------------------------------------ schema

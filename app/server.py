@@ -309,7 +309,8 @@ def api_estimate(h, cid, **_):
     try:
         return estimate(c, st)
     except Exception as e:
-        return {"error": str(e)}
+        traceback.print_exc()
+        raise ApiError(500, f"cost estimate failed: {type(e).__name__}: {e}")
 
 
 @route("GET", "/api/estimate_preview")
