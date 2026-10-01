@@ -53,6 +53,16 @@ Reply with a single JSON object: {"results": [ ... one object per variable ... ]
 """
 
 
+def case_spent(case_id: int) -> float:
+    """Everything spent on this case across all runs (model + search), including failed calls counted at worst case."""
+    r = db.q1("SELECT COALESCE(SUM(cost_usd),0) c FROM usage WHERE case_id=?", (case_id,))
+    return float(r["c"] or 0)
+
+
+def batch_max_tokens(n_vars: int) -> int:
+    return min(16000, 600 + 450 * n_vars)
+
+
 def is_causal(field: dict) -> bool:
     d = (field.get("definition", "") + " " + field["name"]).lower()
     return bool(re.search(r"caus|mechanism|why|training|procedur|technical_notes|root", d))
@@ -169,11 +179,13 @@ def estimate(case: dict, settings: dict, variables: list[str] | None = None) -> 
     smeta = source_meta(case["id"])
     in_tok = sum(estimate_tokens(SYSTEM_PROMPT + make_prompt(case, fs, ids, pmap, smeta)) for fs, ids in batches)
     out_tok = sum(len(fs) * 260 for fs, _ in batches)
+    out_max = sum(batch_max_tokens(len(fs)) for fs, _ in batches)
     model = settings.get("model_name", "claude-sonnet-5-5")
     lo = cost_usd(model, in_tok, int(out_tok * 0.6))
-    hi = cost_usd(model, int(in_tok * 1.15), int(out_tok * 1.6))
-    return {"calls": len(batches), "input_tokens": in_tok, "output_tokens_est": out_tok, "model": model,
-            "cost_low": lo, "cost_high": hi, "n_fields": len(fields), "n_passages_indexed": len(pmap),
+    # High bound = the same worst case the per-call budget check uses (input +25%, every output token used).
+    hi = cost_usd(model, int(in_tok * 1.25), out_max)
+    return {"calls": len(batches), "input_tokens": in_tok, "output_tokens_est": out_tok, "output_tokens_max": out_max,
+            "model": model, "cost_low": lo, "cost_high": hi, "n_fields": len(fields), "n_passages_indexed": len(pmap),
             "n_passages_sent": len({i for _, ids in batches for i in ids}), "semantic_method": index.semantic_method}
 
 
@@ -226,8 +238,13 @@ def run_coding(case: dict, settings: dict, client, job_id: int | None, log, budg
                 break
             prompt = make_prompt(case, fs, ids, pmap, smeta)
             est_in = estimate_tokens(SYSTEM_PROMPT + prompt)
-            est_cost = cost_usd(client.model, est_in, len(fs) * 400) or 0
-            if budget_left is not None and spent + est_cost > budget_left:
+            max_out = batch_max_tokens(len(fs))
+            # Worst case for this call: input estimate +25% and every allowed output token used.
+            worst_cost = cost_usd(client.model, int(est_in * 1.25), max_out)
+            if budget_left is not None and worst_cost is None:
+                raise RuntimeError(f"no price configured for model {client.model}; cannot enforce the budget")
+            worst_cost = worst_cost or 0
+            if budget_left is not None and spent + worst_cost > budget_left:
                 for f in fs:
                     report["not_coded_budget"].append(f["name"])
                     _store(case["id"], run_id, f["name"], "", "not_coded_budget",
@@ -241,18 +258,36 @@ def run_coding(case: dict, settings: dict, client, job_id: int | None, log, budg
                     resp = cached
                     log("info", f"batch {bi+1}/{len(batches)}: reused cached model reply (no charge)")
                 else:
-                    resp = client.complete(SYSTEM_PROMPT, prompt, max_tokens=min(16000, 600 + 450 * len(fs)))
-                    c = cost_usd(client.model, resp.get("input_tokens") or est_in, resp.get("output_tokens") or 0)
-                    spent += c or est_cost
+                    try:
+                        resp = client.complete(SYSTEM_PROMPT, prompt, max_tokens=max_out)
+                    except LLMError as e:
+                        if e.possibly_billed:  # count it at worst case so the budget stays a real ceiling
+                            spent += worst_cost
+                            db.insert("usage", {"case_id": case["id"], "job_id": job_id, "kind": "model",
+                                                "provider": client.provider, "model": client.model, "input_tokens": None,
+                                                "output_tokens": None, "units": 1, "cost_usd": worst_cost, "estimated": 1,
+                                                "at": time.time(),
+                                                "note": f"coding batch {bi+1}: failed call that may have been billed "
+                                                        f"(counted at worst case)"})
+                        raise
+                    c = cost_usd(client.model, resp.get("input_tokens") or int(est_in * 1.25),
+                                 resp.get("output_tokens") if resp.get("output_tokens") is not None else max_out)
+                    spent += c if c is not None else worst_cost
                     db.insert("usage", {"case_id": case["id"], "job_id": job_id, "kind": "model", "provider": client.provider,
                                         "model": client.model, "input_tokens": resp.get("input_tokens"),
                                         "output_tokens": resp.get("output_tokens"), "units": 1, "cost_usd": c,
                                         "estimated": 0 if resp.get("input_tokens") else 1, "at": time.time(),
                                         "note": f"coding batch {bi+1}"})
-                    db.cache_put(key, resp)
                 report["calls"] += 1
+                if resp.get("stop_reason") in ("max_tokens", "length"):
+                    raise LLMError(f"reply was cut off at the {max_out}-token output limit; results discarded and not "
+                                   f"cached, so re-analysis will try again")
                 data = parse_json_block(resp["text"])
                 results = data.get("results", data) if isinstance(data, dict) else data
+                if not isinstance(results, list):
+                    raise LLMError("model reply did not contain a list of results")
+                if not cached:
+                    db.cache_put(key, resp)  # only complete, readable replies are cached
             except (LLMError, KeyError, TypeError, ValueError) as e:
                 report["failed_calls"] += 1
                 log("error", f"batch {bi+1}: model call failed: {e}")

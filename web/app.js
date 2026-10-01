@@ -117,7 +117,8 @@ async function renderHome() {
       ${STATUS.model ? `<div class="kv"><div>${LANG === "zh" ? "模型" : "Model"}</div><div>${esc(e.model)}</div>
       <div>${LANG === "zh" ? "需编码变量" : "Variables to code"}</div><div>${e.n_fields}</div>
       <div>${LANG === "zh" ? "预计模型费用" : "Est. model cost"}</div><div><b>${money(e.cost_low)} – ${money(e.cost_high)}</b></div>
-      <div>${t("s_budget")}</div><div>${money(e.budget_usd)}</div></div>` : `<p>${t("svc_none_model")}</p>`}
+      <div>${t("s_budget")}</div><div>${money(e.budget_usd)}</div>
+      ${e.search_cost_max != null ? `<div>${LANG === "zh" ? "搜索费用上限（每次运行）" : "Max search cost per run"}</div><div>${money(e.search_cost_max)}</div>` : ""}</div>` : `<p>${t("svc_none_model")}</p>`}
       <p class="small muted">${t("est_note")}</p><p class="small muted">${t("search_cost_note")}</p>`;
   }).catch(() => {});
   $("#startBtn").onclick = async () => {
@@ -186,12 +187,19 @@ async function tabProgress(c, body) {
         ${k.examples.map((e) => `<div class="small"><a href="${esc(e.url)}" target="_blank" rel="noopener">${esc(e.title || e.url)}</a></div>`).join("")}</div>`).join("")}
         <button class="small" id="identAll">${LANG === "zh" ? "按我输入的信息继续" : "Continue with my input as entered"}</button></div>`;
     } else if (j.status === "needs_input" && st.awaiting === "budget") {
-      const e = st.estimate || {};
+      const e = st.estimate || {}; const b = st.budget || {};
+      const needed = Math.ceil(((b.spent_usd || 0) + (e.cost_high || 0)) * 100) / 100;
       needs = `<div class="callout warn"><b>${t("budget_q")}</b><div class="kv" style="margin:8px 0">
-        <div>Model</div><div>${esc(e.model)}</div><div>Calls</div><div>${e.calls}</div><div>Input tokens</div><div>${(e.input_tokens || 0).toLocaleString()}</div>
-        <div>Estimated cost</div><div><b>${money(e.cost_low)} – ${money(e.cost_high)}</b></div></div>
-        <div class="row"><button class="primary" id="approveBtn">${t("approve")}</button>
-        <span>${t("raise_budget")}</span><input id="newBudget" type="number" step="0.5" style="width:100px" value="${Math.ceil((e.cost_high || 1) * 1.2)}"><button id="raiseBtn">OK</button>
+        <div>Model</div><div>${esc(e.model)}</div><div>${t("calls")}</div><div>${e.calls}</div><div>${t("input_tokens")}</div><div>${(e.input_tokens || 0).toLocaleString()}</div>
+        <div>${t("est_cost")}</div><div>${money(e.cost_low)} – <b>${money(e.cost_high)}</b> ${t("worst_case")}</div>
+        <div>${t("case_spend")}</div><div>${money(b.spent_usd)} / ${money(b.budget_usd)}</div></div>
+        <div class="row"><button class="primary" id="approveBtn">${t("approve_to")} ${money(needed)}</button>
+        <span>${t("raise_budget")}</span><input id="newBudget" type="number" min="0" max="1000" step="0.5" style="width:100px" value="${needed}"><button id="raiseBtn">OK</button>
+        <button id="manualBtn">${t("manual_only")}</button></div>
+        <p class="small muted">${t("budget_note")}</p></div>`;
+    } else if (j.status === "needs_input" && st.awaiting === "price") {
+      needs = `<div class="callout warn"><b>${t("price_missing")}</b><p>${esc(j.message)}</p>
+        <div class="row"><a href="#/settings"><button>${t("nav_settings")} →</button></a><button class="primary" id="resumeBtn">${t("resume")}</button>
         <button id="manualBtn">${t("manual_only")}</button></div></div>`;
     } else if (j.status === "needs_input") {
       needs = `<div class="callout warn"><b>${t("need_sources")}</b><p>${esc(j.message)}</p><a href="#/case/${c.id}/sources">→ ${t("tab_sources")}</a></div>`;
@@ -204,7 +212,8 @@ async function tabProgress(c, body) {
       ${j.error ? `<div class="callout bad">${esc(j.error)}</div>` : ""}${needs}
       ${cov ? `<h3>${t("coverage")}</h3>${!cov.automatic_search_ran ? `<div class="callout warn">${LANG === "zh" ? "未进行自动网页搜索（未配置搜索服务，或本次只是重新分析）。结果只基于已有或手动补充的资料。" : "No automatic web search in this run (no search provider configured, or this was a re-analysis). Results rest only on existing or manually added sources."}</div>` : cov.research_complete ? `<div class="callout ok">${t("complete_note")}</div>` : `<div class="callout warn">${t("incomplete")}<br><span class="small">${esc((cov.limits_hit || []).join("; "))}</span></div>`}
         ${cov.search_is_test_fixture ? `<div class="callout bad">${t("svc_test")}</div>` : ""}
-        <div class="kv"><div>${LANG === "zh" ? "搜索服务" : "Search provider"}</div><div>${esc(cov.search_provider || t("none"))}</div>
+        <div class="kv"><div>${t("case_spend")}</div><div>${money(cov.spent_usd)} / ${money(cov.budget_usd)}${cov.search_provider && !cov.search_price_configured && !cov.search_is_test_fixture ? ` <span class="badge warn">${t("search_price_missing")}</span>` : ""}</div>
+        <div>${LANG === "zh" ? "搜索服务" : "Search provider"}</div><div>${esc(cov.search_provider || t("none"))}</div>
         <div>${LANG === "zh" ? "搜索（成功/失败）" : "Queries ok / failed"}</div><div>${cov.queries_ok} / ${cov.queries_failed} (${LANG === "zh" ? "轮次" : "rounds"} ${cov.rounds})</div>
         <div>${LANG === "zh" ? "已读取 / 获取失败" : "Sources read / failed"}</div><div>${cov.sources_ok} / ${cov.sources_failed}</div>
         <div>${LANG === "zh" ? "重复 / 转载" : "Duplicates / syndicated"}</div><div>${cov.exact_duplicates} / ${cov.near_duplicates}</div>
@@ -220,6 +229,7 @@ async function tabProgress(c, body) {
     on("#approveBtn", async () => { await api("POST", `/api/jobs/${j.id}/resume`, { approve_over_budget: true }); draw(); });
     on("#raiseBtn", async () => { await api("POST", `/api/jobs/${j.id}/resume`, { budget_usd: +$("#newBudget").value }); draw(); });
     on("#manualBtn", async () => { await api("POST", `/api/jobs/${j.id}/resume`, { manual_only: true }); draw(); });
+    on("#resumeBtn", async () => { await api("POST", `/api/jobs/${j.id}/resume`, {}); draw(); });
     on("#identAll", async () => { await api("POST", `/api/jobs/${j.id}/resume`, { identity_confirmed: true }); draw(); });
     $$("[data-year]", body).forEach((b) => (b.onclick = async () => { await api("POST", `/api/jobs/${j.id}/resume`, { identity_year: b.dataset.year }); draw(); }));
     if (!["running", "queued"].includes(j.status)) { clearInterval(POLL); POLL = null; }
@@ -232,7 +242,7 @@ async function startRecode(id, variables) {
   try {
     const e = await api("GET", `/api/cases/${id}/estimate`);
     if (STATUS.model && e.cost_high != null) {
-      const ok = confirm((LANG === "zh" ? "预计模型费用 " : "Estimated model cost ") + `${money(e.cost_low)} – ${money(e.cost_high)} (${e.calls} calls). ` + (LANG === "zh" ? "继续？" : "Continue?"));
+      const ok = confirm((LANG === "zh" ? "预计模型费用 " : "Estimated model cost ") + `${money(e.cost_low)} – ${money(e.cost_high)} (${LANG === "zh" ? "最坏情况" : "worst case"}, ${e.calls} calls). ` + (LANG === "zh" ? "费用计入本案例的预算上限。继续？" : "This counts toward the case's budget cap. Continue?"));
       if (!ok) return;
     }
   } catch (err) {}

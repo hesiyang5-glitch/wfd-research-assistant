@@ -52,11 +52,11 @@ def main():
         me = httpx.get(B + "/api/me").json()
         check("/api/me reports login required", me == {"user": None, "login_required": True}, str(me))
         t0 = time.time()
-        r = httpx.post(B + "/api/login", json={"name": "Siyang", "password": "wrong"}, headers={"X-Forwarded-For": "9.9.9.1"})
+        r = httpx.post(B + "/api/login", json={"name": "Siyang", "password": "wrong"}, headers={"CF-Connecting-IP": "9.9.9.1"})
         check("wrong password rejected and slowed down", r.status_code == 401 and time.time() - t0 >= 0.45)
-        r = httpx.post(B + "/api/login", json={"name": "", "password": "correct horse battery staple"}, headers={"X-Forwarded-For": "9.9.9.2"})
+        r = httpx.post(B + "/api/login", json={"name": "", "password": "correct horse battery staple"}, headers={"CF-Connecting-IP": "9.9.9.2"})
         check("name required", r.status_code == 401 and "name" in r.json()["error"].lower())
-        r = httpx.post(B + "/api/login", json={"name": "Siyang", "password": "correct horse battery staple"}, headers={"X-Forwarded-For": "9.9.9.2"})
+        r = httpx.post(B + "/api/login", json={"name": "Siyang", "password": "correct horse battery staple"}, headers={"CF-Connecting-IP": "9.9.9.2"})
         ck = r.headers.get("set-cookie", "")
         check("login sets HttpOnly SameSite cookie", r.status_code == 200 and "HttpOnly" in ck and "SameSite=Lax" in ck, ck)
         c = httpx.Client(base_url=B, cookies=r.cookies)
@@ -75,9 +75,12 @@ def main():
         c.post("/api/logout", json={})
         check("logout clears session", httpx.post(B + "/api/logout", json={}).headers.get("set-cookie", "").find("Max-Age=0") >= 0)
         for i in range(8):
-            httpx.post(B + "/api/login", json={"name": "x", "password": f"guess{i}"}, headers={"X-Forwarded-For": "7.7.7.7"}, timeout=10)
-        r = httpx.post(B + "/api/login", json={"name": "x", "password": "correct horse battery staple"}, headers={"X-Forwarded-For": "7.7.7.7"})
+            httpx.post(B + "/api/login", json={"name": "x", "password": f"guess{i}"},
+                       headers={"CF-Connecting-IP": "7.7.7.7", "X-Forwarded-For": f"1.2.3.{i}"}, timeout=10)
+        r = httpx.post(B + "/api/login", json={"name": "x", "password": "correct horse battery staple"},
+                       headers={"CF-Connecting-IP": "7.7.7.7", "X-Forwarded-For": "5.5.5.5"})
         check("lockout after repeated failures (even with right password)", r.status_code == 401 and "Too many" in r.json()["error"])
+        check("faking X-Forwarded-For does not get around the lockout", "Too many" in r.json()["error"])
 
         print("\n[3] Browser login flow")
         from playwright.sync_api import sync_playwright
@@ -97,6 +100,21 @@ def main():
             check("header shows reviewer name", "Siyang" in pg.inner_text("#userBox"))
             check("no page errors (CSP allows the app)", not errs, str(errs))
             b.close()
+
+        print("\n[4] Site-wide backstop when addresses are faked")
+        r0 = httpx.post(B + "/api/login", json={"name": "Elise", "password": "correct horse battery staple"},
+                        headers={"CF-Connecting-IP": "8.8.8.8"})
+        c2 = httpx.Client(base_url=B, cookies=r0.cookies)
+        import concurrent.futures as cf
+        def bad(i):
+            return httpx.post(B + "/api/login", json={"name": "x", "password": "nope"},
+                              headers={"CF-Connecting-IP": f"10.0.{i // 250}.{i % 250}"}, timeout=20).status_code
+        with cf.ThreadPoolExecutor(10) as ex:
+            list(ex.map(bad, range(40)))
+        r = httpx.post(B + "/api/login", json={"name": "Siyang", "password": "correct horse battery staple"},
+                       headers={"CF-Connecting-IP": "8.8.4.4"})
+        check("40 failures from many addresses pause sign-in for everyone", r.status_code == 401 and "paused" in r.json()["error"])
+        check("people already signed in keep working during the pause", c2.get("/api/status").status_code == 200)
     finally:
         srv.terminate()
     print(f"\n{len(PASS)} passed, {len(FAIL)} failed")

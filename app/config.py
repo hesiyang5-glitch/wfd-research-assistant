@@ -65,7 +65,7 @@ DEFAULT_SETTINGS = {
     "pages_per_query": 2,               # go beyond the first results page
     "max_fetch": 60,
     "time_limit_minutes": 20,
-    "budget_usd": 3.00,                 # hard cap on estimated paid model + search spend per run
+    "budget_usd": 3.00,                 # cap on paid model + search spend per CASE, summed across all runs
     "follow_links": True,
     "passages_per_variable": 8,
     "max_passages_per_call": 40,        # batching size, NOT a cap: more evidence = more calls

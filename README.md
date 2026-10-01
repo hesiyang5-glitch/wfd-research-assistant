@@ -93,7 +93,7 @@ The tests need sample PDFs: set `WFD_TEST_PDFS=/path/to/folder` containing the T
 ## 6. Defaults chosen (change any in Settings) · 默认选择
 
 - **Stack:** Python standard-library web server + SQLite + a no-build HTML/JS interface, instead of React/FastAPI. Reason: runs with one install step, no Node.js build, and was fully testable here. 技术栈选择理由：安装简单、无需构建，且可在此环境完整测试。
-- Search: 10 initial query templates by source type × 2 result pages; up to 3 gap-driven follow-up rounds; ≤40 queries; ≤60 sources read; 20-minute limit; **$3 cost cap** per run. Stopping at a limit is reported as "research incomplete".
+- Search: 10 initial query templates by source type × 2 result pages; up to 3 gap-driven follow-up rounds; ≤40 queries; ≤60 sources read; 20-minute limit per run; **$3 cost cap per case**, summed across all runs and covering Claude and Tavily (checked at worst case before every call; approval raises the cap to a set amount, never removes it). Stopping at a limit is reported as "research incomplete".
 - Model: `claude-sonnet-5-5`, temperature 0; evidence batch = 40 passages per call (a batch size, not a cap); 8 top passages per variable.
 - Admin/derived fields (`VERSION_ENTRY_DATE`, `WFD_ID`, `INCIDENT_DURATION`, source counts/URLs, `DATA_EXTRACTION_METHOD`, `RECORD_STATUS`, `REVISION_HISTORY`) are generated or calculated with a stated basis — never presented as sourced facts. Analyst-comment fields are left for humans.
 - Uploaded files without a URL get source type `unknown` (set it on the Sources page) rather than a guess.

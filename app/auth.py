@@ -23,7 +23,11 @@ from .config import DATA_DIR, env
 COOKIE = "wfd_session"
 SESSION_DAYS = 14
 _fail: dict[str, list[float]] = {}
+_global_fail: list[float] = []
 _lock = threading.Lock()
+PER_IP_LIMIT = 8        # failed attempts per address per 15 minutes
+GLOBAL_LIMIT = 40       # failed attempts from all addresses per 15 minutes (backstop if addresses are faked)
+WINDOW = 900
 
 
 def enabled() -> bool:
@@ -85,16 +89,22 @@ def current_user(headers) -> str | None:
 def check_login(ip: str, name: str, password: str) -> tuple[bool, str]:
     now = time.time()
     with _lock:
-        recent = [t for t in _fail.get(ip, []) if now - t < 900]
+        recent = [t for t in _fail.get(ip, []) if now - t < WINDOW]
         _fail[ip] = recent
-        if len(recent) >= 8:
-            wait = int(900 - (now - recent[0]))
+        _global_fail[:] = [t for t in _global_fail if now - t < WINDOW]
+        if len(recent) >= PER_IP_LIMIT:
+            wait = int(WINDOW - (now - recent[0]))
             return False, f"Too many failed attempts. Try again in {max(1, wait // 60)} minute(s)."
+        if len(_global_fail) >= GLOBAL_LIMIT:
+            wait = int(WINDOW - (now - _global_fail[0]))
+            return False, (f"Sign-in is paused for everyone after many failed attempts. Try again in {max(1, wait // 60)} "
+                           f"minute(s). People already signed in are not affected.")
     ok = hmac.compare_digest(password.encode(), env("WFD_PASSWORD").encode())
     if not ok:
         time.sleep(min(3.0, 0.5 * (len(recent) + 1)))  # slow down guessing
         with _lock:
             _fail.setdefault(ip, []).append(now)
+            _global_fail.append(now)
         return False, "Wrong password."
     if not name.strip():
         return False, "Enter your name so review history shows who made each change."

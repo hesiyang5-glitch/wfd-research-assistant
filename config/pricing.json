@@ -1,17 +1,39 @@
 {
   "_note": "Prices in USD. Edit freely; the app never fetches live prices. 'verified' records where/when a price was checked.",
   "models": {
-    "claude-sonnet-5-5": {"provider": "anthropic", "input_per_mtok": 2.0, "output_per_mtok": 10.0,
-                          "verified": "platform.claude.com/docs/en/about-claude/pricing, 2026-09-30"},
-    "claude-opus-5-5":   {"provider": "anthropic", "input_per_mtok": 4.0, "output_per_mtok": 20.0,
-                          "verified": "platform.claude.com/docs/en/about-claude/pricing, 2026-09-30"},
-    "claude-haiku-4-5":  {"provider": "anthropic", "input_per_mtok": 1.0, "output_per_mtok": 5.0,
-                          "verified": "platform.claude.com/docs/en/about-claude/pricing, 2026-09-30"}
+    "claude-sonnet-5-5": {
+      "provider": "anthropic",
+      "input_per_mtok": 2.0,
+      "output_per_mtok": 10.0,
+      "verified": "platform.claude.com/docs/en/about-claude/pricing, 2026-09-30"
+    },
+    "claude-opus-5-5": {
+      "provider": "anthropic",
+      "input_per_mtok": 4.0,
+      "output_per_mtok": 20.0,
+      "verified": "platform.claude.com/docs/en/about-claude/pricing, 2026-09-30"
+    },
+    "claude-haiku-4-5": {
+      "provider": "anthropic",
+      "input_per_mtok": 1.0,
+      "output_per_mtok": 5.0,
+      "verified": "platform.claude.com/docs/en/about-claude/pricing, 2026-09-30"
+    }
   },
   "search": {
-    "_note": "Search APIs bill separately from the model. Fill in your plan's price per 1,000 queries; null = unknown (usage is still counted).",
-    "brave":   {"usd_per_1000_queries": null, "pricing_page": "https://brave.com/search/api/"},
-    "tavily":  {"usd_per_1000_queries": null, "pricing_page": "https://tavily.com/#pricing"},
-    "searxng": {"usd_per_1000_queries": 0, "pricing_page": "self-hosted (free)"}
+    "_note": "Search APIs bill separately from the model. Price per 1,000 requests. null = unknown: requests are still counted and limited by number, but not counted in the dollar budget.",
+    "brave": {
+      "usd_per_1000_queries": null,
+      "pricing_page": "https://brave.com/search/api/"
+    },
+    "tavily": {
+      "usd_per_1000_queries": 16.0,
+      "pricing_page": "https://docs.tavily.com/documentation/api-credits",
+      "basis": "app uses search_depth=advanced = 2 credits per request; pay-as-you-go $0.008/credit -> $0.016/request (checked 2026-10-01). Requests within Tavily's free monthly credits cost $0, so this deliberately overstates real spend."
+    },
+    "searxng": {
+      "usd_per_1000_queries": 0,
+      "pricing_page": "self-hosted (free)"
+    }
   }
 }

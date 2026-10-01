@@ -134,8 +134,15 @@ class Ctx:
         return (time.time() - self.state["started"]) / 60
 
     def spent(self) -> float:
-        r = db.q1("SELECT COALESCE(SUM(cost_usd),0) c FROM usage WHERE case_id=? AND job_id=?", (self.case["id"], self.id))
-        return float(r["c"] or 0)
+        """Spend for the whole case, across every run (the budget is per case, not per run)."""
+        from .coding import case_spent
+        return case_spent(self.case["id"])
+
+    def budget(self) -> float:
+        return float(self.settings["budget_usd"])
+
+    def next_query_cost(self) -> float:
+        return (self.search_unit / 1000.0) if self.search_unit is not None else 0.0
 
     def queries_run(self) -> int:
         r = db.q1("SELECT COUNT(*) n FROM search_queries WHERE job_id=? AND status IN ('ok','error')", (self.id,))
@@ -153,8 +160,9 @@ class Ctx:
             self.limit(f"time limit ({s['time_limit_minutes']} min)")
         if kind == "query" and self.queries_run() >= int(s["max_queries"]):
             self.limit(f"query limit ({s['max_queries']})")
-        if self.spent() >= float(s["budget_usd"]):
-            self.limit(f"cost budget (${s['budget_usd']})")
+        extra = self.next_query_cost() if kind == "query" else 0.0
+        if self.spent() + extra > self.budget() + 1e-9:
+            self.limit(f"case cost budget (${self.budget():.2f})")
 
 
 # ----------------------------------------------------------------------------- search
@@ -258,6 +266,10 @@ def stage_search(ctx: Ctx):
     ctx.stage("search", 0.15, "Searching for sources (multiple source types, beyond page 1)")
     if not ctx.provider:
         return []
+    if ctx.search_unit is None and not ctx.provider.is_test:
+        ctx.log("warn", f"No price is configured for search provider '{ctx.provider.name}', so search spending is not counted "
+                        f"in the case budget; searches are limited by count only (max {ctx.settings['max_queries']} per run). "
+                        f"Add the price under Settings → Pricing.")
     links = [l.strip() for l in re.split(r"[\s,;]+", ctx.case.get("known_links") or "") if l.strip().startswith("http")]
     for l in links:
         ctx.state.setdefault("seed_urls", []).append(l)
@@ -497,23 +509,32 @@ def stage_coding(ctx: Ctx):
     client = None if ctx.settings.get("model_provider") == "none" else get_client(ctx.settings.get("model_provider", "auto"),
                                                                                  ctx.settings.get("model_name", "claude-sonnet-5-5"))
     variables = ctx.params.get("variables")
-    remaining = max(0.0, float(ctx.settings["budget_usd"]) - ctx.spent())
+    spent, budget = ctx.spent(), ctx.budget()
+    remaining = max(0.0, budget - spent)
     if client:
-        est = estimate(ctx.case, ctx.settings, variables)
+        est = estimate(ctx.case, {**ctx.settings, "model_name": client.model}, variables)
         ctx.state["estimate"] = est
+        ctx.state["budget"] = {"budget_usd": round(budget, 2), "spent_usd": round(spent, 4), "remaining_usd": round(remaining, 4)}
         ctx.log("info", f"estimate: {est['calls']} model call(s), ~{est['input_tokens']:,} input tokens, "
-                        f"cost ${est['cost_low']}–${est['cost_high']} (model {est['model']})")
-        if est["cost_high"] is not None and est["cost_high"] > remaining and ctx.settings.get("require_approval_over_budget") \
+                        f"cost ${est['cost_low']}–${est['cost_high']} worst case (model {est['model']}); "
+                        f"case has spent ${spent:.2f} of ${budget:.2f}")
+        if est["cost_high"] is None:
+            ctx.state["awaiting"] = "price"
+            ctx.save(status="needs_input", message=f"No price is configured for model {client.model}, so the budget cannot be "
+                                                   f"enforced. Add its price under Settings → Pricing (use 0 for a free local "
+                                                   f"model) and resume, or code manually.")
+            raise Budget("awaiting model price")
+        if est["cost_high"] > remaining and ctx.settings.get("require_approval_over_budget") \
                 and not ctx.params.get("approve_over_budget"):
             ctx.state["awaiting"] = "budget"
-            ctx.save(status="needs_input", message=f"Estimated model cost up to ${est['cost_high']} exceeds remaining budget "
-                                                   f"${remaining:.2f}. Approve, raise the budget, or code manually.")
+            ctx.save(status="needs_input", message=f"Worst-case model cost ${est['cost_high']:.2f} exceeds this case's remaining "
+                                                   f"budget ${remaining:.2f} (spent ${spent:.2f} of ${budget:.2f}). Raise the "
+                                                   f"budget, or code manually.")
             raise Budget("awaiting budget approval")
-        if ctx.params.get("approve_over_budget"):
-            remaining = None
     else:
         ctx.log("warn", "No language model configured — running local evidence retrieval only (manual coding mode).")
-    rep = run_coding(ctx.case, ctx.settings, client, ctx.id, ctx.log, remaining, variables,
+    # The cap always applies: approving raises the case budget to a set amount, it never removes the limit.
+    rep = run_coding(ctx.case, ctx.settings, client, ctx.id, ctx.log, remaining if client else None, variables,
                      cancelled=lambda: bool(db.q1("SELECT cancel_requested FROM jobs WHERE id=?", (ctx.id,))["cancel_requested"]))
     ctx.state["coding_report"] = rep
 
@@ -538,6 +559,9 @@ def coverage_report(ctx: Ctx) -> dict:
         "research_complete": bool(ctx.provider) and not ctx.provider.is_test and any(x["status"] == "ok" for x in qs)
                              and not ctx.state.get("limits_hit"),
         "gaps_remaining": [g["name"] for g in ctx.state.get("gaps", [])],
+        "spent_usd": round(ctx.spent(), 4),
+        "budget_usd": round(ctx.budget(), 2),
+        "search_price_configured": ctx.search_unit is not None,
         "search_provider": ctx.provider.name if ctx.provider else None,
         "search_is_test_fixture": bool(ctx.provider and ctx.provider.is_test),
     }

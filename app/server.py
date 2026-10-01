@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import json
+import math
 import mimetypes
 import os
 import re
@@ -264,13 +265,33 @@ def api_resume(h, jid, body, **_):
         upd["identity_confirmed"] = True
     if body.get("identity_confirmed"):
         upd["identity_confirmed"] = True
-    if body.get("approve_over_budget"):
-        upd["approve_over_budget"] = True
-    if body.get("budget_usd"):
+    def set_case_budget(new_budget: float, why: str):
         c = db.q1("SELECT * FROM cases WHERE id=?", (j["case_id"],))
         st = json.loads(c["settings_json"])
-        st["budget_usd"] = float(body["budget_usd"])
+        old = float(st.get("budget_usd", DEFAULT_SETTINGS["budget_usd"]))
+        st["budget_usd"] = round(new_budget, 2)
         db.update("cases", c["id"], {"settings_json": json.dumps(st)})
+        db.insert("job_log", {"job_id": j["id"], "at": time.time(), "stage": "coding", "level": "warn",
+                              "message": f"case budget changed from ${old:.2f} to ${new_budget:.2f} by "
+                                         f"{getattr(h, 'user', None) or 'user'} ({why})"})
+
+    if body.get("approve_over_budget"):
+        # Approval raises the case budget to exactly what is needed (spent so far + worst-case estimate).
+        # It never removes the limit.
+        from .coding import case_spent
+        est = (json.loads(j["state_json"] or "{}").get("estimate") or {})
+        if est.get("cost_high") is None:
+            raise ApiError(400, "no cost estimate is available to approve; resume the job to re-estimate")
+        needed = math.ceil((case_spent(j["case_id"]) + float(est["cost_high"])) * 100) / 100
+        set_case_budget(needed, "approved the worst-case estimate")
+    if body.get("budget_usd") is not None and body.get("budget_usd") != "":
+        try:
+            b = float(body["budget_usd"])
+        except (TypeError, ValueError):
+            raise ApiError(400, "budget must be a number")
+        if not (0 <= b <= 1000):
+            raise ApiError(400, "budget must be between $0 and $1,000 per case")
+        set_case_budget(b, "set manually")
     if body.get("manual_only"):
         c = db.q1("SELECT * FROM cases WHERE id=?", (j["case_id"],))
         st = json.loads(c["settings_json"])
@@ -293,17 +314,21 @@ def api_estimate(h, cid, **_):
 
 @route("GET", "/api/estimate_preview")
 def api_estimate_preview(h, query, **_):
-    """Rough pre-run range before any sources exist, from typical corpus sizes."""
+    """Rough pre-run range before any sources exist. The high end uses the same worst case as the per-call budget check."""
     from .coding import MODEL_CLASSES, active_schema
     from .llm.clients import cost_usd
+    from .search.providers import get_provider
     s = global_settings()
     n = sum(1 for f in active_schema()["fields"] if f.get("field_class") in MODEL_CLASSES and not f.get("rule_missing"))
-    calls_lo, calls_hi = max(1, n // 12), max(2, n // 5)
+    calls_lo, calls_hi = max(1, n // 12), max(2, -(-n // 5) + 4)
     per_call_in = (s["max_passages_per_call"] * 230) + 12 * 220 + 900
     lo = cost_usd(s["model_name"], calls_lo * per_call_in // 2, n * 150)
-    hi = cost_usd(s["model_name"], calls_hi * per_call_in, n * 450)
+    hi = cost_usd(s["model_name"], int(calls_hi * per_call_in * 1.25), calls_hi * 600 + 450 * n)
+    prov = get_provider(s["search_provider"])
+    unit = (load_pricing().get("search", {}).get(prov.name, {}) if prov else {}).get("usd_per_1000_queries")
+    search_max = round(s["max_queries"] * unit / 1000, 2) if unit is not None else None
     return {"n_fields": n, "model": s["model_name"], "cost_low": lo, "cost_high": hi, "budget_usd": s["budget_usd"],
-            "search_queries_max": s["max_queries"], "search_unit_price": None}
+            "search_queries_max": s["max_queries"], "search_unit_price": unit, "search_cost_max": search_max}
 
 
 # ----------------------------------------------------------------------------- sources
@@ -506,8 +531,13 @@ class Handler(BaseHTTPRequestHandler):
         super().end_headers()
 
     def client_ip(self) -> str:
-        if os.environ.get("WFD_TRUST_PROXY") and self.headers.get("X-Forwarded-For"):
-            return self.headers["X-Forwarded-For"].split(",")[0].strip()
+        # Render sits behind Cloudflare, which sets CF-Connecting-IP / True-Client-IP and overwrites any value a client
+        # sends. The first X-Forwarded-For entry is client-controlled, so it is never trusted.
+        if os.environ.get("WFD_TRUST_PROXY"):
+            for hdr in ("CF-Connecting-IP", "True-Client-IP"):
+                v = (self.headers.get(hdr) or "").strip()
+                if v:
+                    return v[:64]
         return self.client_address[0]
 
     def is_https(self) -> bool:

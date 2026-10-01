@@ -10,7 +10,7 @@ It takes about 30 minutes. You don't need to install any developer tools.
 
 | 项目 · Item | 价格 · Price |
 |---|---|
-| Render 常驻实例（Starter，512 MB 内存） · Always-on instance (Starter, 512 MB RAM) | US$7 / 月 · month |
+| Render 常驻实例（`0.5c-512mb`，0.5 CPU / 512 MB，旧称 Starter） · Always-on instance (`0.5c-512mb`, 0.5 CPU / 512 MB, formerly Starter) | US$7 / 月 · month |
 | 永久存储 5 GB · Persistent disk 5 GB | US$1.25 / 月 · month（$0.25/GB） |
 | Render 工作区（Hobby） · Workspace (Hobby) | US$0 |
 | 搜索服务、Claude 模型 · Search service, Claude model | 按用量另计 · Billed separately by usage |
@@ -20,13 +20,11 @@ Prices are from Render's pricing page, checked 2026-09-30. The free instance won
 
 ## 第 1 步：准备密钥 · Step 1: Get your keys
 
-1. **团队密码** — 自己想一个长密码（建议 4 个以上单词），例如 `flood-siren-codebook-denver`。团队成员用它登录。
-   **Team password** — make up a long one (4+ words), e.g. `flood-siren-codebook-denver`. Team members sign in with it.
+1. **团队密码** — 用密码管理器生成一个长密码（至少 16 个字符或 4 个以上随机单词）。不要用任何文档里出现过的示例。团队成员用它登录。
+   **Team password** — generate a long one with a password manager (16+ characters or 4+ random words). Don't reuse any example you've seen in a document. Team members sign in with it.
 2. **搜索服务密钥**（至少一个）· **Search key** (at least one):
-   - Tavily：在 https://tavily.com 注册 → 复制 API key。
-     Tavily: sign up at https://tavily.com → copy the API key.
-   - 或 Brave：https://brave.com/search/api/ → 订阅 → 复制 token。
-     Or Brave: https://brave.com/search/api/ → subscribe → copy the token.
+   - Tavily：在 https://tavily.com 注册 → 在控制台的 **API Keys** 复制以 `tvly-` 开头的密钥。不需要 “Copy Prompt”。先不要开启 pay-as-you-go：免费版每月 1,000 credits，用完只会暂停搜索。
+     Tavily: sign up at https://tavily.com → copy the key starting with `tvly-` under **API Keys**. You don't need "Copy Prompt". Leave pay-as-you-go off for now: the free plan gives 1,000 credits a month and searches simply stop when they run out.
 3. **Claude 密钥** · **Claude key**：https://console.anthropic.com → API Keys → Create Key，并在 Billing 里充值。
    https://console.anthropic.com → API Keys → Create Key, then add credit under Billing.
 
@@ -70,12 +68,11 @@ Render reads the code from GitHub. Choose one way:
    | 名称 · Name | 填什么 · What to enter |
    |---|---|
    | `WFD_PASSWORD` | 第 1 步的团队密码 · the team password from step 1 |
-   | `TAVILY_API_KEY` | Tavily 密钥（没用 Tavily 就留空）· Tavily key (leave blank if unused) |
-   | `BRAVE_API_KEY` | Brave 密钥（没用 Brave 就留空）· Brave key (leave blank if unused) |
+   | `TAVILY_API_KEY` | Tavily 密钥 · Tavily key |
    | `ANTHROPIC_API_KEY` | Claude 密钥 · Claude key |
 
-4. 点 **Apply**，并按提示添加付款方式（Starter 实例每月 7 美元）。
-   Click **Apply** and add a payment method when asked (Starter is $7/month).
+4. 点 **Apply**，并按提示添加付款方式（实例每月 7 美元，存储每月 1.25 美元）。
+   Click **Apply** and add a payment method when asked ($7/month for the instance, $1.25/month for the disk).
 5. 等 5–10 分钟构建完成。服务状态变成 **Live** 后，点页面上方的 `…onrender.com` 网址。
    Wait 5–10 minutes for the build. When the service shows **Live**, click the `…onrender.com` address at the top.
 
@@ -98,8 +95,8 @@ Render reads the code from GitHub. Choose one way:
   Give teammates the address and the team password (in person or another secure way). Each person signs in with their own name; review history records who made each change.
 - 有人离开团队时：在 Render → 服务 → **Environment** 里修改 `WFD_PASSWORD` 并保存。所有旧的登录会立即失效。
   When someone leaves: change `WFD_PASSWORD` in Render → the service → **Environment** and save. All existing sign-ins stop working immediately.
-- 同一 IP 连续输错 8 次密码，会被锁定 15 分钟。
-  Eight wrong passwords from the same IP address lock it out for 15 minutes.
+- 同一地址 15 分钟内输错 8 次密码会被锁定 15 分钟；所有地址合计输错 40 次，登录会对所有人暂停 15 分钟（已登录的人不受影响）。
+  Eight wrong passwords from one address within 15 minutes lock that address out for 15 minutes; 40 failures from all addresses combined pause sign-in for everyone for 15 minutes (people already signed in are unaffected).
 
 ## 维护 · Maintenance
 
@@ -109,8 +106,17 @@ Render reads the code from GitHub. Choose one way:
   **Backups:** Render snapshots the disk every 24 hours and keeps snapshots at least 7 days; restore them from the service's **Disks** tab. At key milestones, also download the Excel and JSON exports and keep your own copies.
 - **内存不足：** 如果处理大型 PDF 时服务重启（日志里出现 “out of memory”），在 Render 里把实例升级到 2 GB。
   **Out of memory:** if the service restarts while processing large PDFs ("out of memory" in the logs), upgrade the instance to 2 GB in Render.
-- **暂停费用：** 不用时可以在 Render 里 **Suspend** 服务；永久存储仍会按容量计费。
-  **Pausing costs:** you can **Suspend** the service when unused; the disk is still billed by size.
+- **暂停费用：** 不用时可以在 Render 里 **Suspend** 服务。Render 文档没有说明暂停期间永久存储是否收费，请按“存储存在就收费”估算；要彻底停止收费，需要删除服务和存储（数据会一起删除，先导出）。
+  **Pausing costs:** you can **Suspend** the service when unused. Render's docs don't say whether a suspended service's disk is billed, so assume it is while it exists. To stop all charges, delete the service and disk (this deletes the data, so export first).
+
+## 费用上限 · Spending limits
+
+- **每个案例都有费用上限（默认 3 美元）**，包括 Claude 和 Tavily，并累计该案例的所有重新运行。超过时程序会停下，等你把这个案例的预算提高到一个具体金额；它不会取消上限。
+  **Each case has a spending cap (default $3)** covering Claude and Tavily, summed across every re-run of that case. If a run would exceed it, the app stops and asks you to raise that case's budget to a specific amount; it never removes the cap.
+- 每次 Claude 调用之前，程序按最坏情况（每个输出 token 都用满）检查剩余预算。超时等可能已经计费的失败调用不会自动重试，并按最坏情况计入预算。
+  Before every Claude call, the app checks the remaining budget against the worst case (every allowed output token used). Failed calls that may already have been billed, such as timeouts, are not retried automatically and are counted at worst case.
+- Tavily 按每次 0.016 美元计入预算（advanced 搜索 2 credits × 0.008 美元）。免费额度内实际不收费，所以这个数字偏高、偏保守。
+  Tavily is counted at $0.016 per search (advanced = 2 credits × $0.008). Searches within the free credits actually cost nothing, so this figure deliberately overstates spending.
 
 ## 安全说明 · Security notes
 

@@ -10,7 +10,21 @@ from ..config import env, load_pricing
 
 
 class LLMError(Exception):
-    pass
+    """possibly_billed=True means the request may have reached the provider and been charged
+    (e.g. a read timeout or a server error after sending). Such calls are never retried automatically
+    and are counted against the budget at their worst-case cost."""
+
+    def __init__(self, msg: str, possibly_billed: bool = False):
+        super().__init__(msg)
+        self.possibly_billed = possibly_billed
+
+
+# Failures where the request certainly never reached the provider: safe to retry.
+NOT_SENT = (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout)
+# Rejected before any processing (rate limit / overloaded): safe to retry.
+RETRY_STATUS_ANTHROPIC = (429, 529)
+RETRY_STATUS_OPENAI = (429,)
+READ_TIMEOUT = 600.0  # long enough for the largest batch (max_tokens <= 16,000)
 
 
 def estimate_tokens(text: str) -> int:
@@ -52,17 +66,24 @@ class AnthropicClient(LLMClient):
         last = None
         for attempt in range(4):
             try:
-                r = httpx.post("https://api.anthropic.com/v1/messages", json=body, timeout=httpx.Timeout(180.0, connect=15.0),
+                r = httpx.post("https://api.anthropic.com/v1/messages", json=body,
+                               timeout=httpx.Timeout(READ_TIMEOUT, connect=15.0),
                                headers={"x-api-key": self.key, "anthropic-version": "2023-06-01",
                                         "content-type": "application/json"})
-            except httpx.HTTPError as e:
-                last = f"network error: {e}"
+            except NOT_SENT as e:
+                last = f"could not connect: {e}"
                 time.sleep(2 ** attempt)
                 continue
-            if r.status_code in (429, 500, 502, 503, 529):
+            except httpx.HTTPError as e:
+                raise LLMError(f"network error after the request was sent ({type(e).__name__}); not retried because it "
+                               f"may already have been billed", possibly_billed=True) from e
+            if r.status_code in RETRY_STATUS_ANTHROPIC:
                 last = f"HTTP {r.status_code}: {r.text[:200]}"
                 time.sleep(3 * (attempt + 1))
                 continue
+            if r.status_code >= 500:
+                raise LLMError(f"HTTP {r.status_code} from provider; not retried because it may already have been billed: "
+                               f"{r.text[:200]}", possibly_billed=True)
             if r.status_code != 200:
                 raise LLMError(f"HTTP {r.status_code}: {r.text[:300]}")
             j = r.json()
@@ -91,15 +112,21 @@ class OpenAICompatClient(LLMClient):
         for attempt in range(3):
             try:
                 r = httpx.post(f"{self.base}/chat/completions", json=body, headers=headers,
-                               timeout=httpx.Timeout(300.0, connect=15.0))
-            except httpx.HTTPError as e:
-                last = f"network error: {e}"
+                               timeout=httpx.Timeout(READ_TIMEOUT, connect=15.0))
+            except NOT_SENT as e:
+                last = f"could not connect: {e}"
                 time.sleep(2 ** attempt)
                 continue
-            if r.status_code in (429, 500, 502, 503):
+            except httpx.HTTPError as e:
+                raise LLMError(f"network error after the request was sent ({type(e).__name__}); not retried because it "
+                               f"may already have been billed", possibly_billed=True) from e
+            if r.status_code in RETRY_STATUS_OPENAI:
                 last = f"HTTP {r.status_code}"
                 time.sleep(3 * (attempt + 1))
                 continue
+            if r.status_code >= 500:
+                raise LLMError(f"HTTP {r.status_code} from provider; not retried because it may already have been billed",
+                               possibly_billed=True)
             if r.status_code != 200:
                 raise LLMError(f"HTTP {r.status_code}: {r.text[:300]}")
             j = r.json()
