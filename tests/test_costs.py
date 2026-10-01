@@ -146,6 +146,21 @@ def main():
     coding.run_coding(case, settings, f2, None, log, 10.0, ["COUNTRY"])
     check("complete reply is cached (identical re-analysis makes no new call)", f2.n == 1, f"calls={f2.n}")
 
+    # Output allowance: the first live run was cut off at 450 tokens/variable (9 of 16 batches).
+    check("output allowance is at least 1,200 tokens per variable plus a base",
+          coding.batch_max_tokens(3) >= 3 * 1200 + 1000 and coding.batch_max_tokens(1) >= 2200,
+          f"3 vars → {coding.batch_max_tokens(3)}")
+    model_fields = [f for f in schema["fields"] if f.get("field_class") in coding.MODEL_CLASSES and not f.get("rule_missing")]
+    big = {**settings, "max_passages_per_call": 100000}  # only the variable cap can split batches here
+    bts, _, _, _ = coding.build_batches(cid, model_fields, big)
+    most = max(len(fs) for fs, _ in bts)
+    check("no call codes more than 12 variables", most <= coding.MAX_VARS_PER_CALL == 12, f"largest batch {most}")
+    check("largest batch's allowance stays under the 16,000-token ceiling (never silently clipped)",
+          coding.OUT_BASE_TOKENS + coding.OUT_TOKENS_PER_VAR * most <= coding.MAX_OUT_TOKENS,
+          str(coding.batch_max_tokens(most)))
+    check("every model variable is still placed in some batch",
+          sum(len(fs) for fs, _ in bts) == len(model_fields), f"{sum(len(fs) for fs, _ in bts)} of {len(model_fields)}")
+
     before = coding.case_spent(cid)
     f3 = Fake("billed_fail")
     rep = coding.run_coding(case, settings, f3, None, log, 10.0, ["CITY_OR_TOWN"])

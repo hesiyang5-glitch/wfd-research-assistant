@@ -59,8 +59,17 @@ def case_spent(case_id: int) -> float:
     return float(r["c"] or 0)
 
 
+# Output allowance per call. The first live run (2026-10-01) showed 450 tokens per variable was too small:
+# 9 of 16 batches were cut off. Generous limits cost nothing extra on a complete reply (only tokens actually
+# produced are billed) but raise the worst-case reserve; a cut-off reply is billed in full and discarded.
+OUT_BASE_TOKENS = 1500
+OUT_TOKENS_PER_VAR = 1200
+MAX_OUT_TOKENS = 16000
+MAX_VARS_PER_CALL = 12  # keeps OUT_BASE_TOKENS + 12 * OUT_TOKENS_PER_VAR under MAX_OUT_TOKENS
+
+
 def batch_max_tokens(n_vars: int) -> int:
-    return min(16000, 600 + 450 * n_vars)
+    return min(MAX_OUT_TOKENS, OUT_BASE_TOKENS + OUT_TOKENS_PER_VAR * n_vars)
 
 
 def is_causal(field: dict) -> bool:
@@ -143,7 +152,7 @@ def build_batches(case_id: int, fields: list[dict], settings: dict):
         for f in fs:
             ids = per_var[f["name"]]
             union = list(dict.fromkeys(cur_ids + ids))
-            if cur and len(union) > limit:
+            if cur and (len(union) > limit or len(cur) >= MAX_VARS_PER_CALL):
                 batches.append((cur, cur_ids))
                 cur, cur_ids = [], []
                 union = list(dict.fromkeys(ids))
@@ -327,7 +336,8 @@ def run_coding(case: dict, settings: dict, client, job_id: int | None, log, budg
                        unresolved, {"errors": v["errors"], "warnings": v["warnings"], "options": v["options"],
                                     "proposed_value": str(item.get("value", ""))}, item, basis="model")
                 done_vars.add(f["name"])
-            log("info", f"coded batch {bi+1}/{len(batches)} ({len(fs)} variables, {len(ids)} passages)")
+            out_used = "" if cached else f", {resp.get('output_tokens')} of {max_out} output tokens"
+            log("info", f"coded batch {bi+1}/{len(batches)} ({len(fs)} variables, {len(ids)} passages{out_used})")
     report["spent_usd"] = round(spent, 4)
     derive_fields(case, schema, run_id, targets)
     return report

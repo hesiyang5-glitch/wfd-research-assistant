@@ -13,7 +13,7 @@ Last reviewed: 2026-10-01 (commit `33a0c5e`). Severity: **High** (blocks correct
 
 | ID | Issue | Severity |
 |---|---|---|
-| K-03 | **No successful live coding run yet.** First run: all 16 Claude calls rejected (temperature, fixed `de5aece`); Re-analyze then blocked by the owner's browser popup blocking (fixed `33a0c5e`). Needs re-test: hard-refresh, Re-analyze Marshall Fire. | High |
+| K-03 | **Live coding only partly successful.** Re-analysis of Marshall Fire (2026-10-01, `e02de43`): 7 of 16 batches coded; 9 cut off at the output limit (450 tokens/variable was too small). Cut-off replies are billed in full and discarded. Fix on branch `fix/output-limit` (1,500 + 1,200 tokens/variable, ≤12 variables per call); needs deploy approval and a live re-test. | High |
 | K-04 | Coding quality vs hand-coded benchmarks unmeasured (TEST_PLAN §4). | High |
 | K-05 | Live export, live causal-uncertainty handling, live review/reanalysis not yet exercised. | Medium |
 | K-06 | Recorded case spend vs Anthropic Console usage not yet reconciled. | Medium |

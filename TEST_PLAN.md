@@ -12,7 +12,7 @@ Set `WFD_TEST_PDFS` to a folder containing the Texas-flood source PDFs (claude.a
 | Suite | Command | Checks | Last result | Covers |
 |---|---|---|---|---|
 | Pipeline | `python3 -m tests.test_pipeline` | 44 | 44/44 pass (2026-10-01, `33a0c5e`) | schema vs workbook order/count, rule flags, `-9` rules; research stages with fixture search; PDF page numbers; exact/near duplicates; irrelevant sources; 403 recorded not bypassed; no-model mode invents nothing; validator (invented code, fake quote, unknown ID, per-option evidence, disputes); review preserved across reanalysis; cache reuse; TSV/XLSX/case-row/JSON exports; restart recovery |
-| Cost safety | `python3 -m tests.test_costs` | 25 | 25/25 pass (2026-10-01) | retry only 429/529/connection; timeouts/5xx not retried and counted; no `temperature` sent; truncated replies not cached; complete replies cached; worst-case pre-check; repeated 4xx stops run; budget per case across runs; approval sets explicit amount and is logged; unknown price pauses; Tavily $0.016 counted and capped |
+| Cost safety | `python3 -m tests.test_costs` | 29 | 29/29 pass (2026-10-01, `fix/output-limit`) | output allowance ≥1,200 tokens/variable, ≤12 variables per call, under the 16,000 ceiling, no variable dropped; retry only 429/529/connection; timeouts/5xx not retried and counted; no `temperature` sent; truncated replies not cached; complete replies cached; worst-case pre-check; repeated 4xx stops run; budget per case across runs; approval sets explicit amount and is logged; unknown price pauses; Tavily $0.016 counted and capped |
 | Login & security | `python3 -m tests.test_auth` | 24 | 24/24 pass (2026-10-01) | refuses public bind without password; health check; headers; API/export blocked when logged out; wrong password slowed; name required; HttpOnly SameSite cookie; JSON-only mutations; reviewer name in history and sources; tampered session rejected; per-address lockout; faked `X-Forwarded-For` doesn't bypass; site-wide pause; signed-in users unaffected; browser login flow |
 | Browser flow | `python3 -m tests.test_ui_flow` | flow | PASS (2026-10-01) | home form → research (fixture) → sources (irrelevant flagged) → review edit → citation opens highlighted passage → XLSX export contains reviewed value; no JS errors |
 
@@ -43,7 +43,7 @@ Run after each deploy that changes research or coding behavior. Set "Cost cap pe
 | L2 | Settings page | `TAVILY_API_KEY` and `ANTHROPIC_API_KEY` = yes; search `tavily`; model `anthropic: claude-sonnet-5-5`; OCR available | PASS (owner) |
 | L3 | Start research on benchmark B1 | search log provider `tavily`; templates cover AAR/.gov/corrections/reforms | PASS (13 queries) |
 | L4 | Sources | AAR found; failures listed with reasons; irrelevant sources flagged | PASS (S1 = Boulder County operational AAR PDF; 27 failures, many 403) |
-| L5 | Coding completes | coding line shows N calls, 0 failed | **FAIL → fixed** in `de5aece` (temperature) and `33a0c5e` (blocked popup); **re-test pending** |
+| L5 | Coding completes | coding line shows N calls, 0 failed | **PARTIAL**: in-page dialog works live; 16 calls, 9 cut off at the output limit (`e02de43`). Fix on `fix/output-limit`; re-test pending |
 | L6 | Review: 5 variables with values | citations open and support the code | pending |
 | L7 | Causal variable with conflicting accounts | `disputed`, alternatives shown | pending |
 | L8 | Edit a value, re-analyze | edit preserved; Δ where suggestion changed | pending |

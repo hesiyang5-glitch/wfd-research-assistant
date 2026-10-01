@@ -316,7 +316,7 @@ def api_estimate(h, cid, **_):
 @route("GET", "/api/estimate_preview")
 def api_estimate_preview(h, query, **_):
     """Rough pre-run range before any sources exist. The high end uses the same worst case as the per-call budget check."""
-    from .coding import MODEL_CLASSES, active_schema
+    from .coding import MODEL_CLASSES, OUT_BASE_TOKENS, OUT_TOKENS_PER_VAR, active_schema
     from .llm.clients import cost_usd
     from .search.providers import get_provider
     s = global_settings()
@@ -324,7 +324,7 @@ def api_estimate_preview(h, query, **_):
     calls_lo, calls_hi = max(1, n // 12), max(2, -(-n // 5) + 4)
     per_call_in = (s["max_passages_per_call"] * 230) + 12 * 220 + 900
     lo = cost_usd(s["model_name"], calls_lo * per_call_in // 2, n * 150)
-    hi = cost_usd(s["model_name"], int(calls_hi * per_call_in * 1.25), calls_hi * 600 + 450 * n)
+    hi = cost_usd(s["model_name"], int(calls_hi * per_call_in * 1.25), calls_hi * OUT_BASE_TOKENS + OUT_TOKENS_PER_VAR * n)
     prov = get_provider(s["search_provider"])
     unit = (load_pricing().get("search", {}).get(prov.name, {}) if prov else {}).get("usd_per_1000_queries")
     search_max = round(s["max_queries"] * unit / 1000, 2) if unit is not None else None

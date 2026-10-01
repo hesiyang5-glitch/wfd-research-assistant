@@ -2,6 +2,14 @@
 
 Completed changes, newest first. Commit hashes refer to `hesiyang5-glitch/wfd-research-assistant`.
 
+## 2026-10-01 — Output limit fix (branch `fix/output-limit`, not yet deployed)
+- First partly successful live coding run (Marshall Fire): 7 of 16 batches coded; 9 replies cut off at the old
+  output limit (600 + 450 tokens per variable) and discarded.
+- Output allowance raised to 1,500 + 1,200 tokens per variable (ceiling 16,000); at most 12 variables per call so
+  the ceiling never clips a batch. Pre-run estimate uses the same numbers.
+- Run log now shows output tokens used per batch, to calibrate the limit.
+- `tests/test_costs.py`: +4 checks (29 total).
+
 ## 2026-10-01 — documentation (branch `docs/project-memory`, not yet on `main`)
 - Added `CLAUDE.md`, `PROJECT_SPEC.md`, `ARCHITECTURE.md`, `DECISIONS.md`, `TEST_PLAN.md`, `CHANGELOG.md`, `KNOWN_ISSUES.md`.
 - Corrected stale statements in `README.md` (temperature, test counts, verification status) and `DEPLOY.md`

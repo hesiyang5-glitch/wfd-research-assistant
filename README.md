@@ -74,7 +74,7 @@ Automated tests (no internet needed) / 自动测试：
 .venv/bin/python -m tests.test_pipeline    # 44 checks: schema, retrieval, dedupe, validation, review, export, persistence
 .venv/bin/python -m tests.test_ui_flow     # browser click-through (needs: pip install playwright && playwright install chromium)
 .venv/bin/python -m tests.test_auth        # 24 checks: login, lockout, tampered sessions, CSRF guard, reviewer names
-.venv/bin/python -m tests.test_costs       # 25 checks: retry policy, per-case budget, worst-case checks, no caching of truncated replies
+.venv/bin/python -m tests.test_costs       # 29 checks: output limits, retry policy, per-case budget, worst-case checks, no caching of truncated replies
 ```
 The tests need sample PDFs: set `WFD_TEST_PDFS=/path/to/folder` containing the Texas-flood source PDFs from the project.
 
