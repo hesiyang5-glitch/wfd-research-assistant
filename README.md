@@ -73,11 +73,14 @@ Automated tests (no internet needed) / 自动测试：
 ```bash
 .venv/bin/python -m tests.test_pipeline    # 44 checks: schema, retrieval, dedupe, validation, review, export, persistence
 .venv/bin/python -m tests.test_ui_flow     # browser click-through (needs: pip install playwright && playwright install chromium)
-.venv/bin/python -m tests.test_auth        # 21 checks: login, lockout, tampered sessions, CSRF guard, reviewer names
+.venv/bin/python -m tests.test_auth        # 24 checks: login, lockout, tampered sessions, CSRF guard, reviewer names
+.venv/bin/python -m tests.test_costs       # 25 checks: retry policy, per-case budget, worst-case checks, no caching of truncated replies
 ```
 The tests need sample PDFs: set `WFD_TEST_PDFS=/path/to/folder` containing the Texas-flood source PDFs from the project.
 
-## 5. What is and isn't verified · 验证状态（交付时）
+## 5. What is and isn't verified · 验证状态（2026-10-01 更新）
+
+Full, current status: `PROJECT_SPEC.md`, `TEST_PLAN.md`, `KNOWN_ISSUES.md`. 完整的最新状态见这三个文件。
 
 | | Status 状态 |
 |---|---|
@@ -86,15 +89,16 @@ The tests need sample PDFs: set `WFD_TEST_PDFS=/path/to/folder` containing the T
 | Pipeline stages, gap-driven follow-up, link following, retrieval-failure recording, budgets, resume | **Tested** with a local test web server and a **TEST-FIXTURE** search provider (labeled in UI and logs) |
 | Validator (invented codes, fabricated quotes, unknown IDs, per-option evidence, `-9` rules, disputes) | **Tested** with a scripted fake model — tests the rules, not model quality |
 | Review, history, reanalysis without overwriting, exports | **Tested** (API and browser click-through) |
-| **Live web search (Tavily/Brave/SearXNG)** | **Not verified** — the build environment blocks internet access. Code follows each provider's documented API. |
-| **Real Claude / OpenAI calls, actual coding quality, real costs** | **Not verified** — no API key was used. Verify with the checklist above. |
+| **Live web search** | **Tavily: verified live** on Render (Marshall Fire, 13 queries, 2026-10-01). Brave/SearXNG: not verified. |
+| **Real Claude calls, actual coding quality, real costs** | **Not yet verified.** First live run failed (all calls rejected because of `temperature`; fixed in `de5aece`); a successful live run has not been observed yet. OpenAI: not verified. |
+| Docker build, Render deployment, data kept after redeploy | **Verified live** (2026-10-01) |
 | Neural embeddings, OCR on a truly scanned PDF | Not verified (no scanned sample; OCR engine present) |
 
 ## 6. Defaults chosen (change any in Settings) · 默认选择
 
 - **Stack:** Python standard-library web server + SQLite + a no-build HTML/JS interface, instead of React/FastAPI. Reason: runs with one install step, no Node.js build, and was fully testable here. 技术栈选择理由：安装简单、无需构建，且可在此环境完整测试。
 - Search: 10 initial query templates by source type × 2 result pages; up to 3 gap-driven follow-up rounds; ≤40 queries; ≤60 sources read; 20-minute limit per run; **$3 cost cap per case**, summed across all runs and covering Claude and Tavily (checked at worst case before every call; approval raises the cap to a set amount, never removes it). Stopping at a limit is reported as "research incomplete".
-- Model: `claude-sonnet-5-5`, temperature 0; evidence batch = 40 passages per call (a batch size, not a cap); 8 top passages per variable.
+- Model: `claude-sonnet-5-5` (no `temperature` parameter — this model rejects it); evidence batch = 40 passages per call (a batch size, not a cap); 8 top passages per variable.
 - Admin/derived fields (`VERSION_ENTRY_DATE`, `WFD_ID`, `INCIDENT_DURATION`, source counts/URLs, `DATA_EXTRACTION_METHOD`, `RECORD_STATUS`, `REVISION_HISTORY`) are generated or calculated with a stated basis — never presented as sourced facts. Analyst-comment fields are left for humans.
 - Uploaded files without a URL get source type `unknown` (set it on the Sources page) rather than a guess.
 
