@@ -76,10 +76,11 @@ Dated decisions with rationale. Newest last. Status: **Active**, **Superseded**,
 **Decision.** Keep durable project knowledge in `CLAUDE.md`, `PROJECT_SPEC.md`, `ARCHITECTURE.md`, `DECISIONS.md`, `TEST_PLAN.md`, `CHANGELOG.md`, `KNOWN_ISSUES.md`, `DEPLOY.md` so future sessions don't depend on chat history.
 **Note.** This documentation was committed to branch `docs/project-memory`, not `main`, because pushing to `main` triggers a production deploy and the owner asked not to deploy in this task.
 
-## D-020 · Pending · Auto-deploy policy
-**Question.** The project rule says "do not deploy automatically unless the user explicitly requests deployment", but Render currently auto-deploys every push to `main`.
-**Options.** (1) Turn off auto-deploy (Blueprint `autoDeployTrigger: off` or the Render dashboard setting) and deploy manually; (2) keep auto-deploy and require approval before every push to `main`.
-**Until decided:** Claude must not push to `main` without explicit approval.
+## D-020 · 2026-10-01 · Keep auto-deploy; approval required before every push to `main` — Active
+**Decision (owner chose option 2).** Render keeps auto-deploying every push to `main`. Because a push to `main` is a production deploy, Claude must ask the owner and get explicit approval **before every push or merge to `main`**, stating what will go live and the expected 1–2 minutes of downtime. All other work goes on branches.
+**Why.** Keeps deploys simple (no manual Render step) while satisfying the rule "do not deploy unless the user explicitly requests deployment".
+**Rejected.** Option 1, turning off auto-deploy (`autoDeployTrigger: off`) and deploying manually from Render.
+**Note.** Approval for one push does not carry over to later pushes.
 
 ## D-021 · Pending · Per-case caps on model attempts and search requests
 **Question.** Project rule asks for server-side per-case limits on model attempts and search requests. Today only the dollar budget is per case; query count (`max_queries` = 40) is per run, and model attempts are bounded by batching and the dollar budget.

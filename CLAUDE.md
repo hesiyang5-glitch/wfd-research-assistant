@@ -45,7 +45,8 @@ If a request conflicts with an established requirement here, point out the confl
 ## Non-negotiable engineering rules
 
 - **Pushing to `main` deploys to production.** Render auto-deploys every push to `main`
-  (see `DEPLOY.md`). Do not push to `main` without the user's explicit approval. Use a branch otherwise.
+  (see `DEPLOY.md`). Owner decision D-020: ask and get explicit approval **before every push or merge to `main`**
+  (approval for one push does not carry over). Use a branch otherwise.
 - Never put secrets (API keys, passwords, tokens) in code, Git, frontend files, logs, docs or screenshots.
   Secrets live only in Render environment variables or a local untracked `.env`.
 - Before any action that can create charges, delete data, change deployment resources or expose the app,

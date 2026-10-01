@@ -75,7 +75,7 @@ complete model replies, embeddings).
 
 - GitHub `hesiyang5-glitch/wfd-research-assistant` (private), branch `main`.
 - Render Blueprint `wfd-coding-assistant` → web service `wfd-coding-assistant` (Docker, plan `0.5c-512mb`, Oregon), URL `https://wfd-coding-assistant.onrender.com`, health check `/healthz`.
-- **Auto-deploy is on**: every push to `main` builds and deploys (~1 min build, 1–2 min downtime because a service with a disk cannot do zero-downtime deploys).
+- **Auto-deploy is on** (kept by owner decision D-020; every push to `main` needs prior approval): every push to `main` builds and deploys (~1 min build, 1–2 min downtime because a service with a disk cannot do zero-downtime deploys).
 - Image: `python:3.11-slim` + Tesseract; `WFD_HOST=0.0.0.0`, `WFD_DATA_DIR=/var/data`, `WFD_TRUST_PROXY=1`; listens on Render's `PORT` (10000).
 
 ## External services

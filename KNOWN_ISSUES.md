@@ -7,7 +7,6 @@ Last reviewed: 2026-10-01 (commit `33a0c5e`). Severity: **High** (blocks correct
 
 | ID | Issue | Severity |
 |---|---|---|
-| K-01 | **Auto-deploy conflicts with project rule.** Render deploys every push to `main`; the rule says no automatic deploys without explicit request. Options in DECISIONS D-020 (`autoDeployTrigger: off` vs approval before every push). Until decided, nothing is pushed to `main` without approval. | High (process) |
 | K-02 | **Per-case caps on model attempts and search requests missing.** Dollar budget is per case; query count (40) is per run; model attempts bounded only by batching and dollars. Proposal in DECISIONS D-021. | Medium |
 
 ## Live verification gaps
@@ -63,7 +62,7 @@ Last reviewed: 2026-10-01 (commit `33a0c5e`). Severity: **High** (blocks correct
 
 ## Planned improvements (not started)
 
-- Per-case attempt/search caps (K-02) and auto-deploy policy (K-01) once decided.
+- Per-case attempt/search caps (K-02) once decided.
 - Fetch-limit accounting and 403 handling (K-07); stricter gap scoring (K-08).
 - Cache-busting for `web/` assets (K-16).
 - Benchmark scoring on B1–B3 and a results table in TEST_PLAN.

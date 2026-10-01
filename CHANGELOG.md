@@ -6,6 +6,7 @@ Completed changes, newest first. Commit hashes refer to `hesiyang5-glitch/wfd-re
 - Added `CLAUDE.md`, `PROJECT_SPEC.md`, `ARCHITECTURE.md`, `DECISIONS.md`, `TEST_PLAN.md`, `CHANGELOG.md`, `KNOWN_ISSUES.md`.
 - Corrected stale statements in `README.md` (temperature, test counts, verification status) and `DEPLOY.md`
   (repository name, auto-deploy behavior, pre-filled Tavily price, recovery steps, current deployment).
+- Recorded owner decision D-020: keep auto-deploy, approval before every push to `main` (closes former K-01).
 - No application behavior changed.
 
 ## 2026-10-01 — `33a0c5e` In-page confirmations (deployed)
