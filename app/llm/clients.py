@@ -61,8 +61,9 @@ class AnthropicClient(LLMClient):
         self.key = key
 
     def complete(self, system, user, max_tokens=4000):
+        # No `temperature`: current Claude models reject it ("temperature is deprecated for this model").
         body = {"model": self.model, "max_tokens": max_tokens, "system": system,
-                "messages": [{"role": "user", "content": user}], "temperature": 0}
+                "messages": [{"role": "user", "content": user}]}
         last = None
         for attempt in range(4):
             try:

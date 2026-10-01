@@ -87,6 +87,17 @@ def main():
     check("server error is NOT retried and is marked possibly billed", err is not None and err.possibly_billed and n == 1)
     out, err, n = run_client([FakeResp(400, {"error": "bad request"})])
     check("client error is not retried and not counted as billed", err is not None and not err.possibly_billed and n == 1)
+    sent = {}
+
+    def capture(*a, **k):
+        sent.update(k.get("json") or {})
+        return FakeResp(200, ok_payload())
+    orig = clients.httpx.post
+    clients.httpx.post = capture
+    clients.AnthropicClient("claude-sonnet-5-5", "test-key").complete("s", "u", max_tokens=100)
+    clients.httpx.post = orig
+    check("Anthropic request no longer sends `temperature` (rejected by current models)",
+          "temperature" not in sent and sent.get("model") == "claude-sonnet-5-5", str(sorted(sent)))
 
     print("\n[2] Coding loop: worst-case budget check, failed-call accounting, safe caching")
     db.conn()
@@ -141,6 +152,18 @@ def main():
     row = db.q1("SELECT * FROM usage WHERE case_id=? ORDER BY id DESC", (cid,))
     check("possibly-billed failure is counted at worst case", f3.n == 1 and row["estimated"] == 1 and row["cost_usd"] > 0
           and coding.case_spent(cid) > before, str(row))
+
+    class Rejecting(Fake):
+        def complete(self, system, user, max_tokens=4000):
+            self.n += 1
+            raise clients.LLMError('HTTP 400: {"error":{"message":"`temperature` is deprecated for this model."}}')
+    f5 = Rejecting("x")
+    rep5 = coding.run_coding(case, settings, f5, None, log, 10.0, None)
+    n_batches = rep5["failed_calls"]
+    check("same provider error twice in a row stops the run (no 16 identical failures)", f5.n == 2,
+          f"calls={f5.n}")
+    skipped = db.q1("SELECT COUNT(*) n FROM suggestions WHERE run_id=? AND rationale LIKE 'Not sent:%'", (rep5["run_id"],))["n"]
+    check("variables not sent are marked with the reason", skipped > 0)
 
     f4 = Fake("good")
     rep = coding.run_coding(case, settings, f4, None, log, 0.001, ["STATE_OR_TERRITORY", "COUNTY_OR_PARISH"])

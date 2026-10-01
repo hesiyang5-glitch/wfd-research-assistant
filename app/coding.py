@@ -232,10 +232,15 @@ def run_coding(case: dict, settings: dict, client, job_id: int | None, log, budg
                    "No language model configured: these are the top-ranked candidate passages for manual coding.",
                    evidence=ev, basis="retrieval_only")
     else:
+        last_err, abort_reason = None, None
         for bi, (fs, ids) in enumerate(batches):
             if cancelled():
                 log("warn", "cancelled during coding")
                 break
+            if abort_reason:  # the same rejection repeated: stop instead of sending every batch into the same error
+                for f in fs:
+                    _store(case["id"], run_id, f["name"], "", "model_error", abort_reason, basis="none")
+                continue
             prompt = make_prompt(case, fs, ids, pmap, smeta)
             est_in = estimate_tokens(SYSTEM_PROMPT + prompt)
             max_out = batch_max_tokens(len(fs))
@@ -291,6 +296,12 @@ def run_coding(case: dict, settings: dict, client, job_id: int | None, log, budg
             except (LLMError, KeyError, TypeError, ValueError) as e:
                 report["failed_calls"] += 1
                 log("error", f"batch {bi+1}: model call failed: {e}")
+                msg = str(e)
+                if isinstance(e, LLMError) and msg.startswith("HTTP 4") and msg == last_err:
+                    abort_reason = (f"Not sent: the model provider rejected two batches in a row with the same error "
+                                    f"({msg[:160]}). Fix the cause, then re-analyze.")
+                    log("error", "stopping coding: the same provider error repeated; remaining batches were not sent")
+                last_err = msg
                 for f in fs:
                     _store(case["id"], run_id, f["name"], "", "model_error", f"Model call failed: {str(e)[:200]}", basis="none")
                 continue
