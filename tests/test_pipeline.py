@@ -223,8 +223,11 @@ def main():
     rep2 = coding.run_coding(case, {**settings, "passages_per_variable": 6}, FakeClient(), None, lambda *a: None, None)
     rv = db.q1("SELECT * FROM reviews WHERE case_id=? AND variable='SYSTEM_LEVEL'", (cid,))
     check("reanalysis did not overwrite reviewed value", rv["value"] == "2" and rv["action"] == "edited")
-    check("identical reanalysis reused cache (no new paid call)",
-          db.q1("SELECT COUNT(*) n FROM usage WHERE case_id=? AND kind='model'", (cid,))["n"] == n_calls_before)
+    # D-025 (2026-10-01): a reply containing invalid items (this fake reply deliberately has an invented code and a
+    # fabricated quote) is NOT cached, so re-analysis asks the model again instead of reusing invalid output.
+    # Reuse of fully valid replies is checked in tests/test_costs.py and tests/test_providers.py.
+    check("reply with invalid items was not cached (re-analysis made a new call)",
+          db.q1("SELECT COUNT(*) n FROM usage WHERE case_id=? AND kind='model'", (cid,))["n"] > n_calls_before)
     res = export.case_results(cid)
     row = next(r for r in res["rows"] if r["name"] == "SYSTEM_LEVEL")
     check("original model suggestion kept alongside reviewed value", row["suggestion"]["value"] == "3" and row["review"]["value"] == "2")

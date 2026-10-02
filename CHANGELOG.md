@@ -2,6 +2,38 @@
 
 Completed changes, newest first. Commit hashes refer to `hesiyang5-glitch/wfd-research-assistant`.
 
+## 2026-10-01 — OpenAI as a second model provider (branch `feature/openai-provider`, NOT merged, NOT deployed)
+- New `app/llm/openai_responses.py`: official `openai` SDK (≥3.23), Responses API, Structured Outputs with a strict
+  JSON Schema per batch (`app/llm/structured.py`): codebook codes as enums, `-9` only where defined, passage ids limited
+  to the batch, every variable required. SDK auto-retry off; only "never sent" errors and plain 429 are retried;
+  timeouts/5xx never retried (possibly billed, counted at worst case); bad key, no permission, unknown model and
+  exhausted quota are configuration errors (no retry, run stops). Free model-availability check before estimating.
+  API key read only from `OPENAI_API_KEY` and redacted from all error text.
+- Provider-neutral coding (`app/coding.py`): one shared evidence preparation and identical prompts for every provider;
+  one normalizer → the same server validator; results stored per provider/role/run group. Modes: `single` (default,
+  unchanged), `anthropic_only`, `openai_only`, `dual_independent`, `anthropic_primary_openai_review`,
+  `openai_primary_anthropic_review`. Search is never repeated per provider. Comparison statuses: model agreement,
+  value/evidence disagreement, one provider blank, invalid provider output, needs human review, human approved.
+- Limits checked on the server before every request: combined case budget, OpenAI case budget, OpenAI attempts and
+  total model attempts per case (new append-only `model_calls` ledger counts every request, incl. retries).
+  Approval raises each limit to an explicit value.
+- Cache key v2 (provider, model, prompt version, codebook version, variables, evidence hash, response schema,
+  generation settings, role). Existing Claude cache entries remain reusable read-only. Replies with invalid,
+  incomplete, refused, non-JSON or schema-noncompliant content are never cached — **this now also applies to Claude:
+  a reply with any invalid item is no longer cached** (D-025).
+- Claude: 401/403/404 responses are now configuration errors (run stops at the first one instead of the second).
+  Claude's prompt text is byte-identical to before.
+- Additive, repeatable DB migration (`app/migrations.py`) with `rollback`/`restore` commands.
+- UI: provider status; mode choice with per-provider and combined worst-case cost, spend by provider and attempt counts
+  in the re-analysis dialog; side-by-side provider suggestions with their own evidence and "accept this" buttons;
+  comparison badges; human-approved value shown separately; OpenAI settings only when its key is configured.
+- Export: new `Provider_Suggestions` sheet; extra columns in Results/Evidence/Runs_Usage; `Case_Row` unchanged;
+  provider disagreements are never exported as values without a human decision.
+- `render.yaml`: `OPENAI_API_KEY` (`sync: false`, no value). `config/pricing.json`: `gpt-6.1-sol` $2 / $10 per 1M
+  (cached $0.10; >272K input tokens 2×/1.5×), verified 2026-10-01.
+- Tests: new `tests/test_providers.py` (115 checks, real SDK through a mocked transport, browser checks);
+  `tests/test_pipeline.py` cache check updated for D-025. No live OpenAI call has been made.
+
 ## 2026-10-01 — Output limit fix (branch `fix/output-limit`, not yet deployed)
 - First partly successful live coding run (Marshall Fire): 7 of 16 batches coded; 9 replies cut off at the old
   output limit (600 + 450 tokens per variable) and discarded.

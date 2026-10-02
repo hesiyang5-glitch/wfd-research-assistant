@@ -85,16 +85,82 @@ def api_status(h, **_):
     return {"secrets": secret_status(), "search_provider": prov.name if prov else None,
             "search_is_test": bool(prov and prov.is_test),
             "model": {"provider": cli.provider, "name": cli.model} if cli else None,
+            "providers": provider_status(), "modes": available_modes(s),
             "ocr_available": ocr_ok(), "embeddings": bool(os.environ.get("EMBEDDING_MODEL")),
             "active_schema": act, "settings": s, "pricing": load_pricing(), "data_dir": str(DATA_DIR)}
 
 
+def provider_status() -> dict:
+    from .llm.clients import provider_status as ps
+    return ps()
+
+
+def available_modes(settings: dict) -> list[dict]:
+    """Modes and whether they can run with the keys configured on the server. OpenAI modes are only offered when
+    OPENAI_API_KEY is set; nothing starts a second provider unless a mode is chosen explicitly."""
+    from .coding import MODES
+    ps = provider_status()
+    ok = {"anthropic": ps["anthropic"]["configured"], "openai": ps["openai"]["configured"]}
+    out = []
+    for m, spec in MODES.items():
+        if spec is None:
+            out.append({"mode": m, "available": True, "providers": [], "default": True})
+            continue
+        need = [p for p, _ in spec]
+        out.append({"mode": m, "available": all(ok[p] for p in need), "providers": need,
+                    "roles": [r for _, r in spec], "missing": [p for p in need if not ok[p]]})
+    return out
+
+
+def check_mode(mode: str | None, settings: dict) -> str | None:
+    if mode in (None, ""):
+        return None
+    m = next((x for x in available_modes(settings) if x["mode"] == mode), None)
+    if not m:
+        raise ApiError(400, f"unknown coding mode '{mode}'")
+    if not m["available"]:
+        raise ApiError(400, f"coding mode '{mode}' needs {', '.join(m['missing'])} — the key is not configured on the server")
+    return mode
+
+
+def check_limit_value(k: str, v):
+    from .config import RAISABLE_LIMITS
+    if k not in RAISABLE_LIMITS:
+        return v
+    try:
+        x = float(v)
+    except (TypeError, ValueError):
+        raise ApiError(400, f"{k} must be a number")
+    if not math.isfinite(x) or x < 0:
+        raise ApiError(400, f"{k} must be a finite number ≥ 0 (limits can be raised, never removed)")
+    if k.endswith("_usd") and x > 1000:
+        raise ApiError(400, f"{k} must be at most $1,000 per case")
+    if k.startswith("max_") and x > 10000:
+        raise ApiError(400, f"{k} must be at most 10,000 per case")
+    return round(x, 2) if k.endswith("_usd") else int(x)
+
+
 @route("PUT", "/api/settings")
 def api_put_settings(h, body, **_):
+    from .llm.openai_responses import REASONING_EFFORTS
     cur = db.get_setting("defaults", {}) or {}
     for k, v in body.items():
-        if k in DEFAULT_SETTINGS:
-            cur[k] = v
+        if k not in DEFAULT_SETTINGS:
+            continue
+        if k == "coding_mode":
+            v = check_mode(v, {**DEFAULT_SETTINGS, **cur}) or "single"
+        elif k == "openai_reasoning_effort" and v not in REASONING_EFFORTS:
+            raise ApiError(400, f"openai_reasoning_effort must be one of {', '.join(REASONING_EFFORTS)}")
+        elif k in ("openai_reasoning_reserve_tokens", "openai_max_output_tokens"):
+            try:
+                v = int(v)
+            except (TypeError, ValueError):
+                raise ApiError(400, f"{k} must be a whole number")
+            if not (1000 <= v <= 128000):
+                raise ApiError(400, f"{k} must be between 1,000 and 128,000 tokens")
+        else:
+            v = check_limit_value(k, v)
+        cur[k] = v
     db.set_setting("defaults", cur)
     return global_settings()
 
@@ -233,7 +299,10 @@ def api_research(h, cid, body, **_):
 
 @route("POST", "/api/cases/{cid}/recode")
 def api_recode(h, cid, body, **_):
-    params = {"variables": body.get("variables") or None, "approve_over_budget": bool(body.get("approve_over_budget"))}
+    c = db.q1("SELECT * FROM cases WHERE id=?", (int(cid),))
+    st = {**DEFAULT_SETTINGS, **json.loads(c["settings_json"] or "{}")}
+    params = {"variables": body.get("variables") or None, "approve_over_budget": bool(body.get("approve_over_budget")),
+              "mode": check_mode(body.get("mode"), st)}
     return {"job_id": jobs.enqueue(int(cid), "recode", params)}
 
 
@@ -265,15 +334,20 @@ def api_resume(h, jid, body, **_):
         upd["identity_confirmed"] = True
     if body.get("identity_confirmed"):
         upd["identity_confirmed"] = True
-    def set_case_budget(new_budget: float, why: str):
+    def set_case_limit(key: str, new_value, why: str):
         c = db.q1("SELECT * FROM cases WHERE id=?", (j["case_id"],))
         st = json.loads(c["settings_json"])
-        old = float(st.get("budget_usd", DEFAULT_SETTINGS["budget_usd"]))
-        st["budget_usd"] = round(new_budget, 2)
+        new_value = check_limit_value(key, new_value)
+        old = st.get(key, DEFAULT_SETTINGS[key])
+        st[key] = new_value
         db.update("cases", c["id"], {"settings_json": json.dumps(st)})
-        db.insert("job_log", {"job_id": j["id"], "at": time.time(), "stage": "coding", "level": "warn",
-                              "message": f"case budget changed from ${old:.2f} to ${new_budget:.2f} by "
-                                         f"{getattr(h, 'user', None) or 'user'} ({why})"})
+        who = getattr(h, "user", None) or "user"
+        msg = (f"case budget changed from ${float(old):.2f} to ${float(new_value):.2f} by {who} ({why})" if key == "budget_usd"
+               else f"case limit {key} changed from {old} to {new_value} by {who} ({why})")
+        db.insert("job_log", {"job_id": j["id"], "at": time.time(), "stage": "coding", "level": "warn", "message": msg})
+
+    def set_case_budget(new_budget: float, why: str):
+        set_case_limit("budget_usd", new_budget, why)
 
     if body.get("approve_over_budget"):
         # Approval raises the case budget to exactly what is needed (spent so far + worst-case estimate).
@@ -282,8 +356,14 @@ def api_resume(h, jid, body, **_):
         est = (json.loads(j["state_json"] or "{}").get("estimate") or {})
         if est.get("cost_high") is None:
             raise ApiError(400, "no cost estimate is available to approve; resume the job to re-estimate")
-        needed = math.ceil((case_spent(j["case_id"]) + float(est["cost_high"])) * 100) / 100
-        set_case_budget(needed, "approved the worst-case estimate")
+        st_job = json.loads(j["state_json"] or "{}")
+        needs = st_job.get("limit_needs") or {}
+        if "budget_usd" in needs or not needs:
+            needed = math.ceil((case_spent(j["case_id"]) + float(est["cost_high"])) * 100) / 100
+            set_case_budget(needed, "approved the worst-case estimate")
+        for key, nd in needs.items():
+            if key != "budget_usd":
+                set_case_limit(key, nd["needed"], "approved the estimate for this run")
     if body.get("budget_usd") is not None and body.get("budget_usd") != "":
         try:
             b = float(body["budget_usd"])
@@ -292,6 +372,10 @@ def api_resume(h, jid, body, **_):
         if not (0 <= b <= 1000):
             raise ApiError(400, "budget must be between $0 and $1,000 per case")
         set_case_budget(b, "set manually")
+    for key, val in (body.get("limits") or {}).items():
+        from .config import RAISABLE_LIMITS
+        if key in RAISABLE_LIMITS and key != "budget_usd":
+            set_case_limit(key, val, "set manually")
     if body.get("manual_only"):
         c = db.q1("SELECT * FROM cases WHERE id=?", (j["case_id"],))
         st = json.loads(c["settings_json"])
@@ -302,12 +386,29 @@ def api_resume(h, jid, body, **_):
 
 
 @route("GET", "/api/cases/{cid}/estimate")
-def api_estimate(h, cid, **_):
-    from .coding import estimate
+def api_estimate(h, cid, query=None, **_):
+    from .coding import case_ledger, estimate, limit_needs, resolve_plan
+    query = query or {}
     c = db.q1("SELECT * FROM cases WHERE id=?", (int(cid),))
     st = {**DEFAULT_SETTINGS, **json.loads(c["settings_json"] or "{}")}
+    mode = check_mode((query.get("mode") or [None])[0], st)
+    variables = [v for v in (query.get("variables") or [""])[0].split(",") if v] or None
     try:
-        return estimate(c, st)
+        plan, mode, err = resolve_plan(st, mode)
+        if err:
+            raise ApiError(400, err)
+        est = estimate(c, st, variables, plan=plan or None)
+        led = case_ledger(int(cid))
+        est.update({"mode": mode, "limit_needs": limit_needs(int(cid), st, est) if plan else {},
+                    "ledger": {"spent_total": round(led["spent_total"], 4),
+                               "spent_by": {k: round(v, 4) for k, v in led["spent_by"].items()},
+                               "attempts_by": led["attempts_by"], "attempts_total": led["attempts_total"]},
+                    "limits": {k: st.get(k) for k in ("budget_usd", "openai_budget_usd", "max_openai_attempts_per_case",
+                                                      "max_model_attempts_per_case")},
+                    "manual": not plan})
+        return est
+    except ApiError:
+        raise
     except Exception as e:
         traceback.print_exc()
         raise ApiError(500, f"cost estimate failed: {type(e).__name__}: {e}")
@@ -316,19 +417,33 @@ def api_estimate(h, cid, **_):
 @route("GET", "/api/estimate_preview")
 def api_estimate_preview(h, query, **_):
     """Rough pre-run range before any sources exist. The high end uses the same worst case as the per-call budget check."""
-    from .coding import MODEL_CLASSES, OUT_BASE_TOKENS, OUT_TOKENS_PER_VAR, active_schema
-    from .llm.clients import cost_usd
+    from .coding import MODEL_CLASSES, MODES, OUT_BASE_TOKENS, OUT_TOKENS_PER_VAR, active_schema, provider_max_tokens, _Spec
+    from .llm.clients import cost_usd, openai_model, price_note
     from .search.providers import get_provider
     s = global_settings()
+    mode = check_mode((query.get("mode") or [None])[0], s) or s.get("coding_mode") or "single"
     n = sum(1 for f in active_schema()["fields"] if f.get("field_class") in MODEL_CLASSES and not f.get("rule_missing"))
     calls_lo, calls_hi = max(1, n // 12), max(2, -(-n // 5) + 4)
     per_call_in = (s["max_passages_per_call"] * 230) + 12 * 220 + 900
-    lo = cost_usd(s["model_name"], calls_lo * per_call_in // 2, n * 150)
-    hi = cost_usd(s["model_name"], int(calls_hi * per_call_in * 1.25), calls_hi * OUT_BASE_TOKENS + OUT_TOKENS_PER_VAR * n)
+    spec = MODES.get(mode) or [("openai" if (s["model_provider"] == "openai") else "anthropic", "primary")]
+    per = []
+    for prov, role in spec:
+        model = openai_model() if prov == "openai" else s["model_name"]
+        sp = _Spec(prov, model)
+        out_hi = sum(provider_max_tokens(sp, 5, s) for _ in range(calls_hi)) if prov == "openai" else \
+            calls_hi * OUT_BASE_TOKENS + OUT_TOKENS_PER_VAR * n
+        extra_in = 1.4 if role == "reviewer" else 1.0
+        per.append({"provider": prov, "model": model, "role": role,
+                    "cost_low": cost_usd(model, int(calls_lo * per_call_in // 2 * extra_in), n * 150),
+                    "cost_high": cost_usd(model, int(calls_hi * per_call_in * 1.25 * extra_in), out_hi),
+                    "price_note": price_note(model)})
+    lo = None if any(p["cost_low"] is None for p in per) else round(sum(p["cost_low"] for p in per), 4)
+    hi = None if any(p["cost_high"] is None for p in per) else round(sum(p["cost_high"] for p in per), 4)
     prov = get_provider(s["search_provider"])
     unit = (load_pricing().get("search", {}).get(prov.name, {}) if prov else {}).get("usd_per_1000_queries")
     search_max = round(s["max_queries"] * unit / 1000, 2) if unit is not None else None
-    return {"n_fields": n, "model": s["model_name"], "cost_low": lo, "cost_high": hi, "budget_usd": s["budget_usd"],
+    return {"n_fields": n, "model": " + ".join(p["model"] for p in per), "mode": mode, "providers": per,
+            "cost_low": lo, "cost_high": hi, "budget_usd": s["budget_usd"], "openai_budget_usd": s["openai_budget_usd"],
             "search_queries_max": s["max_queries"], "search_unit_price": unit, "search_cost_max": search_max}
 
 
@@ -420,12 +535,25 @@ def api_review(h, cid, body, **_):
     f = next((x for x in schema_for_case(case)["fields"] if x["name"] == var), None)
     if not f:
         raise ApiError(404, "unknown variable")
-    sugg = db.q1("SELECT * FROM suggestions WHERE case_id=? AND variable=? ORDER BY id DESC LIMIT 1", (cid, var))
+    from .coding import provider_of, suggestion_sets
+    sets = suggestion_sets(cid).get(var)
+    sugg = sets["display"] if sets else None
     old = db.q1("SELECT * FROM reviews WHERE case_id=? AND variable=?", (cid, var))
     reason = (body.get("reason") or "").strip()
+    if body.get("suggestion_id"):
+        pick = db.q1("SELECT s.*, r.model AS run_model FROM suggestions s LEFT JOIN runs r ON r.id=s.run_id "
+                     "WHERE s.id=? AND s.case_id=? AND s.variable=?", (int(body["suggestion_id"]), cid, var))
+        if not pick:
+            raise ApiError(400, "that suggestion does not belong to this case and variable")
+        sugg = pick
     if action == "accept":
         if not sugg:
             raise ApiError(400, "nothing to accept")
+        comp = sets.get("comparison") if sets else None
+        if comp and comp["status"] != "model_agreement" and not body.get("suggestion_id"):
+            raise ApiError(400, "the providers' suggestions differ — choose which suggestion to accept, or edit the value")
+        if sugg["status"] in ("model_error", "validation_failed"):
+            raise ApiError(400, "an invalid provider output cannot be accepted — edit the value instead")
         value = sugg["value"] or ""
         action_name = "accepted"
     elif action == "edit":
@@ -457,11 +585,13 @@ def api_review(h, cid, body, **_):
     else:
         raise ApiError(400, "unknown action")
     who = getattr(h, "user", None)
-    db.ex("INSERT OR REPLACE INTO reviews (case_id,variable,value,action,reason,suggestion_id,updated_at,reviewer) VALUES (?,?,?,?,?,?,?,?)",
-          (cid, var, value, action_name, reason, sugg["id"] if sugg else None, time.time(), who))
+    sp = provider_of(dict(sugg)) if (sugg and action_name == "accepted") else None
+    db.ex("INSERT OR REPLACE INTO reviews (case_id,variable,value,action,reason,suggestion_id,updated_at,reviewer,source_provider) "
+          "VALUES (?,?,?,?,?,?,?,?,?)",
+          (cid, var, value, action_name, reason, sugg["id"] if sugg else None, time.time(), who, sp))
     db.insert("review_history", {"case_id": cid, "variable": var, "old_value": old["value"] if old else None, "new_value": value,
                                  "action": action_name, "reason": reason, "suggestion_id": sugg["id"] if sugg else None, "at": time.time(),
-                                 "reviewer": who})
+                                 "reviewer": who, "source_provider": sp})
     return {"ok": True}
 
 
@@ -478,11 +608,22 @@ def api_history(h, cid, query, **_):
 def api_usage(h, cid, **_):
     rows = db.q("SELECT * FROM usage WHERE case_id=? ORDER BY id", (int(cid),))
     tot = {"model_usd": sum(r["cost_usd"] or 0 for r in rows if r["kind"] == "model"),
+           "anthropic_usd": sum(r["cost_usd"] or 0 for r in rows if r["kind"] == "model" and r["provider"] == "anthropic"),
+           "openai_usd": sum(r["cost_usd"] or 0 for r in rows if r["kind"] == "model" and r["provider"] == "openai"),
+           "combined_usd": sum(r["cost_usd"] or 0 for r in rows),
+           "reasoning_tokens": sum(r.get("reasoning_tokens") or 0 for r in rows),
            "search_usd": sum(r["cost_usd"] or 0 for r in rows if r["kind"] == "search"),
            "search_queries_billed": sum(1 for r in rows if r["kind"] == "search"),
            "search_price_unknown": any(r["kind"] == "search" and r["cost_usd"] is None for r in rows),
            "input_tokens": sum(r["input_tokens"] or 0 for r in rows), "output_tokens": sum(r["output_tokens"] or 0 for r in rows)}
-    return {"rows": rows, "totals": tot, "runs": db.q("SELECT * FROM runs WHERE case_id=? ORDER BY id", (int(cid),))}
+    calls = db.q("SELECT id, run_id, group_id, provider, model, role, batch_no, n_batches, status, incomplete_reason, error, "
+                 "http_attempts, request_id, input_tokens, cached_input_tokens, output_tokens, reasoning_tokens, "
+                 "max_output_tokens, cost_usd, cost_estimated, cache_status, duration_s, at FROM model_calls "
+                 "WHERE case_id=? ORDER BY id", (int(cid),))
+    from .coding import case_ledger
+    led = case_ledger(int(cid))
+    return {"rows": rows, "totals": tot, "runs": db.q("SELECT * FROM runs WHERE case_id=? ORDER BY id", (int(cid),)),
+            "model_calls": calls, "attempts": {"by_provider": led["attempts_by"], "total": led["attempts_total"]}}
 
 
 # ----------------------------------------------------------------------------- export (binary)

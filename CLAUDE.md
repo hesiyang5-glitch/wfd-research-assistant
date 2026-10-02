@@ -41,6 +41,8 @@ If a request conflicts with an established requirement here, point out the confl
 - Separate the observed failure from its cause. Several possible causes establish none of them; an uncertain
   cause must not erase a documented failure. Preserve conflicting evidence.
 - Model suggestions stay separate from human-approved values. Reanalysis never overwrites reviewed values.
+- Several providers (Claude, OpenAI) get the same evidence and codebook; agreement between models is not verification,
+  disagreement goes to human review. A second provider never starts unless a mode is chosen explicitly.
 
 ## Non-negotiable engineering rules
 
@@ -64,6 +66,7 @@ python3 -m tests.test_pipeline        # schema, retrieval, dedupe, validation, r
 python3 -m tests.test_costs           # budget, retry, caching, search-cost rules (fake model, no network)
 python3 -m tests.test_auth            # login, lockout, sessions, CSRF guard (starts local servers)
 python3 -m tests.test_ui_flow         # browser click-through (Playwright + Chromium)
+python3 -m tests.test_providers       # OpenAI provider, modes, limits, cache keys, migration, UI (mocked SDK transport)
 ```
 
 Tests need the Texas-flood sample PDFs: set `WFD_TEST_PDFS=/path/to/folder` (they are in the claude.ai
@@ -80,7 +83,9 @@ Project under `WFD project/sources/20250704-TX01/`). Tests run fully offline.
 | `app/retrieval.py` | BM25 + semantic (LSA or embeddings) evidence retrieval |
 | `app/coding.py` | prompt rules, batching, worst-case budget checks, derived/admin fields |
 | `app/validator.py` | server-side validation of codes, quotes, evidence IDs, missing-value rules |
-| `app/llm/clients.py` | Anthropic and OpenAI-compatible adapters, retry policy, cost math |
+| `app/llm/clients.py` | Anthropic and OpenAI-compatible adapters, provider resolution, retry policy, cost math |
+| `app/llm/openai_responses.py`, `app/llm/structured.py` | OpenAI (official SDK, Responses API) and its strict per-batch schema |
+| `app/migrations.py` | additive DB migration; `rollback` / `restore` |
 | `app/export.py` | TSV / XLSX / workbook-aligned case row / JSON |
 | `app/server.py`, `app/auth.py`, `app/jobs.py`, `app/db.py` | HTTP API, login, background jobs, SQLite |
 | `web/` | no-build HTML/JS interface (bilingual) |

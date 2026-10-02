@@ -35,7 +35,7 @@ Open the file **`.env`** in the app folder with any text editor (it is created o
 | What · 用途 | Setting · 配置项 | Without it · 未配置时 |
 |---|---|---|
 | **Automatic web search** 自动搜索 | `TAVILY_API_KEY` **or** `BRAVE_API_KEY` **or** `SEARXNG_URL` | No automatic discovery. You can still add links, upload files, or paste text. 无法自动搜索；仍可手动添加。 |
-| **Coding suggestions** 编码建议 | `ANTHROPIC_API_KEY` (default model `claude-sonnet-5-5`), or `OPENAI_API_KEY`/`OPENAI_BASE_URL` (also works with a free local model via Ollama) | Fallback mode: evidence retrieval + manual coding; no codes are generated. 降级模式：证据检索 + 人工选码。 |
+| **Coding suggestions** 编码建议 | `ANTHROPIC_API_KEY` (default model `claude-sonnet-5-5`); optional `OPENAI_API_KEY` (+ `OPENAI_MODEL`, default `gpt-6.1-sol`) for OpenAI via the Responses API, alone or alongside Claude (see DEPLOY.md); or `OPENAI_BASE_URL` for a free local OpenAI-compatible model (Ollama) | Fallback mode: evidence retrieval + manual coding; no codes are generated. 降级模式：证据检索 + 人工选码。 |
 | Semantic retrieval 语义检索 (optional) | `EMBEDDING_MODEL` (+ base URL) | LSA (latent semantic analysis 潜在语义分析) + BM25 keyword ranking. |
 | OCR for scanned PDFs 扫描件识别 (optional) | Install [Tesseract](https://tesseract-ocr.github.io/tessdoc/Installation.html) | Scanned pages are reported as "not read" — never silently skipped. 扫描页会被标记为未读取。 |
 

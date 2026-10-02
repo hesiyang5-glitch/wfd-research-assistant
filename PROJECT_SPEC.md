@@ -67,7 +67,8 @@ citations, and leaves every final decision to a human reviewer.
 | Free-text fields grounded in cited passages | PARTIAL (prompt rule; quotes validated, prose not) |
 | Admin/derived fields generated or calculated with a stated basis, never presented as sourced facts | TESTED offline |
 | Model calls send only retrieved evidence passages; source text treated as data, not instructions | PARTIAL (prompt rule; no adversarial test) |
-| Live Claude coding produces useful, accurate suggestions | **UNRESOLVED** — first live run failed (fixed); successful live re-analysis not yet observed |
+| Live Claude coding produces useful, accurate suggestions | **UNRESOLVED** — first live run failed (fixed); a complete live run is recorded on unmerged branch `docs/live-coding-result`; accuracy not yet compared with benchmarks |
+| Live OpenAI coding | **UNVERIFIED** — no live call made (branch `feature/openai-provider`) |
 
 ## 6. Evidence traceability
 
@@ -131,7 +132,9 @@ citations, and leaves every final decision to a human reviewer.
 | Unknown model price pauses instead of running uncapped | TESTED offline |
 | Duplicate submissions for a running case return the same job | TESTED |
 | Truncated/invalid model replies never cached | TESTED offline |
-| **Per-case caps on number of model attempts and search requests** (project rule) | **UNRESOLVED** — current count caps are per run (`max_queries` 40); model attempts bounded only by batching and the dollar budget |
+| Per-case caps on number of model attempts (all providers, and OpenAI separately) incl. retries and re-runs | TESTED offline (`feature/openai-provider`, not deployed) |
+| Per-case OpenAI dollar budget inside the combined budget | TESTED offline (`feature/openai-provider`, not deployed) |
+| **Per-case cap on search requests** (project rule) | **UNRESOLVED** — `max_queries` (40) is per run |
 
 ## 12. Security
 
@@ -153,7 +156,24 @@ citations, and leaves every final decision to a human reviewer.
 | Pages: research entry, cases, progress, sources, search log, review, export/runs, schema, settings | TESTED |
 | Confirmations shown inside the page (browser popups can be blocked) | TESTED offline (fix deployed in `33a0c5e`; not yet confirmed by the user live) |
 
-## 14. Deployment
+## 14. Model providers (branch `feature/openai-provider`, not deployed)
+
+| Requirement | Status |
+|---|---|
+| Claude (Anthropic) workflow unchanged; default mode stays Claude-only | TESTED offline (prompt byte-identical; all earlier suites pass) |
+| OpenAI via official SDK + Responses API + strict Structured Outputs; model from `OPENAI_MODEL` (default `gpt-6.1-sol`); key only from `OPENAI_API_KEY` | TESTED offline (mocked transport); **live UNVERIFIED** |
+| Same evidence, codebook and validator for both providers; normalized result structure | TESTED offline |
+| Modes: Claude only, OpenAI only, dual independent, either-primary-with-review; no automatic second provider | TESTED offline |
+| Search once per case regardless of providers | TESTED offline |
+| Independent coders never see each other's output; reviewer labelled not independent | TESTED offline |
+| Comparison statuses; disagreement routed to human review; agreement not treated as verification | TESTED offline |
+| Provider-specific cache keys; invalid/incomplete replies never cached | TESTED offline |
+| Unknown model / bad key / no quota → configuration error, no retries | TESTED offline |
+| Usage per provider incl. reasoning tokens and request ids | TESTED offline; real token figures **UNVERIFIED** |
+| Anthropic-only, OpenAI-only and manual fallbacks | TESTED offline |
+| Additive migration with rollback/restore | TESTED offline (legacy database copy) |
+
+## 15. Deployment
 
 See `DEPLOY.md` and `ARCHITECTURE.md`. Render web service (Docker, `0.5c-512mb`, Oregon) + 5 GB disk, deployed
 from `main` of `hesiyang5-glitch/wfd-research-assistant`. Docker build and health check: TESTED live.

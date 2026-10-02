@@ -82,6 +82,8 @@ def conn() -> sqlite3.Connection:
             if col not in cols:  # upgrade older databases in place
                 _conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} TEXT")
         _conn.commit()
+        from .migrations import migrate
+        migrate(_conn)  # additive and repeatable; see app/migrations.py
     return _conn
 
 

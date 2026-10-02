@@ -82,7 +82,7 @@ Dated decisions with rationale. Newest last. Status: **Active**, **Superseded**,
 **Rejected.** Option 1, turning off auto-deploy (`autoDeployTrigger: off`) and deploying manually from Render.
 **Note.** Approval for one push does not carry over to later pushes.
 
-## D-021 · Pending · Per-case caps on model attempts and search requests
+## D-021 · Partly decided (2026-10-01, see D-027) · Per-case caps on model attempts and search requests
 **Question.** Project rule asks for server-side per-case limits on model attempts and search requests. Today only the dollar budget is per case; query count (`max_queries` = 40) is per run, and model attempts are bounded by batching and the dollar budget.
 **Proposal.** Add `max_model_attempts_per_case` and `max_search_requests_per_case`, counted from the `usage` table across all runs, including retries and possibly-billed failures.
 
@@ -90,3 +90,54 @@ Dated decisions with rationale. Newest last. Status: **Active**, **Superseded**,
 **Decision.** Output allowance per call = 1,500 + 1,200 tokens per variable (ceiling 16,000), at most 12 variables per call.
 **Why.** At 600 + 450 per variable, 9 of 16 live batches were cut off. A cut-off reply is billed in full and thrown away, while a generous limit costs nothing extra on a complete reply (only tokens produced are billed); it only raises the worst-case reserve checked against the case budget.
 **Not chosen.** Shortening the required evidence (fewer quotes, no counter-evidence) — that would weaken traceability and conflicting-evidence handling.
+
+## D-023 · 2026-10-01 · OpenAI as a second provider via the official SDK and Responses API — Active (branch, not deployed)
+**Decision.** Add OpenAI through the official `openai` Python SDK (≥3.23) and the Responses API with Structured Outputs
+(strict JSON Schema). Model from `OPENAI_MODEL` (default `gpt-6.1-sol`, confirmed in OpenAI's model docs 2026-10-01;
+whether the owner's API project can use it is checked live, for free, before the first paid call). Key only from
+`OPENAI_API_KEY`. `store=false`; no `temperature`.
+**Why.** Requested by the owner; Structured Outputs lets the codebook's codes be enforced as enums, while the same
+server validator still checks every value, quote and passage id for both providers.
+**Not chosen.** Chat Completions; reusing the old OpenAI-compatible adapter for OpenAI itself. That adapter is kept,
+unchanged, as provider `openai_compatible` when `OPENAI_BASE_URL` is set (local models).
+
+## D-024 · 2026-10-01 · Operating modes; default unchanged — Active (branch)
+**Decision.** Modes `single` (default: original behavior — one provider via `model_provider`, Claude first),
+`anthropic_only`, `openai_only`, `dual_independent`, `anthropic_primary_openai_review`, `openai_primary_anthropic_review`.
+A second provider never starts because a key exists; a mode must be chosen. Search/fetch run once per case; providers
+receive identical prompts built from one evidence preparation. Independent coders never see each other's output; a
+reviewer does and is labelled "not independent". Agreement is not verification: disagreement (or an invalid output)
+routes the variable to human review, blocks a plain "accept" (a specific provider's suggestion must be chosen) and
+blocks unreviewed export of that value.
+
+## D-025 · 2026-10-01 · Never cache a reply that contains invalid items (all providers) — Active (branch)
+**Decision.** A model reply is cached only if it is complete, readable, schema-valid (OpenAI) and every item passes
+server validation. Previously a complete Claude reply was cached even when some items failed validation.
+**Why.** Owner requirement: invalid codebook values / schema-noncompliant replies must not be cached.
+**Trade-off.** Re-analysis re-sends (and re-pays for) batches whose reply had an invalid item, instead of reproducing
+the same invalid result for free. Valid batches are still reused.
+
+## D-026 · 2026-10-01 · Cache key v2; old Claude cache entries reused read-only — Active (branch)
+**Decision.** Key = hash of provider, model, prompt version + exact prompt text, codebook version, variable set,
+evidence hash (ids + text), response-schema version + hash, generation settings (e.g. reasoning effort) and role. The
+output-token limit is not part of the key: only complete replies are cached, and a complete reply does not depend on
+the limit. Old `llm:` keys (model + Claude system prompt + prompt) are still read for Claude only, so existing cached
+replies are reused without re-billing.
+
+## D-027 · 2026-10-01 · Per-case model-attempt caps and an OpenAI budget — Active (branch)
+**Decision.** New append-only `model_calls` ledger records every request sent (incl. 429/connection retries) with
+tokens, reasoning tokens, request id and status. Server-side checks before every request: combined budget
+(`budget_usd`), `openai_budget_usd` ($3), `max_openai_attempts_per_case` (50), `max_model_attempts_per_case` (100).
+Usage rows from before the ledger count as one attempt each. Approval raises each limit to the explicit value needed.
+**Still pending (rest of D-021).** A per-case cap on search requests (today `max_queries` is per run).
+
+## D-028 · 2026-10-01 · OpenAI output allowance includes a reasoning reserve — Active (branch, needs live calibration)
+**Decision.** `max_output_tokens` = min(`openai_max_output_tokens` 32,000, `openai_reasoning_reserve_tokens` 16,000 +
+1,500 + 1,200 per variable). Reasoning effort `medium` (OpenAI's default for `gpt-6.1-sol`), configurable.
+**Why.** OpenAI bills reasoning tokens as output and counts them against `max_output_tokens`; a reply cut off there is
+billed and discarded. The reserve only raises the worst-case figure checked against budgets.
+**To revisit** after the first live runs, using the logged reasoning/output tokens per batch.
+
+## D-029 · 2026-10-01 · Configuration errors stop immediately — Active (branch)
+**Decision.** Unknown/unavailable model, rejected key, missing permission and exhausted quota are configuration errors:
+never retried; a job pauses with a plain message before estimating or spending. Claude 401/403/404 follow the same rule.

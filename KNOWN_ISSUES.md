@@ -7,7 +7,7 @@ Last reviewed: 2026-10-01 (commit `33a0c5e`). Severity: **High** (blocks correct
 
 | ID | Issue | Severity |
 |---|---|---|
-| K-02 | **Per-case caps on model attempts and search requests missing.** Dollar budget is per case; query count (40) is per run; model attempts bounded only by batching and dollars. Proposal in DECISIONS D-021. | Medium |
+| K-02 | **Per-case cap on search requests missing.** Model-attempt caps per case are implemented on `feature/openai-provider` (D-027, not deployed); search query count (40) is still per run. | Medium |
 
 ## Live verification gaps
 
@@ -17,6 +17,20 @@ Last reviewed: 2026-10-01 (commit `33a0c5e`). Severity: **High** (blocks correct
 | K-04 | Coding quality vs hand-coded benchmarks unmeasured (TEST_PLAN §4). | High |
 | K-05 | Live export, live causal-uncertainty handling, live review/reanalysis not yet exercised. | Medium |
 | K-06 | Recorded case spend vs Anthropic Console usage not yet reconciled. | Medium |
+
+## OpenAI provider (branch `feature/openai-provider`, not merged or deployed)
+
+| ID | Issue | Severity |
+|---|---|---|
+| K-26 | **No live OpenAI call has been made.** Unverified: that the owner's API project can use `gpt-6.1-sol`; that OpenAI accepts the generated strict schema (enums, `$defs`, sanitized keys) for every batch; real reasoning-token use vs the 16,000 reserve; real cost; refusal/incomplete shapes from the live API. Offline tests use the official SDK (3.23.0 from GitHub source) with a mocked transport. | High |
+| K-27 | OpenAI output allowance and reasoning effort are first guesses (D-028); tune from the logged `reasoning_tokens` per batch. | Medium |
+| K-28 | Worst-case reserves are large: a full OpenAI run is about $2.5 worst case and dual ≈ $3.5, so at the default $3 budget most OpenAI/dual runs pause for approval first. Typical actual cost should be far lower but is unmeasured. | Medium |
+| K-29 | The reviewer-mode estimate approximates the extra input (primary suggestions) at ~250 tokens per variable. | Low |
+| K-30 | Existing cases keep the settings saved when they were created; new limits apply from code defaults (not from edited global defaults) until changed for that case. | Low |
+| K-31 | `render.yaml` lists `OPENAI_API_KEY` with `sync: false`; whether Render prompts for it on an existing Blueprint is unverified — add it in the dashboard by hand. | Low |
+| K-32 | Docker image build with the `openai` package (pulls `httpx2`, `jiter`) not yet verified; PyPI was not reachable from the development environment. | Medium |
+| K-33 | Branch `docs/live-coding-result` (first complete live Claude run, L5 PASS) is not on `main` and will conflict with this branch's doc edits; merge it first. | Low |
+| K-34 | D-025 changes Claude behavior: batches whose reply had an invalid item are re-sent (and re-paid) on re-analysis. | Low |
 
 ## Research quality
 
@@ -62,7 +76,7 @@ Last reviewed: 2026-10-01 (commit `33a0c5e`). Severity: **High** (blocks correct
 
 ## Planned improvements (not started)
 
-- Per-case attempt/search caps (K-02) once decided.
+- Per-case search-request cap (K-02).
 - Fetch-limit accounting and 403 handling (K-07); stricter gap scoring (K-08).
 - Cache-busting for `web/` assets (K-16).
 - Benchmark scoring on B1–B3 and a results table in TEST_PLAN.
