@@ -28,7 +28,7 @@ Last reviewed: 2026-10-01 (commit `33a0c5e`). Severity: **High** (blocks correct
 | K-29 | The reviewer-mode estimate approximates the extra input (primary suggestions) at ~250 tokens per variable. | Low |
 | K-30 | Existing cases keep the settings saved when they were created; new limits apply from code defaults (not from edited global defaults) until changed for that case. | Low |
 | K-31 | `render.yaml` lists `OPENAI_API_KEY` with `sync: false`; whether Render prompts for it on an existing Blueprint is unverified — add it in the dashboard by hand. | Low |
-| K-32 | Docker image build with the `openai` package (pulls `httpx2`, `jiter`) not yet verified; PyPI was not reachable from the development environment. | Medium |
+| K-32 | Resolved 2026-10-01: Render built the image with `openai` 3.23.0 (verified in the Shell after deploying `cd4e6b8`). | — |
 | K-33 | Resolved on the branch: `docs/live-coding-result` was merged into `feature/openai-provider` (2026-10-01), so one later merge to `main` carries both. | — |
 | K-35 | Providers in one job run one after another (Claude first in dual mode), not in parallel. Stop takes effect before the next batch; a request already sent cannot be cancelled (up to the 600 s timeout) and may be billed. | Low |
 | K-36 | Existing-data migration is proven on a database produced by the deployed code `c57214a` (synthetic Marshall Fire case), not on a copy of the production database (not accessible from the development environment, and must not be used). Back up before merging. | Medium |

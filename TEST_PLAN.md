@@ -57,6 +57,22 @@ Run after each deploy that changes research or coding behavior. Set "Cost cap pe
 | L10 | Case spend vs Anthropic Console usage | app's recorded cost ≥ actual | pending |
 | L11 | Data after redeploy | case still present | PASS (after `de5aece`) |
 
+### First-stage production verification of `cd4e6b8` (2026-10-01, owner, read-only, $0)
+
+| Check | Result |
+|---|---|
+| Backup before merge | `/var/data/backup-before-openai-20261001.sqlite3`, integrity ok |
+| Build and site | PASS — new interface live; `openai` package 3.23.0 installed in the image |
+| Migration | PASS — `2026-10-01-openai-provider` applied; integrity ok |
+| Existing data unchanged | PASS — cases 1, sources 60, passages 820, suggestions 246, reviews 0, usage 38 (= backup); model_calls 0 |
+| Claude results in Claude column; OpenAI "Not run"; seven columns | PASS (screenshot) |
+| Human final | PASS — none existed, none created |
+| OpenAI not configured | PASS — Settings "not configured"; Re-analyze offers only Default / Claude only; `OPENAI_API_KEY set: False` |
+| Excel export | PASS — 9 sheets incl. Provider_Suggestions; Case_Row 82 columns identical to `WFD_Cases`; blank (no reviews); usage $1.49 = recorded spend; no secrets |
+| Legacy cache reuse | PASS — Re-analyze estimate "16 calls (0 new), max additional cost $0.000" |
+| "Invalid output" on SUMMARY / INCLUSION_CRITERIA_INDICATORS | explained — earlier Claude run; quotes not verbatim in S1-P54/S1-P56 (validator), not caused by the update |
+| Stop/Resume buttons; a Claude call on the new version | not yet observed (appear on the next run; needs approval) |
+
 ### OpenAI live checks (after merge + deploy approval; small paid usage, OpenAI case budget $1–3)
 
 | # | Check | Expected | Status |
