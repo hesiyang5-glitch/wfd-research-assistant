@@ -518,7 +518,8 @@ function drawDetail(c) {
     <div class="row" style="margin:6px 0"><button class="primary" id="acceptBtn" ${s.value && !(r.comparison && r.comparison.model_status !== "model_agreement") ? "" : "disabled"} title="${r.comparison && r.comparison.model_status !== "model_agreement" ? esc(L("模型不一致：请在上方选择要接受的建议，或直接修改", "Models differ: accept a specific model's suggestion above, or edit")) : ""}">${t("accept")}</button><button id="deferBtn">${t("defer")}</button><button class="danger" id="clearBtn">${t("clear")}</button>${rv ? `<button id="resetBtn">${t("reset")}</button>` : ""}</div>
     <label>${t("value")}</label>${editor}
     <label>${t("reason")}</label><input id="edReason">
-    <div class="row" style="margin-top:6px"><button id="editBtn">${t("edit")} → ${t("save")}</button></div>
+    <div class="row" style="margin-top:6px"><button id="editBtn">${t("edit")} → ${t("save")}</button><span class="spacer"></span>
+      ${["sourced", "judgment"].includes(r.field_class) && !r.rule_missing ? `<button id="recodeVar" title="${esc(L("只重新分析这一个变量；会先显示模式和费用估算", "Re-analyze only this variable; shows the mode and cost estimate first"))}">${L("只重新分析此变量", "Re-analyze this variable")}</button>` : ""}</div>
     <details style="margin-top:14px"><summary>${t("manual_search")}</summary><div class="row" style="margin-top:6px"><input id="msq" placeholder="${esc(t("manual_search_ph"))}"><button id="msBtn">${t("find")}</button></div><div id="msOut"></div></details>
     <details style="margin-top:8px" id="histBox"><summary>${t("history")}</summary><div id="histOut" class="small"></div></details>`;
   if (r.type === "categorical" && r.codes.length) {
@@ -540,6 +541,7 @@ function drawDetail(c) {
     send("edit", { value: val });
   };
   if ($("#recodeOne")) $("#recodeOne").onclick = () => startRecode(c.id, [r.name]);
+  if ($("#recodeVar")) $("#recodeVar").onclick = (ev) => startRecode(c.id, [r.name], ev.currentTarget);
   $$("[data-open]", d).forEach((b) => (b.onclick = () => openSource(+b.dataset.open, b.dataset.pid)));
   $("#msBtn").onclick = async () => {
     const res = await api("GET", `/api/cases/${c.id}/evidence_search?q=${encodeURIComponent($("#msq").value)}`);

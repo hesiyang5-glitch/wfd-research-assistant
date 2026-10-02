@@ -930,6 +930,12 @@ def ui_check(cid: int, key_an: str, key_oa: str, stopped_case=None, controls_cas
                     shows = n_acc == 2 and "gpt-6.1-sol" in det and ("claude-sonnet-5-5" in det)
                     print(f"  [{port}] review shows each model's suggestion with its own accept button:", shows)
                     ok &= shows
+                    pg.click("#recodeVar")
+                    pg.wait_for_selector("#modeSel", timeout=8000)
+                    one = pg.inner_text(".modal header")
+                    print(f"  [{port}] 'Re-analyze this variable' opens the estimate dialog for one variable:", "FAILURE_TYPE" in one)
+                    ok &= "FAILURE_TYPE" in one
+                    pg.click("#dlgCancel")
                     tbl = pg.inner_text("#wbRows")
                     print(f"  [{port}] table shows comparison badges:", any(x in tbl for x in ("Human approved", "人工已确认", "Value disagreement", "取值不一致")))
                     ok &= any(x in tbl for x in ("Human approved", "人工已确认", "Value disagreement", "取值不一致"))

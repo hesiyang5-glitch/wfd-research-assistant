@@ -13,6 +13,8 @@ Completed changes, newest first. Commit hashes refer to `hesiyang5-glitch/wfd-re
   never hide or replace the other; a stopped run never hides an earlier completed result. Distinct states: Not run,
   No supported value, Stopped, Failed, Invalid output, Limit reached, Disputed. Fields no model codes (IDs, derived,
   admin, analyst notes) span both columns as "not model-coded".
+- Review detail panel: "Re-analyze this variable" (same dialog: mode choice + worst-case estimate) for the smallest
+  possible live test.
 - Case limits can be set to explicit values from the re-analysis dialog (raise or lower, never remove); every change,
   including approvals, is recorded in the new `limit_changes` table.
 - Migration adds `provider_controls` and `limit_changes` (additive, repeatable).
