@@ -130,5 +130,6 @@ server; `/api/status` reports only whether each key is set.
 - **Stop / resume** (D-030): `provider_controls(job_id, provider, stop_requested)` is read before every batch; never-sent
   batches are stored as `stopped`; Resume queues a follow-up job (`params.resume`) that codes only stopped variables in
   the same `group_id`. `limit_changes` records every case-limit change (who, old, new, why).
+- **Bulk agreement confirmation** (D-032): `app/agreement.py` (`assess`, `eligible_summary`, `bulk_confirm`); audit in `bulk_confirmations`; `reviews.method`.
 - **Review cells** (D-031): `suggestion_sets()` returns one cell per provider column (latest result of that provider
   across runs), the display suggestion, the comparison and system rows.

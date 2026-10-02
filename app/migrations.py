@@ -19,13 +19,13 @@ MIGRATION_ID = "2026-10-01-openai-provider"
 
 ADD_COLUMNS = {
     "runs": [("provider", "TEXT"), ("role", "TEXT"), ("group_id", "TEXT"), ("coding_mode", "TEXT"),
-             ("independent", "INTEGER")],
+             ("independent", "INTEGER"), ("prompt_version", "TEXT")],
     "suggestions": [("provider", "TEXT"), ("model", "TEXT"), ("role", "TEXT"), ("group_id", "TEXT"),
                     ("call_id", "INTEGER"), ("cache_status", "TEXT")],
     "usage": [("call_id", "INTEGER"), ("reasoning_tokens", "INTEGER"), ("cached_input_tokens", "INTEGER"),
               ("request_id", "TEXT")],
-    "reviews": [("source_provider", "TEXT")],
-    "review_history": [("source_provider", "TEXT")],
+    "reviews": [("source_provider", "TEXT"), ("method", "TEXT")],
+    "review_history": [("source_provider", "TEXT"), ("method", "TEXT")],
 }
 
 NEW_TABLES = """
@@ -43,6 +43,11 @@ CREATE TABLE IF NOT EXISTS suggestions_provider_archive (
 CREATE TABLE IF NOT EXISTS provider_controls (
   job_id INTEGER, provider TEXT, stop_requested INTEGER DEFAULT 0, requested_by TEXT, requested_at REAL,
   PRIMARY KEY (job_id, provider));
+CREATE TABLE IF NOT EXISTS bulk_confirmations (
+  id INTEGER PRIMARY KEY, batch_id TEXT, case_id INTEGER, variable TEXT, value TEXT,
+  claude_suggestion_id INTEGER, openai_suggestion_id INTEGER, claude_model TEXT, openai_model TEXT,
+  group_id TEXT, codebook_version TEXT, prompt_version TEXT, evidence_difference INTEGER,
+  previous_value TEXT, reviewer TEXT, at REAL, method TEXT);
 CREATE TABLE IF NOT EXISTS limit_changes (
   id INTEGER PRIMARY KEY, case_id INTEGER, job_id INTEGER, key TEXT, old_value TEXT, new_value TEXT,
   changed_by TEXT, reason TEXT, at REAL);

@@ -159,3 +159,16 @@ Each provider column = that provider's latest result across all runs (rows befor
 of one provider never replaces the other's column. A `stopped` row never hides that provider's earlier completed
 value (shown with a "latest run stopped" note). Comparison is labelled independent, reviewer (not independent) or
 separate runs (evidence may differ). Human final is `reviews` only; no model run writes to it.
+
+## D-032 · 2026-10-01 · Bulk confirmation of independent model agreement — Active (branch `feature/bulk-agreement`)
+**Decision.** Model agreement never becomes a final value by itself. Variables meeting all eligibility rules are
+offered in a confirmation dialog; only the variables the reviewer leaves checked, and that are still eligible at write
+time, receive a Human final (`reviews.action = accepted`, `method = bulk_independent_agreement`) with a full audit row
+in `bulk_confirmations`. Eligibility: same dual-independent run (same `group_id`, both role `independent`); same
+recorded prompt version, codebook version and batch evidence fingerprint; both `suggested`, validated, non-blank, no
+counter-evidence, not stale; normalized values equal (code sets, numbers, ISO dates); field type categorical, numeric,
+date, or open list with only codebook-listed options (free text, admin, generated, derived never); no review of any
+kind (accepted, edited, cleared or deferred). Two blanks = "Both insufficient". Undo/correction = the normal Reset /
+Edit actions; re-analysis never writes to Human final.
+**Owner choices (2026-10-01):** only the same dual-independent run qualifies (separate runs never); open lists only
+with listed options; a deferred review excludes the variable.

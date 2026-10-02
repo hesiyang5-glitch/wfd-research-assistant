@@ -2,6 +2,21 @@
 
 Completed changes, newest first. Commit hashes refer to `hesiyang5-glitch/wfd-research-assistant`.
 
+## 2026-10-01 — Bulk confirmation of independent model agreement (branch `feature/bulk-agreement`, NOT merged, NOT deployed)
+- New `app/agreement.py`: eligibility rules (D-032) and `bulk_confirm()`; endpoints `GET /api/cases/{id}/bulk_agreements`
+  (read-only) and `POST /api/cases/{id}/bulk_confirm` (requires `confirmed: true`; re-checks eligibility in one
+  transaction; never touches a variable that has any review).
+- Review tab: "Confirm N model agreements…" button and a dialog listing each eligible variable (checkbox, agreed value
+  and label, Claude/OpenAI model and result ids, evidence-difference flag), excluded count with reasons, and the warning
+  that agreement does not prove correctness. Comparison column shows the agreement status.
+- Two blank answers are now "Both insufficient", no longer "Model agreement" (also changes that label for existing
+  dual runs; exports unchanged because both values were blank).
+- Runs record `prompt_version`; reviews/history record `method`; new audit table `bulk_confirmations`
+  (additive migration). Export: Results gains "Agreement status" and "Confirmation method"; new `Bulk_Confirmations`
+  sheet; Case_Row carries confirmed values only.
+- Tests: new `tests/test_bulk_agreement.py` (50 checks incl. browser); `tests/test_providers.py` updated for
+  "Both insufficient".
+
 ## 2026-10-01 — Per-provider Stop/Resume, provider review table, legacy-data migration test (branch `feature/openai-provider`, NOT deployed)
 - Progress page: separate **Stop Claude / Stop OpenAI / Resume Claude / Resume OpenAI** buttons (D-030). Stop is checked
   before every batch: batches not yet sent are recorded as "stopped" (never sent, never billed); a request already sent

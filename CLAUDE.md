@@ -68,6 +68,7 @@ python3 -m tests.test_auth            # login, lockout, sessions, CSRF guard (st
 python3 -m tests.test_ui_flow         # browser click-through (Playwright + Chromium)
 python3 -m tests.test_providers       # OpenAI provider, modes, limits, stop/resume, cache keys, migration, UI (mocked SDK transport)
 python3 -m tests.test_legacy_migration # opens a copy of a database made by deployed code c57214a; Claude results must stay visible
+python3 -m tests.test_bulk_agreement  # bulk confirmation of independent model agreement (eligibility, audit, export, UI)
 ```
 
 Tests need the Texas-flood sample PDFs: set `WFD_TEST_PDFS=/path/to/folder` (they are in the claude.ai

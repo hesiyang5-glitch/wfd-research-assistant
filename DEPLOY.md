@@ -166,7 +166,7 @@ budget a dual or OpenAI run will usually pause first and ask you to approve expl
 结果、人工复核或费用记录。**合并前先备份：** Render → Disks → 确认今天有快照（或用 Shell：
 `sqlite3 /var/data/wfd.sqlite3 ".backup /var/data/backup-before-openai.sqlite3"`）。
 On start the new version automatically and repeatably **adds** columns and tables (`model_calls`, `schema_migrations`,
-`suggestions_provider_archive`, `provider_controls`, `limit_changes`, provider fields). Existing cases, sources, Claude results, reviews and usage are not
+`suggestions_provider_archive`, `provider_controls`, `limit_changes`, `bulk_confirmations`, provider fields). Existing cases, sources, Claude results, reviews and usage are not
 changed or deleted. **Back up before merging:** Render → Disks → confirm today's snapshot (or in the Shell:
 `sqlite3 /var/data/wfd.sqlite3 ".backup /var/data/backup-before-openai.sqlite3"`).
 

@@ -519,7 +519,8 @@ def run_coding(case: dict, settings: dict, client, job_id: int | None, log, budg
                                 "variables_json": json.dumps(variables), "created_at": time.time(),
                                 "notes": ROLE_NOTES.get(role, "") if client else "", "provider": provider, "role": role,
                                 "group_id": group_id, "coding_mode": mode or "single",
-                                "independent": 0 if role == "reviewer" else 1})
+                                "independent": 0 if role == "reviewer" else 1,
+                                "prompt_version": PROMPT_VERSION if client else None})
     targets, model_fields = prep["targets"], prep["model_fields"]
     batches, pmap, index, per_var, smeta = prep["batches"], prep["pmap"], prep["index"], prep["per_var"], prep["smeta"]
     if budget_cap is None and budget_left is not None:
@@ -842,6 +843,7 @@ COMPARISON_LABELS = {
     "evidence_disagreement": "Evidence disagreement",
     "one_provider_blank": "One provider blank",
     "invalid_provider_output": "Invalid provider output",
+    "both_insufficient": "Both insufficient",
     "needs_human_review": "Needs human review",
     "human_approved": "Human approved",
 }
@@ -863,8 +865,8 @@ def compare_pair(a: dict, b: dict) -> dict:
         if va != vb:
             return {"status": "value_disagreement"}
         return {"status": "needs_human_review", "note": "a provider reported disputed or contradicting evidence"}
-    if not va and not vb:
-        return {"status": "model_agreement", "note": "both blank (no supported value)"}
+    if not va and not vb:  # two blanks are NOT an agreed value (D-032)
+        return {"status": "both_insufficient", "note": "neither provider found a supported value"}
     if not va or not vb:
         return {"status": "one_provider_blank"}
     if va != vb:

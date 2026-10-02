@@ -685,6 +685,25 @@ def api_review(h, cid, body, **_):
     return {"ok": True}
 
 
+@route("GET", "/api/cases/{cid}/bulk_agreements")
+def api_bulk_agreements(h, cid, **_):
+    """Variables eligible for bulk confirmation of independent model agreement. Read-only."""
+    from .agreement import eligible_summary
+    return eligible_summary(int(cid))
+
+
+@route("POST", "/api/cases/{cid}/bulk_confirm")
+def api_bulk_confirm(h, cid, body, **_):
+    """Write Human final for the variables the reviewer left checked — only those still eligible at this moment."""
+    from .agreement import bulk_confirm
+    variables = body.get("variables")
+    if not isinstance(variables, list) or not variables:
+        raise ApiError(400, "choose at least one variable to confirm")
+    if not body.get("confirmed"):
+        raise ApiError(400, "explicit confirmation is required")
+    return bulk_confirm(int(cid), [str(v) for v in variables], getattr(h, "user", None))
+
+
 @route("GET", "/api/cases/{cid}/history")
 def api_history(h, cid, query, **_):
     var = (query.get("variable") or [None])[0]
