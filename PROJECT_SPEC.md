@@ -67,7 +67,8 @@ citations, and leaves every final decision to a human reviewer.
 | Free-text fields grounded in cited passages | PARTIAL (prompt rule; quotes validated, prose not) |
 | Admin/derived fields generated or calculated with a stated basis, never presented as sourced facts | TESTED offline |
 | Model calls send only retrieved evidence passages; source text treated as data, not instructions | PARTIAL (prompt rule; no adversarial test) |
-| Live Claude coding produces useful, accurate suggestions | **UNRESOLVED** — first live run failed (fixed); a complete live run is recorded on unmerged branch `docs/live-coding-result`; accuracy not yet compared with benchmarks |
+| Live Claude coding completes | TESTED live (Marshall Fire, 2026-10-01: 16 calls, 0 failed) |
+| Live suggestions are accurate against hand-coded benchmarks | **UNRESOLVED** — comparison not yet done (TEST_PLAN §4) |
 | Live OpenAI coding | **UNVERIFIED** — no live call made (branch `feature/openai-provider`) |
 
 ## 6. Evidence traceability

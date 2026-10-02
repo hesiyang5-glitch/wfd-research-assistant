@@ -13,7 +13,7 @@ Last reviewed: 2026-10-01 (commit `33a0c5e`). Severity: **High** (blocks correct
 
 | ID | Issue | Severity |
 |---|---|---|
-| K-03 | **Live coding only partly successful.** Re-analysis of Marshall Fire (2026-10-01, `e02de43`): 7 of 16 batches coded; 9 cut off at the output limit (450 tokens/variable was too small). Cut-off replies are billed in full and discarded. Fix on branch `fix/output-limit` (1,500 + 1,200 tokens/variable, ≤12 variables per call); needs deploy approval and a live re-test. | High |
+| K-03 | **Output headroom is modest.** Live re-analysis (2026-10-01, `c57214a`) coded all 16 batches, 0 failed. Heaviest batch used 4,811 of 7,500 output tokens for 5 variables (~960/variable vs 1,200 allowed). Watch the logged token counts; raise `OUT_TOKENS_PER_VAR` if a cut-off recurs. | Low |
 | K-04 | Coding quality vs hand-coded benchmarks unmeasured (TEST_PLAN §4). | High |
 | K-05 | Live export, live causal-uncertainty handling, live review/reanalysis not yet exercised. | Medium |
 | K-06 | Recorded case spend vs Anthropic Console usage not yet reconciled. | Medium |
@@ -29,7 +29,7 @@ Last reviewed: 2026-10-01 (commit `33a0c5e`). Severity: **High** (blocks correct
 | K-30 | Existing cases keep the settings saved when they were created; new limits apply from code defaults (not from edited global defaults) until changed for that case. | Low |
 | K-31 | `render.yaml` lists `OPENAI_API_KEY` with `sync: false`; whether Render prompts for it on an existing Blueprint is unverified — add it in the dashboard by hand. | Low |
 | K-32 | Docker image build with the `openai` package (pulls `httpx2`, `jiter`) not yet verified; PyPI was not reachable from the development environment. | Medium |
-| K-33 | Branch `docs/live-coding-result` (first complete live Claude run, L5 PASS) is not on `main` and will conflict with this branch's doc edits; merge it first. | Low |
+| K-33 | Resolved on the branch: `docs/live-coding-result` was merged into `feature/openai-provider` (2026-10-01), so one later merge to `main` carries both. | — |
 | K-34 | D-025 changes Claude behavior: batches whose reply had an invalid item are re-sent (and re-paid) on re-analysis. | Low |
 
 ## Research quality
