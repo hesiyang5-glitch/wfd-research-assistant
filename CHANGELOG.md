@@ -2,7 +2,7 @@
 
 Completed changes, newest first. Commit hashes refer to `hesiyang5-glitch/wfd-research-assistant`.
 
-## 2026-10-02 — Stay responsive under load; pause interrupted jobs (branch `fix/health-under-load`, NOT merged, NOT deployed)
+## 2026-10-02 — Stay responsive under load; pause interrupted jobs (merged `f664344`, deployed 10:50 am with owner approval; thread limit verified on Render)
 - Numerical libraries limited to 1 thread (`app/__init__.py`, Dockerfile); `WFD_NATIVE_THREADS` overrides (D-033).
 - Evidence index built once per case/evidence set and shared by gap check, estimates, coding and evidence search;
   rebuilt automatically when sources are added, excluded or restored (`retrieval.get_index`).

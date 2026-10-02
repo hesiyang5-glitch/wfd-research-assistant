@@ -79,8 +79,8 @@ Run after each deploy that changes research or coding behavior. Set "Cost cap pe
 | # | Check | Expected | Status |
 |---|---|---|---|
 | R1 | Render Shell read-only diagnostics (DEPLOY.md, "Slow or restarting service") on the **current** deployment | shows host CPU count, CPU quota, throttling counters, BLAS thread counts — confirms or rejects the root cause | DONE 2026-10-02 (owner): 32 host CPUs, quota 0.5 CPU, thread pools 32/32/32, 1682 throttled periods — root cause confirmed |
-| R2 | Same diagnostics after deploying the fix | BLAS/OpenMP thread counts = 1 | pending (not deployed) |
-| R3 | Cost estimate in Re-analyze dialog (no model call) while watching Render Events | no failed health checks | pending |
+| R2 | Same diagnostics after deploying the fix | BLAS/OpenMP thread counts = 1 | PASS 2026-10-02 (owner, instance stfgb, `f664344` live 10:50 am): `OMP_NUM_THREADS=1`, openmp 1, openblas 1, openblas 1 |
+| R3 | Cost estimate in Re-analyze dialog (no model call) while watching Render Events | no failed health checks | PARTIAL 2026-10-02: estimate dialog worked ($0.000 additional, spend $1.51 = Claude $1.30 + OpenAI $0.008 + search $0.208; OpenAI attempts 1/50); Events screenshot showed only the 2026-10-01 failures, the newest events after 10:50 am were not in view |
 | R4 | Next paid re-analysis (separate approval) | no health-check failures; if a restart happens anyway, job shows "Interrupted… paused", not restarted | pending |
 
 ### OpenAI live checks (after merge + deploy approval; small paid usage, OpenAI case budget $1–3)
