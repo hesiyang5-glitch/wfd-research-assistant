@@ -198,6 +198,19 @@ an OpenAI value there; human-reviewed values are unaffected.)
 - **登录被暂停：** 等 15 分钟；如果怀疑密码泄露，修改 `WFD_PASSWORD`。
   **Sign-in paused:** wait 15 minutes; if the password may have leaked, change `WFD_PASSWORD`.
 
+### 服务变慢或反复重启 · Slow or restarting service (incident 2026-10-01, D-033)
+- 现象：Render Events 显示健康检查失败、网站 502，几分钟后自己恢复。修复版本之后，被打断的任务会**暂停**，进度页显示“任务被服务器重启中断”，点“继续”才会再跑；正在发送的请求按最坏情况计入费用。
+  Symptom: Render Events show failed health checks and 502s, recovering after a few minutes. With the fix, an interrupted job is **paused** (Progress page: "Interrupted by a server restart") and only continues when you click Resume; a request that was in flight is counted at its worst-case cost.
+- 只读诊断（在 Render Shell 里输入，不改任何东西）· Read-only diagnostics (Render Shell; changes nothing):
+  ```
+  nproc; cat /sys/fs/cgroup/cpu.max; cat /sys/fs/cgroup/cpu.stat
+  python -c "import os; print(os.cpu_count(), os.environ.get('OMP_NUM_THREADS')); import app, numpy, sklearn.decomposition; from threadpoolctl import threadpool_info; print([(i['internal_api'], i['num_threads']) for i in threadpool_info()])"
+  ```
+  `nr_throttled` / `throttled_usec` 增长 = 进程因 CPU 额度被暂停。修复后线程数应为 1。
+  Growing `nr_throttled` / `throttled_usec` = the process is being paused for exceeding its CPU allowance. After the fix the thread counts should be 1.
+- 如果修复后仍反复出现：考虑更大的实例或单独的后台服务（**需付费，先征得同意**）。
+  If it still recurs after the fix: consider a larger instance or a separate worker service (**paid; ask first**).
+
 ## 费用上限 · Spending limits
 
 - **每个案例都有费用上限（默认 3 美元）**，包括 Claude 和 Tavily，并累计该案例的所有重新运行。超过时程序会停下，等你把这个案例的预算提高到一个具体金额；它不会取消上限。

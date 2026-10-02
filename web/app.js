@@ -237,6 +237,10 @@ async function tabProgress(c, body) {
         <span>${t("raise_budget")}</span><input id="newBudget" type="number" min="0" max="1000" step="0.5" style="width:100px" value="${needed}"><button id="raiseBtn">OK</button>
         <button id="manualBtn">${t("manual_only")}</button></div>
         <p class="small muted">${t("budget_note")}</p></div>`;
+    } else if (j.status === "needs_input" && st.awaiting === "interrupted") {
+      needs = `<div class="callout warn"><b>${L("任务被服务器重启中断，已暂停", "Interrupted by a server restart — paused")}</b><p>${esc(j.message)}</p>
+        <p class="small">${L("不会自动重新开始。点“继续”会从中断处接着做：已完成并缓存的批次免费复用，中断的那一批会重新发送（需要再次计费）。", "It will not restart by itself. Resume continues where it stopped: completed, cached batches are reused for free; the interrupted batch is sent again (billed again).")}</p>
+        <div class="row"><button class="primary" id="resumeBtn">${t("resume")}</button><button class="danger" id="cancelBtn2">${t("cancel")}</button></div></div>`;
     } else if (j.status === "needs_input" && st.awaiting === "provider") {
       needs = `<div class="callout bad"><b>${L("模型服务未配置", "Model provider not configured")}</b><p>${esc(j.message)}</p>
         <div class="row"><button id="recodeBtn2">${t("recode")}</button><button id="manualBtn">${t("manual_only")}</button></div></div>`;
@@ -270,6 +274,7 @@ async function tabProgress(c, body) {
       <h3>${t("log")}</h3><div class="log">${(j.log || []).map((l) => `<div class="${l.level}">${new Date(l.at * 1000).toLocaleTimeString()} [${esc(l.stage)}] ${esc(l.message)}</div>`).join("")}</div></div>`;
     const on = (sel, fn) => { const el = $(sel, body); if (el) el.onclick = fn; };
     on("#cancelBtn", async () => { await api("POST", `/api/jobs/${j.id}/cancel`); draw(); });
+    on("#cancelBtn2", async () => { await api("POST", `/api/jobs/${j.id}/cancel`); draw(); });
     $$("[data-stop-prov]", body).forEach((b) => (b.onclick = async () => {
       const prov = b.dataset.stopProv;
       const ok = await askDialog({ title: `${L("停止", "Stop")} ${PROV[prov] || prov}`,

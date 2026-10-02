@@ -67,7 +67,7 @@ Last reviewed: 2026-10-01 (commit `33a0c5e`). Severity: **High** (blocks correct
 | ID | Issue | Severity |
 |---|---|---|
 | K-16 | Static files are served without cache headers; after a deploy, browsers may keep old JavaScript until a hard refresh (Ctrl/Cmd+Shift+R). | Medium |
-| K-17 | 512 MB instance: large or scanned PDFs (OCR) may run out of memory. Upgrade path: 2 GB plan. | Medium |
+| K-17 | 512 MB / 0.5 CPU instance: large or scanned PDFs (OCR) may run out of memory; heavy work shares the half CPU with the web server (see K-38). Measured locally: peak ~210 MB for an 825-passage case. Upgrade path: larger plan or separate worker (paid; owner approval). | Medium |
 | K-18 | Single worker thread: one job at a time across all cases. | Low |
 | K-19 | Shared password; no per-user accounts or roles; any signed-in user can change settings and raise budgets. | Medium |
 | K-20 | Lockout relies on `CF-Connecting-IP` behavior reported by a third party, not Render docs; site-wide limit is the backstop and can be used to pause sign-in for everyone (existing sessions unaffected). | Low |
@@ -76,6 +76,7 @@ Last reviewed: 2026-10-01 (commit `33a0c5e`). Severity: **High** (blocks correct
 | K-23 | No CI; Docker build verified only by Render deploys. Tests need sample PDFs supplied via `WFD_TEST_PDFS`. | Low |
 | K-24 | Tavily cost counted at pay-as-you-go price even within free credits (overstates spend; may trigger budget pauses earlier than necessary). | Low |
 | K-25 | Start scripts' first-time `pip install` (local use) never tested end-to-end. | Low |
+| K-38 | Incident 2026-10-01 ~11:45 pm: health checks timed out during a single-variable dual re-analysis; Render restarted the service (502) and the old code auto-restarted the job; the job later finished; no unrecorded spend found. Fix on branch `fix/health-under-load` (D-033), **not deployed**. Root cause (native thread oversubscription under the 0.5-CPU quota) is the most likely explanation but **not confirmed on Render**; read-only diagnostics requested (DEPLOY.md, "Slow or restarting service"). Local test pins the server to one core; the real CPU quota cannot be reproduced locally. | High |
 
 ## Planned improvements (not started)
 

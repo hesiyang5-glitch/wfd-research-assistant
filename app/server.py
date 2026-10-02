@@ -602,7 +602,8 @@ def api_searches(h, cid, **_):
 def api_evidence_search(h, cid, query, **_):
     from .retrieval import CorpusIndex, load_case_passages
     qtext = (query.get("q") or [""])[0]
-    idx = CorpusIndex(load_case_passages(int(cid)))
+    from .retrieval import get_index
+    idx = get_index(int(cid))
     return {"method": f"BM25 + {idx.semantic_method}", "hits": idx.search(qtext, k=int((query.get("k") or ["15"])[0]))}
 
 

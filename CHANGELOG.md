@@ -2,6 +2,17 @@
 
 Completed changes, newest first. Commit hashes refer to `hesiyang5-glitch/wfd-research-assistant`.
 
+## 2026-10-02 — Stay responsive under load; pause interrupted jobs (branch `fix/health-under-load`, NOT merged, NOT deployed)
+- Numerical libraries limited to 1 thread (`app/__init__.py`, Dockerfile); `WFD_NATIVE_THREADS` overrides (D-033).
+- Evidence index built once per case/evidence set and shared by gap check, estimates, coding and evidence search;
+  rebuilt automatically when sources are added, excluded or restored (`retrieval.get_index`).
+- Background worker runs at lower CPU priority than web requests.
+- After a restart, a running job is paused ("Interrupted by a server restart") with Resume / Cancel on the Progress
+  page; it is no longer restarted automatically.
+- Model requests are recorded as `sending` (worst-case cost) before they are sent; at startup unfinished ones become
+  `interrupted_possibly_billed` and are counted at worst case.
+- Tests: new `tests/test_resilience.py` (31 checks).
+
 ## 2026-10-01 — Bulk confirmation of independent model agreement (branch `feature/bulk-agreement`, NOT merged, NOT deployed)
 - New `app/agreement.py`: eligibility rules (D-032) and `bulk_confirm()`; endpoints `GET /api/cases/{id}/bulk_agreements`
   (read-only) and `POST /api/cases/{id}/bulk_confirm` (requires `confirmed: true`; re-checks eligibility in one

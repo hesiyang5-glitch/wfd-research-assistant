@@ -157,7 +157,8 @@ def passage_block(p: dict, src_meta: dict) -> str:
 
 def build_batches(case_id: int, fields: list[dict], settings: dict):
     passages = load_case_passages(case_id)
-    index = CorpusIndex(passages)
+    from .retrieval import get_index
+    index = get_index(case_id, passages)
     k = int(settings.get("passages_per_variable", 8))
     limit = int(settings.get("max_passages_per_call", 40))
     per_var = {}
@@ -629,15 +630,19 @@ def run_coding(case: dict, settings: dict, client, job_id: int | None, log, budg
                         preflight_done = True
                     max_attempts = max(1, min(default_attempts, limits.remaining_attempts(provider)))
                     t0 = time.time()
+                    # Written BEFORE sending: if the server stops mid-request, startup finds this 'sending' row and
+                    # counts the request at its worst-case cost instead of losing track of it (D-033).
+                    call_id = _record_call({**call, "status": "sending", "http_attempts": 1, "cost_usd": worst_cost,
+                                            "cost_estimated": 1, "cache_status": "none"})
                     try:
                         resp = _call(client, system, prompt, max_out, rschema, max_attempts)
                     except LLMError as e:
                         n_att = e.attempts if e.attempts is not None else max_attempts
                         st = "config_error" if e.config_error else ("possibly_billed_error" if e.possibly_billed else "error")
-                        call_id = _record_call({**call, "status": st, "http_attempts": n_att, "error": str(e)[:400],
-                                                "request_id": e.request_id, "cache_status": "none",
-                                                "cost_usd": worst_cost if e.possibly_billed else 0.0,
-                                                "cost_estimated": 1, "duration_s": round(time.time() - t0, 2)})
+                        db.update("model_calls", call_id, {"status": st, "http_attempts": n_att, "error": str(e)[:400],
+                                                           "request_id": e.request_id, "cache_status": "none",
+                                                           "cost_usd": worst_cost if e.possibly_billed else 0.0,
+                                                           "cost_estimated": 1, "duration_s": round(time.time() - t0, 2)})
                         if e.possibly_billed:  # count it at worst case so the budget stays a real ceiling
                             report["spent_usd"] += worst_cost
                             db.insert("usage", {"case_id": case["id"], "job_id": job_id, "kind": "model",
@@ -651,15 +656,15 @@ def run_coding(case: dict, settings: dict, client, job_id: int | None, log, budg
                     c = cost_usd(client.model, resp.get("input_tokens") or int(est_in * 1.25),
                                  resp.get("output_tokens") if resp.get("output_tokens") is not None else max_out)
                     report["spent_usd"] += c if c is not None else worst_cost
-                    call_id = _record_call({**call, "status": "received", "http_attempts": n_att,
-                                            "request_id": resp.get("request_id"), "response_id": resp.get("response_id"),
-                                            "input_tokens": resp.get("input_tokens"),
-                                            "cached_input_tokens": resp.get("cached_input_tokens"),
-                                            "output_tokens": resp.get("output_tokens"),
-                                            "reasoning_tokens": resp.get("reasoning_tokens"),
-                                            "incomplete_reason": resp.get("incomplete_reason"), "cost_usd": c,
-                                            "cost_estimated": 0 if resp.get("input_tokens") else 1, "cache_status": "new",
-                                            "duration_s": round(time.time() - t0, 2)})
+                    db.update("model_calls", call_id, {"status": "received", "http_attempts": n_att,
+                                                       "request_id": resp.get("request_id"), "response_id": resp.get("response_id"),
+                                                       "input_tokens": resp.get("input_tokens"),
+                                                       "cached_input_tokens": resp.get("cached_input_tokens"),
+                                                       "output_tokens": resp.get("output_tokens"),
+                                                       "reasoning_tokens": resp.get("reasoning_tokens"),
+                                                       "incomplete_reason": resp.get("incomplete_reason"), "cost_usd": c,
+                                                       "cost_estimated": 0 if resp.get("input_tokens") else 1,
+                                                       "cache_status": "new", "duration_s": round(time.time() - t0, 2)})
                     db.insert("usage", {"case_id": case["id"], "job_id": job_id, "kind": "model", "provider": provider,
                                         "model": client.model, "input_tokens": resp.get("input_tokens"),
                                         "output_tokens": resp.get("output_tokens"), "units": 1, "cost_usd": c,
