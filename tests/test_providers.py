@@ -573,7 +573,8 @@ def main():
     check("23 value disagreement detected (2 vs 6) and routed to review", rows["FAILURE_TYPE"]["comparison"]["status"] == "value_disagreement"
           and rows["FAILURE_TYPE"]["category"] == "disputed")
     check("23 one provider blank detected", rows["SYSTEM_INVOLVED"]["comparison"]["status"] == "one_provider_blank")
-    check("23 both blank counts as agreement on 'no supported value'", rows["INTERAGENCY_COORDINATION"]["comparison"]["status"] == "model_agreement")
+    # D-032: two blank answers are 'Both insufficient', never an agreed value
+    check("23 both blank → 'both_insufficient' (not agreement)", rows["INTERAGENCY_COORDINATION"]["comparison"]["status"] == "both_insufficient")
     check("each provider's suggestion + evidence kept separately", {p["provider"] for p in rows["FAILURE_TYPE"]["providers"]} == {"anthropic", "openai"}
           and all(p["evidence"] for p in rows["FAILURE_TYPE"]["providers"]))
     a = {"status": "suggested", "value": "3", "evidence": [{"source_id": 1}]}

@@ -48,6 +48,7 @@ def case_results(case_id: int) -> dict:
     sets = suggestion_sets(case_id)
     reviews = {r["variable"]: r for r in db.q("SELECT * FROM reviews WHERE case_id=?", (case_id,))}
     srcs = {s["id"]: s for s in db.q("SELECT id,title,url,final_url,source_type,excluded,relevance_status FROM sources WHERE case_id=?", (case_id,))}
+    from .agreement import assess
     rows = []
     for f in schema["fields"]:
         ss = sets.get(f["name"]) or {}
@@ -60,8 +61,11 @@ def case_results(case_id: int) -> dict:
                       "role_note": ROLE_NOTES.get(m.get("role"), "")}
                      for m in ss.get("members", []) if m.get("provider")]
         cat = review_category(f, s, r)
-        if comp and cat not in ("confirmed", "rule_missing") and comp["status"] != "model_agreement":
+        if comp and cat not in ("confirmed", "rule_missing") and comp["status"] not in (
+                "model_agreement", "both_insufficient", "evidence_disagreement"):
             cat = "disputed"  # providers disagree (or one output is invalid): route to human review
+        if comp and comp["status"] == "evidence_disagreement" and cat not in ("confirmed", "rule_missing"):
+            cat = "pending"  # same value, different sources: individual or bulk human review
         comp_out = None
         if comp:
             st = "human_approved" if (r and r["action"] in ("accepted", "edited", "cleared")) else comp["status"]
@@ -73,6 +77,7 @@ def case_results(case_id: int) -> dict:
             "codebook_ref": f.get("codebook_ref"), "issues": f.get("issues", []), "rule_missing": f.get("rule_missing"),
             "suggestion": s, "previous": p if changed else None, "review": r, "providers": providers,
             "comparison": comp_out, "category": cat, "cells": _cells_out(ss.get("cells")),
+            "agreement": assess(case_id, f, ss, r),
             "system": ss.get("system") if not providers else None,
         })
     return {"case": case, "schema_label": schema.get("label"), "schema_id": schema.get("id"), "rows": rows, "sources": srcs}
@@ -102,7 +107,7 @@ def _cells_out(cells: dict | None) -> dict:
 def export_value(row: dict, include_unreviewed: bool) -> tuple[str, str]:
     r = row["review"]
     if r and r["action"] in ("accepted", "edited", "cleared"):
-        return r["value"] or "", "reviewed"
+        return r["value"] or "", "reviewed"  # human final always wins (incl. bulk-confirmed agreement)
     s = row["suggestion"]
     comp = row.get("comparison")
     if comp and comp.get("model_status") != "model_agreement":
@@ -135,7 +140,9 @@ def explanation_cell(row: dict, origin: str) -> str:
         parts.append("[UNREVIEWED SUGGESTION — not confirmed by a human coder]")
     if s and s.get("provider") and origin != "reviewed":
         parts.append(f"[model: {s.get('provider')} {s.get('model') or ''}]".replace(" ]", "]"))
-    if r and r.get("source_provider"):
+    if r and r.get("method") == "bulk_independent_agreement":
+        parts.append(f"[human-confirmed independent model agreement (bulk confirmation) by {r.get('reviewer') or 'reviewer'}]")
+    elif r and r.get("source_provider"):
         parts.append(f"[accepted from {r['source_provider']} suggestion]")
     comp = row.get("comparison")
     if comp and comp.get("model_status") != "model_agreement":
@@ -194,13 +201,15 @@ def xlsx(case_id: int, include_unreviewed=False) -> bytes:
 
     wr = wb.create_sheet("Results")
     wr.append(["Variable", "Value", "Source", "Explanation", "Review status", "Value origin", "Suggestion status",
-               "Model comparison", "Accepted from provider"])
+               "Model comparison", "Accepted from provider", "Agreement status", "Confirmation method"])
     yellow = PatternFill("solid", fgColor="FFF2CC")
     for row in res["rows"]:
         v, origin = export_value(row, include_unreviewed)
         wr.append([row["name"], v, source_cell(row, res["sources"]) if v else "", explanation_cell(row, origin), row["category"],
                    origin, (row["suggestion"] or {}).get("status", ""), (row.get("comparison") or {}).get("label", ""),
-                   (row["review"] or {}).get("source_provider") or ""])
+                   (row["review"] or {}).get("source_provider") or "", (row.get("agreement") or {}).get("label", ""),
+                   ("human-approved model agreement (bulk)" if (row["review"] or {}).get("method") == "bulk_independent_agreement"
+                    else ((row["review"] or {}).get("action") or ""))])
         if origin == "UNREVIEWED":
             for c in wr[wr.max_row]:
                 c.fill = yellow
@@ -233,6 +242,14 @@ def xlsx(case_id: int, include_unreviewed=False) -> bytes:
                        "no (saw primary result)" if s.get("role") == "reviewer" else "yes", s.get("value"), s.get("status"),
                        s.get("rationale"), s.get("unresolved"), s.get("cache_status"),
                        (row.get("comparison") or {}).get("label", ""), (rv or {}).get("value", "") if rv else ""])
+
+    wbk = wb.create_sheet("Bulk_Confirmations")
+    bcols = ["batch_id", "variable", "value", "claude_suggestion_id", "openai_suggestion_id", "claude_model", "openai_model",
+             "group_id", "codebook_version", "prompt_version", "evidence_difference", "previous_value", "reviewer", "at", "method"]
+    wbk.append(bcols)
+    for bc in db.q("SELECT * FROM bulk_confirmations WHERE case_id=? ORDER BY id", (case_id,)):
+        bc["at"] = dt.datetime.fromtimestamp(bc["at"]).isoformat(timespec="seconds") if bc.get("at") else ""
+        wbk.append([bc.get(k) for k in bcols])
 
     wsr = wb.create_sheet("Sources")
     cols = ["id", "title", "publisher", "published_date", "source_type", "origin", "found_via", "url", "final_url", "fetch_status",
@@ -301,6 +318,7 @@ def json_export(case_id: int, include_unreviewed=False) -> dict:
                    "schema_version": res["schema_label"], "tool": "WFD Coding Assistant"},
         "case": res["case"], "results": out_rows,
         "review_history": db.q("SELECT * FROM review_history WHERE case_id=? ORDER BY id", (case_id,)),
+        "bulk_confirmations": db.q("SELECT * FROM bulk_confirmations WHERE case_id=? ORDER BY id", (case_id,)),
         "sources": db.q("SELECT * FROM sources WHERE case_id=? ORDER BY id", (case_id,)),
         "cited_passages": passages,
         "search_log": db.q("SELECT * FROM search_queries WHERE case_id=? ORDER BY id", (case_id,)),

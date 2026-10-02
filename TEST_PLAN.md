@@ -14,6 +14,7 @@ Set `WFD_TEST_PDFS` to a folder containing the Texas-flood source PDFs (claude.a
 | Pipeline | `python3 -m tests.test_pipeline` | 44 | 44/44 pass (2026-10-01, `feature/openai-provider`; cache check now expects replies with invalid items NOT to be cached, D-025) | schema vs workbook order/count, rule flags, `-9` rules; research stages with fixture search; PDF page numbers; exact/near duplicates; irrelevant sources; 403 recorded not bypassed; no-model mode invents nothing; validator (invented code, fake quote, unknown ID, per-option evidence, disputes); review preserved across reanalysis; cache reuse; TSV/XLSX/case-row/JSON exports; restart recovery |
 | Cost safety | `python3 -m tests.test_costs` | 29 | 29/29 pass (2026-10-01, `feature/openai-provider`) | output allowance ≥1,200 tokens/variable, ≤12 variables per call, under the 16,000 ceiling, no variable dropped; retry only 429/529/connection; timeouts/5xx not retried and counted; no `temperature` sent; truncated replies not cached; complete replies cached; worst-case pre-check; repeated 4xx stops run; budget per case across runs; approval sets explicit amount and is logged; unknown price pauses; Tavily $0.016 counted and capped |
 | OpenAI provider, modes, limits | `python3 -m tests.test_providers` | 138 | 138/138 pass (2026-10-01, `feature/openai-provider`) | real `openai` SDK (3.23.0) through a mocked HTTP transport: strict schema (codebook enums, `-9` only where defined, passage ids per batch, all fields required), success parsing, invalid JSON / schema / refusal / invalid code / incomplete (`max_output_tokens`) not cached, timeout and 5xx not retried and counted at worst case, 429 and connect retries counted, quota/unknown model/bad key = configuration error, OpenAI budget, combined budget (Claude + OpenAI + search), OpenAI and total attempt caps across runs, explicit approval, cache-key isolation and invalidation (model, codebook, evidence, schema, effort, variables, role), legacy Claude cache reuse, Anthropic-only / OpenAI-only / manual fallbacks, one search for dual runs, identical independent prompts, reviewer labelling, comparison statuses, export blocking disagreements, human values never overwritten, migration repeatable + rollback/restore, no keys in API/DB/logs/exports/server output, browser: provider status, mode list with/without key, dual cost display, side-by-side suggestions |
+| Bulk agreement confirmation | `python3 -m tests.test_bulk_agreement` | 50 | 50/50 pass (2026-10-01, `feature/bulk-agreement`) | eligibility (exact, multi-select order, dates, numbers, listed open-list option; disagreement; both blank; not run; failed; stopped; invalid code; invalid citation; free text; counter-evidence; stale; evidence difference; review mode; separate runs; deferred; existing Human final), read-only dialog data, explicit confirmation required, unchecking, write-time re-check, audit row fields, history method, export (Results origin, Case_Row, Bulk_Confirmations, Provider_Suggestions), re-analysis never overwrites, manual correction, Reset undo; browser button/dialog/uncheck/confirm |
 | Existing-data migration | `python3 -m tests.test_legacy_migration` | 18 | 18/18 pass (2026-10-01, `feature/openai-provider`) | copy of a database produced by the deployed code `c57214a` (Claude-coded synthetic Marshall Fire case + human edit): every existing row unchanged; Claude values in the Claude column, OpenAI "Not run"; human edit stays Human final; spend/attempts carried over; export uses the human value; browser row check |
 | Login & security | `python3 -m tests.test_auth` | 24 | 24/24 pass (2026-10-01, `feature/openai-provider`) | refuses public bind without password; health check; headers; API/export blocked when logged out; wrong password slowed; name required; HttpOnly SameSite cookie; JSON-only mutations; reviewer name in history and sources; tampered session rejected; per-address lockout; faked `X-Forwarded-For` doesn't bypass; site-wide pause; signed-in users unaffected; browser login flow |
 | Browser flow | `python3 -m tests.test_ui_flow` | flow | PASS (2026-10-01, `feature/openai-provider`) | home form → research (fixture) → sources (irrelevant flagged) → review edit → citation opens highlighted passage → XLSX export contains reviewed value; no JS errors |
@@ -55,6 +56,22 @@ Run after each deploy that changes research or coding behavior. Set "Cost cap pe
 | L9 | Export XLSX / case row | headers match workbook; unreviewed cells blank | pending |
 | L10 | Case spend vs Anthropic Console usage | app's recorded cost ≥ actual | pending |
 | L11 | Data after redeploy | case still present | PASS (after `de5aece`) |
+
+### First-stage production verification of `cd4e6b8` (2026-10-01, owner, read-only, $0)
+
+| Check | Result |
+|---|---|
+| Backup before merge | `/var/data/backup-before-openai-20261001.sqlite3`, integrity ok |
+| Build and site | PASS — new interface live; `openai` package 3.23.0 installed in the image |
+| Migration | PASS — `2026-10-01-openai-provider` applied; integrity ok |
+| Existing data unchanged | PASS — cases 1, sources 60, passages 820, suggestions 246, reviews 0, usage 38 (= backup); model_calls 0 |
+| Claude results in Claude column; OpenAI "Not run"; seven columns | PASS (screenshot) |
+| Human final | PASS — none existed, none created |
+| OpenAI not configured | PASS — Settings "not configured"; Re-analyze offers only Default / Claude only; `OPENAI_API_KEY set: False` |
+| Excel export | PASS — 9 sheets incl. Provider_Suggestions; Case_Row 82 columns identical to `WFD_Cases`; blank (no reviews); usage $1.49 = recorded spend; no secrets |
+| Legacy cache reuse | PASS — Re-analyze estimate "16 calls (0 new), max additional cost $0.000" |
+| "Invalid output" on SUMMARY / INCLUSION_CRITERIA_INDICATORS | explained — earlier Claude run; quotes not verbatim in S1-P54/S1-P56 (validator), not caused by the update |
+| Stop/Resume buttons; a Claude call on the new version | not yet observed (appear on the next run; needs approval) |
 
 ### OpenAI live checks (after merge + deploy approval; small paid usage, OpenAI case budget $1–3)
 

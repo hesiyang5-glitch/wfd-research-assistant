@@ -138,3 +138,5 @@ td.human-final { background: #f3f8f4; }
 #wbTable th, #wbTable td { padding: 6px 7px; }
 #wbTable td b.mono { font-size: 12px; word-break: break-word; }
 #wbTable .pc-anthropic, #wbTable .pc-openai { min-width: 108px; }
+.badge.wrap { white-space: normal; line-height: 1.3; }
+#wbTable td.ag-cell { max-width: 150px; }

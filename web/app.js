@@ -19,7 +19,7 @@ const modeText = (m) => (MODE_TEXT[m] ? L(MODE_TEXT[m][0], MODE_TEXT[m][1]) : m)
 const ROLE_TEXT = { primary: ["主编码", "primary"], independent: ["独立编码", "independent"], reviewer: ["复核（看过主模型结果，非独立）", "reviewer (saw primary result — not independent)"] };
 const roleText = (r) => (ROLE_TEXT[r] ? L(ROLE_TEXT[r][0], ROLE_TEXT[r][1]) : (r || ""));
 const COMP_BADGE = { model_agreement: "ok", value_disagreement: "bad", evidence_disagreement: "warn", one_provider_blank: "warn", invalid_provider_output: "bad", needs_human_review: "dispute", human_approved: "ok" };
-const COMP_TEXT = { model_agreement: ["模型一致", "Model agreement"], value_disagreement: ["取值不一致", "Value disagreement"], evidence_disagreement: ["证据不一致", "Evidence disagreement"], one_provider_blank: ["一方为空", "One provider blank"], invalid_provider_output: ["模型输出无效", "Invalid provider output"], needs_human_review: ["需人工复核", "Needs human review"], human_approved: ["人工已确认", "Human approved"] };
+const COMP_TEXT = { model_agreement: ["模型一致", "Model agreement"], value_disagreement: ["取值不一致", "Value disagreement"], evidence_disagreement: ["证据不一致", "Evidence disagreement"], one_provider_blank: ["一方为空", "One provider blank"], invalid_provider_output: ["模型输出无效", "Invalid provider output"], both_insufficient: ["均证据不足", "Both insufficient"], needs_human_review: ["需人工复核", "Needs human review"], human_approved: ["人工已确认", "Human approved"] };
 const compText = (c) => (COMP_TEXT[c] ? L(COMP_TEXT[c][0], COMP_TEXT[c][1]) : c);
 const CELL_TEXT = { not_run: ["未运行", "Not run"], suggested: ["建议", "Suggested"], disputed: ["有争议", "Disputed"], no_supported_value: ["无证据支持的值", "No supported value"], stopped: ["已停止", "Stopped"], failed: ["失败", "Failed"], invalid_output: ["输出无效", "Invalid output"], limit_reached: ["达到上限，未编码", "Limit reached"] };
 const cellText = (st) => (CELL_TEXT[st] ? L(CELL_TEXT[st][0], CELL_TEXT[st][1]) : st);
@@ -429,7 +429,8 @@ async function tabReview(c, body) {
   const counts = { all: WB.data.rows.length }; WB.data.rows.forEach((r) => (counts[r.category] = (counts[r.category] || 0) + 1));
   const sections = [...new Set(WB.data.rows.map((r) => r.section).filter(Boolean))];
   body.innerHTML = `<div class="workbench"><div>
-      <div class="chips">${cats.map((k) => `<span class="chip ${WB.filter === k ? "on" : ""}" data-f="${k}">${t("filter_" + k)} ${counts[k] || 0}</span>`).join("")}</div>
+      <div class="row" style="align-items:flex-start"><div class="chips">${cats.map((k) => `<span class="chip ${WB.filter === k ? "on" : ""}" data-f="${k}">${t("filter_" + k)} ${counts[k] || 0}</span>`).join("")}</div><span class="spacer"></span>
+      <button id="bulkBtn" class="small" disabled title="${esc(L("两个模型在同一次独立运行中给出相同的有效值的变量；需要你逐一勾选并确认", "Variables where Claude and OpenAI independently gave the same valid value in one run; you review and confirm them"))}">${L("确认模型一致的变量…", "Confirm model agreements…")}</button></div>
       <div class="row" style="margin-bottom:8px"><input id="wbq" placeholder="${esc(t("search_vars"))}" value="${esc(WB.q)}" style="max-width:260px">
       <select id="wbsec" style="max-width:260px"><option value="">— section —</option>${sections.map((s) => `<option ${WB.section === s ? "selected" : ""}>${esc(s)}</option>`).join("")}</select>
       <span class="small muted">${t("filter_note")}</span></div>
@@ -452,17 +453,55 @@ async function tabReview(c, body) {
         <td><b class="mono">${esc(r.name)}</b>${r.issues.length ? ` <span class="badge warn" title="${esc(r.issues.join("\n"))}">!</span>` : ""}${s.stale ? ` <span class="badge bad">stale</span>` : ""}</td>
         ${provCells}
         <td class="val human-final">${final ? `<span class="final-val mono">${esc((rv.value || "∅").slice(0, 60))}</span>${rv.source_provider ? `<div class="small muted">${esc(L("采纳自", "from"))} ${esc(PROV[rv.source_provider] || rv.source_provider)}</div>` : ""}` : rv && rv.action === "deferred" ? `<span class="muted small">${L("暂缓", "deferred")}</span>` : `<span class="muted small">—</span>`}</td>
-        <td>${r.comparison ? `<span class="badge ${COMP_BADGE[r.comparison.model_status] || ""}">${esc(compText(r.comparison.model_status))}</span>${r.comparison.kind === "reviewer" ? `<div class="small muted">${L("复核（非独立）", "review (not independent)")}</div>` : r.comparison.kind === "separate_runs" ? `<div class="small muted">${L("不同次运行", "separate runs")}</div>` : ""}` : `<span class="muted small">—</span>`}</td>
+        <td class="ag-cell">${r.agreement ? `<span class="badge wrap ${AG_BADGE[r.agreement.status] || ""}" title="${esc(r.agreement.reason || "")}">${esc(agText(r.agreement.status))}</span>` : r.comparison ? `<span class="badge ${COMP_BADGE[r.comparison.model_status] || ""}">${esc(compText(r.comparison.model_status))}</span>${r.comparison.kind === "reviewer" ? `<div class="small muted">${L("复核（非独立）", "review (not independent)")}</div>` : r.comparison.kind === "separate_runs" ? `<div class="small muted">${L("不同次运行", "separate runs")}</div>` : ""}` : `<span class="muted small">—</span>`}</td>
         <td><span class="badge ${CAT_BADGE[r.category]}">${t("filter_" + r.category)}</span></td></tr>`;
     }).join("");
     $$("#wbRows tr").forEach((tr) => (tr.onclick = () => { WB.sel = tr.dataset.v; drawRows(); drawDetail(c); }));
   };
   $$(".chip", body).forEach((ch) => (ch.onclick = () => { WB.filter = ch.dataset.f; tabReview(c, body); }));
+  const nElig = WB.data.rows.filter((r) => r.agreement && r.agreement.eligible).length;
+  if (nElig) { $("#bulkBtn").disabled = false; $("#bulkBtn").classList.add("primary"); $("#bulkBtn").textContent = `${L("确认", "Confirm")} ${nElig} ${L("个模型一致的变量…", nElig === 1 ? "model agreement…" : "model agreements…")}`; }
+  $("#bulkBtn").onclick = () => openBulkConfirm(c);
   $("#wbq").oninput = (e) => { WB.q = e.target.value; drawRows(); };
   $("#wbsec").onchange = (e) => { WB.section = e.target.value; drawRows(); };
   drawRows();
   if (WB.sel) drawDetail(c);
 }
+const AG_BADGE = { eligible: "info", eligible_evidence_difference: "info", confirmed: "ok", not_independent: "warn", separate_runs: "warn", value_disagreement: "bad", both_insufficient: "", claude_only: "", openai_only: "", validation_failed: "bad", pending: "dispute" };
+const AG_TEXT = { eligible: ["独立一致 — 可批量确认", "Independent model agreement — eligible"], eligible_evidence_difference: ["取值一致但证据不同 — 可批量确认", "Value agreement with evidence difference — eligible"], confirmed: ["独立一致 — 已人工确认", "Independent model agreement — human confirmed"], not_independent: ["一致但非独立", "Agreement but not independent"], separate_runs: ["来自不同运行的一致 — 不可批量确认", "Agreement from separate runs — not eligible"], value_disagreement: ["取值不一致", "Value disagreement"], both_insufficient: ["均证据不足", "Both insufficient"], claude_only: ["仅 Claude", "Claude only"], openai_only: ["仅 OpenAI", "OpenAI only"], validation_failed: ["验证失败", "Validation failed"], pending: ["待人工复核", "Pending human review"] };
+const agText = (s) => (AG_TEXT[s] ? L(AG_TEXT[s][0], AG_TEXT[s][1]) : s);
+async function openBulkConfirm(c) {
+  let d;
+  try { d = await api("GET", `/api/cases/${c.id}/bulk_agreements`); } catch (e) { toast(e.message, true); return; }
+  if (!d.eligible.length) { toast(L("没有可批量确认的变量", "No variables are eligible")); return; }
+  $("#modalRoot").innerHTML = `<div class="modal-bg"><div class="modal" style="width:min(880px,100%)" role="dialog" aria-modal="true">
+    <header><b>${L("确认模型一致的变量", "Confirm independent model agreements")}</b></header><div class="body">
+    <div class="callout warn small"><b>${L("两个模型一致并不能独立证明取值正确。", "Agreement between two models does not independently prove a value is correct.")}</b>
+      ${L("只有你勾选并点击“确认”后，才会写入“人工最终值”；之后仍可在每个变量里撤销或修改。", "Nothing is written until you click Confirm. Each value can still be reset or edited afterwards in that variable's review panel.")}</div>
+    <p class="small">${L("可确认", "Eligible")}: <b id="bulkN">${d.eligible.length}</b> · ${L("不符合条件（保持待复核）", "Excluded (stay pending)")}: <b>${d.excluded_count}</b>
+      ${Object.keys(d.excluded).length ? `<span class="muted">(${Object.entries(d.excluded).map(([k, v]) => `${esc(agTextFromLabel(k))}: ${v}`).join("; ")})</span>` : ""}</p>
+    <div class="wb-table" style="max-height:52vh"><table id="bulkTable"><thead><tr><th><input type="checkbox" id="bulkAll" checked style="width:auto"></th><th>${t("col_var")}</th><th>${L("一致的取值", "Agreed value")}</th><th>Claude</th><th>OpenAI</th><th>${L("备注", "Note")}</th></tr></thead><tbody>
+    ${d.eligible.map((x) => `<tr><td><input type="checkbox" class="bulkChk" style="width:auto" value="${esc(x.variable)}" checked></td><td class="mono">${esc(x.variable)}</td>
+      <td><b class="mono">${esc(x.value)}</b>${x.value_label ? `<div class="small muted">${esc(x.value_label)}</div>` : ""}</td>
+      <td class="small mono">${esc(x.claude.model || "")}<div class="muted">#${x.claude.suggestion_id}</div></td><td class="small mono">${esc(x.openai.model || "")}<div class="muted">#${x.openai.suggestion_id}</div></td>
+      <td class="small">${x.evidence_difference ? `<span class="badge warn">${L("证据来源不同（均已通过验证）", "different evidence (both validated)")}</span>` : ""}</td></tr>`).join("")}</tbody></table></div>
+    <div class="row" style="margin-top:14px"><button class="primary" id="bulkOk">${L("确认所选", "Confirm selected")} (<span id="bulkK">${d.eligible.length}</span>)</button><button id="bulkCancel">${L("取消", "Cancel")}</button></div></div></div></div>`;
+  const upd = () => { const k = $$(".bulkChk").filter((x) => x.checked).length; $("#bulkK").textContent = k; $("#bulkOk").disabled = k === 0; };
+  $$(".bulkChk").forEach((x) => (x.onchange = upd));
+  $("#bulkAll").onchange = (e) => { $$(".bulkChk").forEach((x) => (x.checked = e.target.checked)); upd(); };
+  $("#bulkCancel").onclick = () => ($("#modalRoot").innerHTML = "");
+  $("#bulkOk").onclick = async () => {
+    const vars = $$(".bulkChk").filter((x) => x.checked).map((x) => x.value);
+    $("#bulkOk").disabled = true;
+    try {
+      const r = await api("POST", `/api/cases/${c.id}/bulk_confirm`, { variables: vars, confirmed: true });
+      $("#modalRoot").innerHTML = "";
+      toast(`${L("已确认", "Confirmed")}: ${r.confirmed.length}${r.skipped.length ? ` · ${L("跳过", "skipped")}: ${r.skipped.length} (${r.skipped.map((s) => s.variable + ": " + s.reason).join("; ")})` : ""}`, r.skipped.length > 0);
+      tabReview(c, $("#tabBody"));
+    } catch (e) { toast(e.message, true); $("#bulkOk").disabled = false; }
+  };
+}
+function agTextFromLabel(label) { const k = Object.keys(AG_TEXT).find((x) => AG_TEXT[x][1] === label); return k ? agText(k) : label; }
 function evHtml(ev) {
   const src = WB.srcMap[ev.source_id] || {};
   const loc = ev.page ? `p. ${ev.page}` : ev.para ? `para ${ev.para}` : "";
@@ -487,6 +526,7 @@ function drawDetail(c) {
       ${r.missing_codes.length ? `<div class="small" style="margin-top:6px">Special missing value(s) for this variable: <b>${esc(r.missing_codes.join(", "))}</b></div>` : `<div class="small muted" style="margin-top:6px">No special missing value defined — leave blank when not established.</div>`}
       <div class="small muted" style="margin-top:6px">${t("codebook_ref")}: ${esc(r.codebook_ref || "—")}</div></div>
     ${r.issues.length ? `<div class="callout warn small"><b>${t("rule_issues")}</b><ul style="margin:4px 0 0;padding-left:18px">${r.issues.map((i) => `<li>${esc(i)}</li>`).join("")}</ul></div>` : ""}
+    ${r.agreement ? `<div class="small" style="margin:6px 0"><span class="badge ${AG_BADGE[r.agreement.status] || ""}">${esc(agText(r.agreement.status))}</span> ${r.agreement.reason ? `<span class="muted">${esc(r.agreement.reason)}</span>` : ""}${r.review && r.review.method === "bulk_independent_agreement" ? ` <span class="muted">${L("（通过批量确认写入；可用“撤销复核”或“修改”更正）", "(written by bulk confirmation; use Reset or Edit to correct)")}</span>` : ""}</div>` : ""}
     ${r.comparison ? `<div class="callout ${r.comparison.model_status === "model_agreement" ? "ok" : "warn"} small"><b>${esc(compText(r.comparison.status))}</b>${r.comparison.status === "human_approved" ? ` (${L("模型比较", "models")}: ${esc(compText(r.comparison.model_status))})` : ""}${r.comparison.note ? " — " + esc(r.comparison.note) : ""}
       ${r.comparison.kind === "reviewer" ? `<br>${L("复核模型看过主模型的结果，不是独立编码。", "The reviewer saw the primary model's result; it is not an independent coder.")}` : ""}
       <br>${L("模型一致不等于事实已核实；最终值以人工复核为准。", "Model agreement is not verification; the human-reviewed value is final.")}</div>` : ""}
