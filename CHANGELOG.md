@@ -2,7 +2,7 @@
 
 Completed changes, newest first. Commit hashes refer to `hesiyang5-glitch/wfd-research-assistant`.
 
-## 2026-10-02 — Default case budget $3 → $5 (branch `feature/budget-default-5`, NOT merged, NOT deployed)
+## 2026-10-02 — Default case budget $3 → $5 (merged `58d8fdc`, pushed to `main` 11:39 am MDT with owner approval; live status not verified by Claude)
 - `app/config.py`: `budget_usd` default 5.00 (D-034, owner approved). OpenAI sub-budget ($3) and attempt caps unchanged.
 - `app/coding.py`: the fallback in `limit_needs` now reads the default instead of a hard-coded 3.0.
 - `tests/test_costs.py`: checks the new default; the per-case budget test now pre-spends "default − $0.05" instead of
@@ -10,6 +10,8 @@ Completed changes, newest first. Commit hashes refer to `hesiyang5-glitch/wfd-re
 - Tests (offline, 2026-10-02): test_costs 32/32, test_pipeline 44/44, test_auth 24/24, test_legacy_migration 18/18,
   test_bulk_agreement 50/50, test_resilience 31/31, test_ui_flow PASS. **Not run:** test_providers (the OpenAI SDK's
   dependencies `httpx2` and `jiter` could not be installed in this environment; PyPI unreachable).
+- Deploy: Claude could not reach the live site from its environment, so whether Render finished the deploy was not
+  checked; the owner should confirm in the Render dashboard (Events → `58d8fdc` live).
 - Not changed: existing cases keep their stored budget; team defaults saved on the Settings page override the shipped
   default (see D-034).
 

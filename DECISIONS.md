@@ -192,7 +192,7 @@ request cut off by a crash still counts toward the case budget and attempt limit
 **Not chosen (yet).** A larger instance or a separate worker service would also isolate the web server from heavy
 work, but costs money; revisit only if the problem recurs after this fix (needs owner approval).
 
-## D-034 · 2026-10-02 · Default case budget raised from $3 to $5 — Active (branch `feature/budget-default-5`, not merged)
+## D-034 · 2026-10-02 · Default case budget raised from $3 to $5 — Active (merged `58d8fdc`, pushed to `main` 2026-10-02)
 **Decision (owner approved 2026-10-02).** `budget_usd` default = $5.00 per case (model + search, all runs). The OpenAI
 sub-budget stays $3 and the attempt caps are unchanged. The cap remains a finite number; approval still raises it only
 to an explicit amount (D-011).
