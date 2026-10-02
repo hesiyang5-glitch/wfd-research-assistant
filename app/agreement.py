@@ -5,10 +5,13 @@ the selected variables, which writes Human final values with full audit records.
 moment of writing, so nothing that changed in between can slip through.
 
 Eligible only when ALL hold:
- 1. Claude and OpenAI results come from the SAME dual-independent run (same group_id, both role 'independent');
-    neither saw the other's answer. Reviewer mode and separate runs never qualify.
- 2. Both runs recorded the same prompt version and codebook (schema) version, and the batch evidence fingerprint
-    used for this variable is identical for both providers.
+ 1. Neither model saw the other's answer (reviewer mode never qualifies). Results from the SAME dual-independent run
+    (same group_id, both role 'independent') are 'eligible'. Results from SEPARATE runs (e.g. Claude earlier, OpenAI
+    later) are 'eligible_separate_runs' (owner decision 2026-10-02, D-035): offered in the dialog UNTICKED with a warning,
+    because the prompt version and the evidence each model saw may differ.
+ 2. Same run: both runs recorded the same prompt version and codebook (schema) version, and the batch evidence
+    fingerprint used for this variable is identical for both providers. Separate runs: the codebook version must be the
+    same; prompt-version and evidence differences are shown as warnings instead of blocking.
  3. Both results have status 'suggested' with a non-blank value that passed server validation (codebook values,
     verbatim quotes, valid passage ids), no counter-evidence, and are not stale (no cited source excluded since).
  4. Normalized values are equal (order-insensitive codes, trimmed/case-insensitive; numbers numerically; ISO dates).
@@ -28,6 +31,8 @@ from . import db
 from .validator import _num, split_values
 
 METHOD = "bulk_independent_agreement"
+METHOD_SEPARATE = "bulk_separate_run_agreement"
+BULK_METHODS = (METHOD, METHOD_SEPARATE)
 FINAL_ACTIONS = ("accepted", "edited", "cleared")
 ELIGIBLE_TYPES = ("categorical", "numeric", "date", "open_list")
 LABELS = {
@@ -36,6 +41,7 @@ LABELS = {
     "confirmed": "Independent model agreement — human confirmed",
     "not_independent": "Agreement but not independent",
     "separate_runs": "Agreement from separate runs — not eligible",
+    "eligible_separate_runs": "Agreement from separate runs — eligible (check evidence)",
     "value_disagreement": "Value disagreement",
     "both_insufficient": "Both insufficient",
     "claude_only": "Claude only",
@@ -122,11 +128,12 @@ def assess(case_id: int, field: dict, sset: dict | None, review: dict | None) ->
     if "reviewer" in (a.get("role"), b.get("role")) or (ra and ra.get("independent") == 0) \
             or (rb and rb.get("independent") == 0):
         return out("not_independent", "one model saw the other's result (review mode)")
-    if not (ra and rb) or not a.get("group_id") or a.get("group_id") != b.get("group_id") \
-            or a.get("role") != "independent" or b.get("role") != "independent":
-        return out("separate_runs", "results come from different runs; evidence may differ")
+    separate = not a.get("group_id") or a.get("group_id") != b.get("group_id") \
+        or a.get("role") != "independent" or b.get("role") != "independent"
+    if not (ra and rb):
+        return out("separate_runs", "a run record is missing; cannot check the codebook version")
     if final:
-        conf = review.get("method") == METHOD or (normalize(field, review.get("value") or "") == na)
+        conf = review.get("method") in BULK_METHODS or (normalize(field, review.get("value") or "") == na)
         return out("confirmed" if conf else "pending", "Human final already set" if not conf else "",
                    method=review.get("method"))
     problems = []
@@ -145,13 +152,22 @@ def assess(case_id: int, field: dict, sset: dict | None, review: dict | None) ->
                  {o.split("(")[0].strip().upper() for o in field.get("open_options", [])}
         if any(p.split("(")[0].strip().upper() not in listed for p in na[1]):
             problems.append("open-list value not among the codebook's listed options")
-    if not (ra.get("prompt_version") and ra.get("prompt_version") == rb.get("prompt_version")):
-        problems.append("prompt version not recorded or different")
+    warnings = []
+    same_prompt = bool(ra.get("prompt_version") and ra.get("prompt_version") == rb.get("prompt_version"))
     if ra.get("schema_version_id") != rb.get("schema_version_id"):
         problems.append("different codebook versions")
     ha, hb = _batch_hash(ra["id"], field["name"]), _batch_hash(rb["id"], field["name"])
-    if not ha or ha != hb:
-        problems.append("evidence used was not identical for both providers")
+    if separate:
+        warnings.append("results come from separate runs")
+        if not same_prompt:
+            warnings.append("prompt version not recorded or different")
+        if not ha or ha != hb:
+            warnings.append("evidence given to the two models may differ")
+    else:
+        if not same_prompt:
+            problems.append("prompt version not recorded or different")
+        if not ha or ha != hb:
+            problems.append("evidence used was not identical for both providers")
     if review and review.get("action") == "deferred":
         problems.append("deferred by a reviewer")
     if problems:
@@ -159,11 +175,16 @@ def assess(case_id: int, field: dict, sset: dict | None, review: dict | None) ->
     src_a = {e.get("source_id") for e in a.get("evidence") or []}
     src_b = {e.get("source_id") for e in b.get("evidence") or []}
     diff = not (src_a & src_b)
-    return out("eligible_evidence_difference" if diff else "eligible", "", evidence_difference=diff,
+    if diff and separate:
+        warnings.append("the two models cited different sources")
+    status = "eligible_separate_runs" if separate else ("eligible_evidence_difference" if diff else "eligible")
+    pv = ra.get("prompt_version") if same_prompt else \
+        f"claude:{ra.get('prompt_version') or 'not recorded'} / openai:{rb.get('prompt_version') or 'not recorded'}"
+    gid = a.get("group_id") if not separate else f"separate runs {ra['id']} + {rb['id']}"
+    return out(status, "; ".join(warnings), evidence_difference=diff, separate_runs=separate, warnings=warnings,
                value=a["value"], claude={"suggestion_id": a["id"], "model": a.get("model") or ra.get("model")},
                openai={"suggestion_id": b["id"], "model": b.get("model") or rb.get("model")},
-               group_id=a.get("group_id"), prompt_version=ra.get("prompt_version"),
-               codebook_version=str(ra.get("schema_version_id")))
+               group_id=gid, prompt_version=pv, codebook_version=str(ra.get("schema_version_id")))
 
 
 def case_assessments(case_id: int) -> dict:
@@ -191,6 +212,7 @@ def eligible_summary(case_id: int) -> dict:
             labels = [codes.get(name, {}).get(p.strip().upper()) for p in split_values(a["value"])]
             items.append({"variable": name, "value": a["value"], "value_label": "; ".join(x for x in labels if x),
                           "status": a["status"], "label": a["label"], "evidence_difference": a["evidence_difference"],
+                          "separate_runs": a.get("separate_runs", False), "warnings": a.get("warnings") or [],
                           "claude": a["claude"], "openai": a["openai"]})
         else:
             excluded[a["label"]] = excluded.get(a["label"], 0) + 1
@@ -215,22 +237,26 @@ def bulk_confirm(case_id: int, variables: list[str], reviewer: str | None) -> di
                 if c.execute("SELECT 1 FROM reviews WHERE case_id=? AND variable=?", (case_id, var)).fetchone():
                     skipped.append({"variable": var, "reason": "a review already exists"})
                     continue
-                reason = (f"Bulk confirmation of independent model agreement (Claude {a['claude']['model']} + OpenAI "
-                          f"{a['openai']['model']})" + ("; evidence differed but both sets passed validation"
-                                                         if a["evidence_difference"] else ""))
+                method = METHOD_SEPARATE if a.get("separate_runs") else METHOD
+                reason = ((f"Bulk confirmation of model agreement from SEPARATE runs (Claude {a['claude']['model']} + "
+                           f"OpenAI {a['openai']['model']}); warnings: {'; '.join(a.get('warnings') or [])}")
+                          if a.get("separate_runs") else
+                          (f"Bulk confirmation of independent model agreement (Claude {a['claude']['model']} + OpenAI "
+                           f"{a['openai']['model']})" + ("; evidence differed but both sets passed validation"
+                                                          if a["evidence_difference"] else "")))
                 c.execute("INSERT INTO reviews (case_id,variable,value,action,reason,suggestion_id,updated_at,reviewer,"
                           "source_provider,method) VALUES (?,?,?,?,?,?,?,?,?,?)",
                           (case_id, var, a["value"], "accepted", reason, a["claude"]["suggestion_id"], now, reviewer,
-                           "anthropic+openai", METHOD))
+                           "anthropic+openai", method))
                 c.execute("INSERT INTO review_history (case_id,variable,old_value,new_value,action,reason,suggestion_id,at,"
                           "reviewer,source_provider,method) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
                           (case_id, var, None, a["value"], "accepted", reason, a["claude"]["suggestion_id"], now, reviewer,
-                           "anthropic+openai", METHOD))
+                           "anthropic+openai", method))
                 c.execute("INSERT INTO bulk_confirmations (batch_id,case_id,variable,value,claude_suggestion_id,"
                           "openai_suggestion_id,claude_model,openai_model,group_id,codebook_version,prompt_version,"
                           "evidence_difference,previous_value,reviewer,at,method) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                           (batch, case_id, var, a["value"], a["claude"]["suggestion_id"], a["openai"]["suggestion_id"],
                            a["claude"]["model"], a["openai"]["model"], a["group_id"], a["codebook_version"],
-                           a["prompt_version"], 1 if a["evidence_difference"] else 0, None, reviewer, now, METHOD))
+                           a["prompt_version"], 1 if a["evidence_difference"] else 0, None, reviewer, now, method))
                 confirmed.append({"variable": var, "value": a["value"]})
     return {"batch_id": batch, "confirmed": confirmed, "skipped": skipped}

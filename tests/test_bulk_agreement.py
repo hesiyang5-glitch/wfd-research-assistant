@@ -178,7 +178,47 @@ def main():
     cE, stE = new_case("bulk E")
     run(cE, stE, [(claude(), "primary")], VARS, "anthropic_only")
     run(cE, stE, [(openai(), "primary")], VARS, "openai_only")
-    check("agreement from two separate runs → not eligible", ag(cE)["SYSTEM_LEVEL"]["status"] == "separate_runs")
+    aE = ag(cE)
+    check("agreement from two separate runs → eligible WITH warning (D-035)",
+          aE["SYSTEM_LEVEL"]["status"] == "eligible_separate_runs" and aE["SYSTEM_LEVEL"]["eligible"]
+          and "separate runs" in aE["SYSTEM_LEVEL"]["reason"], str(aE["SYSTEM_LEVEL"]))
+    check("separate runs: core checks still block (counter-evidence)", not aE["ALERTING_AUTHORITY_TYPE"]["eligible"]
+          and aE["ALERTING_AUTHORITY_TYPE"]["status"] == "pending", str(aE["ALERTING_AUTHORITY_TYPE"]))
+    check("separate runs: core checks still block (invalid quote / validation)", not aE["ALERT_APPROVAL_PROCESS"]["eligible"])
+    check("separate runs: disagreement still a disagreement", aE["FAILURE_TYPE"]["status"] == "value_disagreement")
+    check("separate runs: free text never eligible", not aE["SUMMARY"]["eligible"])
+    check("separate runs: open list value not in the codebook never eligible", not aE["TRANSMISSION_PATHWAY"]["eligible"])
+    check("separate runs: both blank stays 'Both insufficient'", aE["POPULATION_SCOPE"]["status"] == "both_insufficient")
+    # a legacy-style Claude run without a recorded prompt version still qualifies, with a warning
+    rid_c = db.q1("SELECT run_id FROM suggestions WHERE case_id=? AND variable='SYSTEM_LEVEL' AND provider='anthropic'", (cE,))["run_id"]
+    db.update("runs", rid_c, {"prompt_version": None})
+    aE2 = ag(cE)["SYSTEM_LEVEL"]
+    check("separate runs: missing prompt version is a warning, not a block",
+          aE2["eligible"] and "prompt version" in aE2["reason"], str(aE2))
+    sv = db.q1("SELECT schema_version_id FROM runs WHERE id=?", (rid_c,))["schema_version_id"]
+    db.update("runs", rid_c, {"schema_version_id": (sv or 0) + 999})
+    check("separate runs: different codebook version blocks", not ag(cE)["SYSTEM_LEVEL"]["eligible"])
+    db.update("runs", rid_c, {"schema_version_id": sv})
+    summE = server.api_bulk_agreements(H(), str(cE))
+    itE = [x for x in summE["eligible"] if x["variable"] == "SYSTEM_LEVEL"]
+    check("dialog marks the separate-run item and lists its warnings",
+          itE and itE[0]["separate_runs"] and itE[0]["warnings"], str(itE))
+    rE = server.api_bulk_confirm(H(), str(cE), {"variables": ["SYSTEM_LEVEL"], "confirmed": True})
+    rvE = db.q1("SELECT * FROM reviews WHERE case_id=? AND variable='SYSTEM_LEVEL'", (cE,))
+    auE = db.q1("SELECT * FROM bulk_confirmations WHERE case_id=? AND variable='SYSTEM_LEVEL'", (cE,))
+    check("confirming a separate-run agreement writes Human final with its own method and warning in the reason",
+          rE["confirmed"] and rvE["method"] == "bulk_separate_run_agreement" and "SEPARATE runs" in rvE["reason"], str(rvE))
+    check("audit row records the separate runs and both prompt versions",
+          auE["method"] == "bulk_separate_run_agreement" and auE["group_id"].startswith("separate runs")
+          and "not recorded" in (auE["prompt_version"] or ""), str(auE))
+    check("after confirmation the status is 'human confirmed'", ag(cE)["SYSTEM_LEVEL"]["status"] == "confirmed")
+    import openpyxl
+    xlE = openpyxl.load_workbook(io.BytesIO(export.xlsx(cE)))
+    rhE = [c.value for c in xlE["Results"][1]]
+    resE = {r[0].value: [c.value for c in r] for r in xlE["Results"].iter_rows(min_row=2)}
+    check("export labels the separate-run confirmation",
+          resE["SYSTEM_LEVEL"][rhE.index("Confirmation method")] == "human-approved model agreement, separate runs (bulk)"
+          and "SEPARATE runs" in resE["SYSTEM_LEVEL"][rhE.index("Explanation")])
 
     print("\n[3] Dialog data, explicit confirmation, unchecking, protection of existing Human final")
     server.api_review(H(), str(cA), {"variable": "EVENT_DATE", "action": "edit", "value": "2025-07-05", "reason": "AAR timeline"})
@@ -269,6 +309,10 @@ def main():
     cF, stF = new_case("bulk F (browser)")
     run(cF, stF, [(claude(), "independent"), (openai(), "independent")], ["SYSTEM_LEVEL", "SYSTEM_INVOLVED", "ALERT_ORIGINATOR_PLATFORM", "FAILURE_TYPE"], "dual_independent")
     n_el = len(server.api_bulk_agreements(H(), str(cF))["eligible"])
+    cG, stG = new_case("bulk G (browser, separate runs)")
+    run(cG, stG, [(claude(), "primary")], ["SYSTEM_LEVEL"], "anthropic_only")
+    run(cG, stG, [(openai(), "primary")], ["SYSTEM_LEVEL"], "openai_only")
+    sep_ok = False
     env = {**os.environ, "WFD_PORT": "8851"}
     srv = subprocess.Popen([sys.executable, "-m", "app.server"], cwd=str(ROOT), env=env, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
     ok = False
@@ -303,6 +347,21 @@ def main():
             pg.wait_for_timeout(1500)
             written = db.q1("SELECT COUNT(*) n FROM reviews WHERE case_id=? AND method='bulk_independent_agreement'", (cF,))["n"]
             pg.screenshot(path=str(TMP / "bulk_after.png"))
+            pg.goto(f"http://127.0.0.1:8851/#/case/{cG}/review")
+            pg.reload()
+            pg.wait_for_timeout(1500)
+            pg.click("#bulkBtn")
+            pg.wait_for_selector("#bulkTable", timeout=5000)
+            g_checked = pg.locator(".bulkChk").first.is_checked()
+            g_ok_disabled = pg.locator("#bulkOk").is_disabled()
+            g_dlg = pg.inner_text(".modal")
+            pg.screenshot(path=str(TMP / "bulk_separate_dialog.png"))
+            pg.locator(".bulkChk").first.check()
+            pg.click("#bulkOk")
+            pg.wait_for_timeout(1500)
+            g_written = db.q1("SELECT COUNT(*) n FROM reviews WHERE case_id=? AND method='bulk_separate_run_agreement'", (cG,))["n"]
+            sep_ok = (not g_checked and g_ok_disabled and "Separate runs" in g_dlg and g_written == 1)
+            print(f"  separate-run item: checked-by-default={g_checked} confirm-disabled={g_ok_disabled} written={g_written}")
             ok = (f"Confirm {n_el} model agreement" in btn and n_rows == n_el and "does not independently prove" in dlg
                   and "gpt-6.1-sol" in dlg and "claude-sonnet-5-5" in dlg and k == str(n_el - 1) and written == n_el - 1 and not errors)
             print(f"  eligible={n_el} rows={n_rows} after-uncheck={k} written={written} errors={errors}")
@@ -311,6 +370,7 @@ def main():
         srv.terminate()
         srv.communicate(timeout=10)
     check("browser: button shows the count; dialog lists models and warning; unchecked item not written", ok)
+    check("browser: separate-run item is unticked by default with a warning; ticking and confirming writes it", sep_ok)
     print("  screenshots in", TMP)
     print(f"\n{len(PASS)} passed, {len(FAIL)} failed")
     if FAIL:

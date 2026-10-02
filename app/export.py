@@ -142,6 +142,8 @@ def explanation_cell(row: dict, origin: str) -> str:
         parts.append(f"[model: {s.get('provider')} {s.get('model') or ''}]".replace(" ]", "]"))
     if r and r.get("method") == "bulk_independent_agreement":
         parts.append(f"[human-confirmed independent model agreement (bulk confirmation) by {r.get('reviewer') or 'reviewer'}]")
+    elif r and r.get("method") == "bulk_separate_run_agreement":
+        parts.append(f"[human-confirmed model agreement from SEPARATE runs (bulk confirmation) by {r.get('reviewer') or 'reviewer'}]")
     elif r and r.get("source_provider"):
         parts.append(f"[accepted from {r['source_provider']} suggestion]")
     comp = row.get("comparison")
@@ -209,6 +211,8 @@ def xlsx(case_id: int, include_unreviewed=False) -> bytes:
                    origin, (row["suggestion"] or {}).get("status", ""), (row.get("comparison") or {}).get("label", ""),
                    (row["review"] or {}).get("source_provider") or "", (row.get("agreement") or {}).get("label", ""),
                    ("human-approved model agreement (bulk)" if (row["review"] or {}).get("method") == "bulk_independent_agreement"
+                    else "human-approved model agreement, separate runs (bulk)"
+                    if (row["review"] or {}).get("method") == "bulk_separate_run_agreement"
                     else ((row["review"] or {}).get("action") or ""))])
         if origin == "UNREVIEWED":
             for c in wr[wr.max_row]:

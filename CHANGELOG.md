@@ -2,6 +2,16 @@
 
 Completed changes, newest first. Commit hashes refer to `hesiyang5-glitch/wfd-research-assistant`.
 
+
+## 2026-10-02 — Bulk confirmation for agreement from separate runs (branch `feature/separate-run-agreement`, NOT merged, NOT deployed)
+- `app/agreement.py`: new status `eligible_separate_runs` (D-035); core checks kept, prompt/evidence differences become
+  warnings; confirmations use method `bulk_separate_run_agreement` with warnings in the reason and audit row.
+- Dialog: separate-run items unticked by default with a warning; Confirm stays disabled until something is ticked.
+- Export: Results "Confirmation method" and Explanation name separate-run confirmations.
+- Tests: `tests/test_bulk_agreement.py` 64 checks (was 50) incl. browser; also checked by hand on a copy of the
+  `c57214a` legacy fixture that old Claude results (no prompt version) plus a later OpenAI run become eligible with a
+  warning. Not tested on the production data.
+
 ## 2026-10-02 — Default case budget $3 → $5 (branch `feature/budget-default-5`, NOT merged, NOT deployed)
 - `app/config.py`: `budget_usd` default 5.00 (D-034, owner approved). OpenAI sub-budget ($3) and attempt caps unchanged.
 - `app/coding.py`: the fallback in `limit_needs` now reads the default instead of a hard-coded 3.0.
