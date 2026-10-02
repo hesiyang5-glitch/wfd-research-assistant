@@ -2,6 +2,17 @@
 
 Completed changes, newest first. Commit hashes refer to `hesiyang5-glitch/wfd-research-assistant`.
 
+## 2026-10-02 — Default case budget $3 → $5 (branch `feature/budget-default-5`, NOT merged, NOT deployed)
+- `app/config.py`: `budget_usd` default 5.00 (D-034, owner approved). OpenAI sub-budget ($3) and attempt caps unchanged.
+- `app/coding.py`: the fallback in `limit_needs` now reads the default instead of a hard-coded 3.0.
+- `tests/test_costs.py`: checks the new default; the per-case budget test now pre-spends "default − $0.05" instead of
+  a fixed $2.95, so it keeps testing the pause/approval path at any default.
+- Tests (offline, 2026-10-02): test_costs 32/32, test_pipeline 44/44, test_auth 24/24, test_legacy_migration 18/18,
+  test_bulk_agreement 50/50, test_resilience 31/31, test_ui_flow PASS. **Not run:** test_providers (the OpenAI SDK's
+  dependencies `httpx2` and `jiter` could not be installed in this environment; PyPI unreachable).
+- Not changed: existing cases keep their stored budget; team defaults saved on the Settings page override the shipped
+  default (see D-034).
+
 ## 2026-10-02 — Stay responsive under load; pause interrupted jobs (merged `f664344`, deployed 10:50 am with owner approval; thread limit verified on Render)
 - Numerical libraries limited to 1 thread (`app/__init__.py`, Dockerfile); `WFD_NATIVE_THREADS` overrides (D-033).
 - Evidence index built once per case/evidence set and shared by gap check, estimates, coding and evidence search;

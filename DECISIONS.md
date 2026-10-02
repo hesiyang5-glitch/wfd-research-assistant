@@ -191,3 +191,15 @@ sent; at startup any `sending` row becomes `interrupted_possibly_billed` and a w
 request cut off by a crash still counts toward the case budget and attempt limits.
 **Not chosen (yet).** A larger instance or a separate worker service would also isolate the web server from heavy
 work, but costs money; revisit only if the problem recurs after this fix (needs owner approval).
+
+## D-034 · 2026-10-02 · Default case budget raised from $3 to $5 — Active (branch `feature/budget-default-5`, not merged)
+**Decision (owner approved 2026-10-02).** `budget_usd` default = $5.00 per case (model + search, all runs). The OpenAI
+sub-budget stays $3 and the attempt caps are unchanged. The cap remains a finite number; approval still raises it only
+to an explicit amount (D-011).
+**Why.** At $3, most OpenAI and dual runs paused for approval before starting (worst case ≈ $2.5 / $3.5, K-28). The
+team uses Tavily, which is counted at $0.016 per request, so search spend is already inside this cap. $5 matches the
+per-case cap in the owner's budget plan (estimated typical cost $1.5–3 per case, unmeasured).
+**Scope.** Only the shipped default changes. Settings are layered: shipped default → team defaults saved on the
+Settings page (database) → each case's own settings. Existing cases keep the budget stored with them, and if team
+defaults were saved with $3, new cases keep using $3 until that value is changed on the Settings page.
+**Not chosen.** Raising the OpenAI sub-budget or attempt caps (not requested; dual worst case fits under $5).
