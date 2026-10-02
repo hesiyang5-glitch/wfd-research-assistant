@@ -19,7 +19,8 @@ Status at handoff (2026-10-02):
 - Completed and tested offline: thread limit, shared index, worker priority, paused recovery, pre-send ledger.
 - Completed, not fully tested: behavior on Render; interrupted-job notice in a browser.
 - Root cause confirmed on Render 2026-10-02 (32 threads per pool under a 0.5-CPU quota; 1,682 throttled periods).
-- Unresolved: "Instance failed" reason text and memory peak not yet seen (K-38); K-39.
+- Render event reason: "HTTP health check failed (timed out after 5 seconds)", not out of memory.
+- Unresolved: memory peak not checked; K-39.
 - Deferred: larger instance / separate worker (paid; only if the problem recurs).
 
 ## 2026-10-01 — Production: bulk agreement merged (`66f53f8`), OpenAI key added, first live dual test
