@@ -32,7 +32,7 @@ Last reviewed: 2026-10-01 (commit `33a0c5e`). Severity: **High** (blocks correct
 | K-33 | Resolved on the branch: `docs/live-coding-result` was merged into `feature/openai-provider` (2026-10-01), so one later merge to `main` carries both. | — |
 | K-35 | Providers in one job run one after another (Claude first in dual mode), not in parallel. Stop takes effect before the next batch; a request already sent cannot be cancelled (up to the 600 s timeout) and may be billed. | Low |
 | K-36 | Existing-data migration is proven on a database produced by the deployed code `c57214a` (synthetic Marshall Fire case), not on a copy of the production database (not accessible from the development environment, and must not be used). Back up before merging. | Medium |
-| K-37 | Bulk confirmation (deployed in `66f53f8`; the confirm dialog has not yet been used live) only applies to dual-independent runs made after this change (runs need a recorded prompt version); in production that requires `OPENAI_API_KEY` and a paid dual run. No batch-undo button: undo is per variable (Reset). | Low |
+| K-37 | Bulk confirmation (deployed in `66f53f8`; the confirm dialog has not yet been used live). Same-run agreement needs a dual-independent run made after this change; separate-run agreement (D-035, branch `feature/separate-run-agreement`, not deployed) is offered unticked with a warning. No batch-undo button: undo is per variable (Reset). | Low |
 | K-39 | SYSTEM_LEVEL row after the live dual test shows "Pending human review"; reason not yet explained (likely disagreement or validation flag — unconfirmed). | Low |
 | K-34 | D-025 changes Claude behavior: batches whose reply had an invalid item are re-sent (and re-paid) on re-analysis. | Low |
 

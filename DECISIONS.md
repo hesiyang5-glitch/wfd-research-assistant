@@ -160,7 +160,7 @@ of one provider never replaces the other's column. A `stopped` row never hides t
 value (shown with a "latest run stopped" note). Comparison is labelled independent, reviewer (not independent) or
 separate runs (evidence may differ). Human final is `reviews` only; no model run writes to it.
 
-## D-032 · 2026-10-01 · Bulk confirmation of independent model agreement — Active (branch `feature/bulk-agreement`)
+## D-032 · 2026-10-01 · Bulk confirmation of independent model agreement — Active (deployed `66f53f8`); separate-runs rule amended by D-035 (merged 2026-10-02)
 **Decision.** Model agreement never becomes a final value by itself. Variables meeting all eligibility rules are
 offered in a confirmation dialog; only the variables the reviewer leaves checked, and that are still eligible at write
 time, receive a Human final (`reviews.action = accepted`, `method = bulk_independent_agreement`) with a full audit row
@@ -203,3 +203,20 @@ per-case cap in the owner's budget plan (estimated typical cost $1.5–3 per cas
 Settings page (database) → each case's own settings. Existing cases keep the budget stored with them, and if team
 defaults were saved with $3, new cases keep using $3 until that value is changed on the Settings page.
 **Not chosen.** Raising the OpenAI sub-budget or attempt caps (not requested; dual worst case fits under $5).
+
+## D-035 · 2026-10-02 · Agreement from separate runs can be bulk-confirmed, with a warning — Active (merged to `main` 2026-10-02 with owner approval)
+**Context.** Owner (2026-10-02): the Marshall Fire case has Claude results from an earlier run and OpenAI results from a
+later OpenAI-only run; equal values were shown as "Agreement from separate runs — not eligible". Owner asked that
+separate runs not block bulk confirmation. This **changes the owner choice recorded in D-032** ("only the same
+dual-independent run qualifies").
+**Decision (owner chose the recommended options).** Equal values from separate runs get status
+`eligible_separate_runs` ("Agreement from separate runs — eligible (check evidence)"). In the confirmation dialog they
+are **unticked by default** and show a warning; the reviewer must tick each one. Core checks still block: same codebook
+version; both `suggested` and validated with evidence; no counter-evidence; not stale; eligible field type (open list only
+with codebook-listed options; never free text); no review of any kind; reviewer mode (one model saw the other) still
+never qualifies. Prompt-version and evidence-fingerprint differences (old Claude runs recorded neither) become
+warnings, not blocks. Confirmations are written with `method = bulk_separate_run_agreement`; the reason, audit row
+(`group_id = "separate runs <claude run> + <openai run>"`, both prompt versions) and Excel export
+("human-approved model agreement, separate runs (bulk)") say so. Same-run rules are unchanged.
+**Risk.** Two models may have seen different evidence or prompts; agreement is weaker evidence than in a
+dual-independent run. Mitigated by the unticked default, the warning and the distinct audit method.
