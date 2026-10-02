@@ -2,6 +2,10 @@
 
 Completed changes, newest first. Commit hashes refer to `hesiyang5-glitch/wfd-research-assistant`.
 
+## 2026-10-02 — Session handoff (docs only, branch `docs/live-coding-result`, not deployed)
+- Updated status after live checks: in-page dialog, cache reuse, no caching of cut-off replies and persistence across
+  four redeploys confirmed live; deployed commit recorded as `c57214a`; test results re-run on 2026-10-02.
+
 ## 2026-10-01 — First complete live coding run (docs only)
 - Marshall Fire re-analysis on `c57214a`: 16 calls, 0 failed, 7 reused from cache; output use up to ~960 tokens
   per variable. Case total $1.49 (including ~$0.68 for the earlier partly cut-off run).

@@ -1,6 +1,6 @@
 # KNOWN_ISSUES.md — open defects, limitations, risks, planned work
 
-Last reviewed: 2026-10-01 (commit `33a0c5e`). Severity: **High** (blocks correct/safe use), **Medium**,
+Last reviewed: 2026-10-02 (deployed code `c57214a`). Severity: **High** (blocks correct/safe use), **Medium**,
 **Low**. Move items to `CHANGELOG.md` when fixed.
 
 ## Pending owner decisions
@@ -15,8 +15,8 @@ Last reviewed: 2026-10-01 (commit `33a0c5e`). Severity: **High** (blocks correct
 |---|---|---|
 | K-03 | **Output headroom is modest.** Live re-analysis (2026-10-01, `c57214a`) coded all 16 batches, 0 failed. Heaviest batch used 4,811 of 7,500 output tokens for 5 variables (~960/variable vs 1,200 allowed). Watch the logged token counts; raise `OUT_TOKENS_PER_VAR` if a cut-off recurs. | Low |
 | K-04 | Coding quality vs hand-coded benchmarks unmeasured (TEST_PLAN §4). | High |
-| K-05 | Live export, live causal-uncertainty handling, live review/reanalysis not yet exercised. | Medium |
-| K-06 | Recorded case spend vs Anthropic Console usage not yet reconciled. | Medium |
+| K-05 | Live review page, citations, export, causal-uncertainty handling and edit-then-reanalyze not yet checked (TEST_PLAN L6–L9). | Medium |
+| K-06 | Recorded case spend ($1.49 for Marshall Fire, of which Tavily $0.208 is a conservative estimate) not yet reconciled with Anthropic Console usage. | Medium |
 
 ## Research quality
 

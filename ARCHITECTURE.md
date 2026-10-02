@@ -1,6 +1,6 @@
 # ARCHITECTURE.md — current system
 
-Last reviewed: 2026-10-01 (commit `33a0c5e`).
+Last reviewed: 2026-10-02 (deployed code `c57214a`).
 
 ## Overview
 

@@ -10,7 +10,7 @@ Authoritative requirements for WFD Coding Assistant. Status tags:
 "Offline" tests use local fixtures (a `TEST-FIXTURE` search provider, a local test web server, or a scripted
 fake model). They prove the app's rules, not real-world search or coding quality.
 
-Last reviewed: 2026-10-01 (commit `33a0c5e`).
+Last reviewed: 2026-10-02 (deployed code `c57214a`).
 
 ## 1. Purpose and users
 
@@ -115,15 +115,15 @@ citations, and leaves every final decision to a human reviewer.
 | Requirement | Status |
 |---|---|
 | Cases, sources, passages, suggestions, reviews, jobs, usage in SQLite on disk (not browser memory) | TESTED |
-| Background jobs survive restarts and resume from the last completed stage; completed model calls reused from cache | TESTED offline |
-| Data survives Render redeploys (persistent disk at `/var/data`) | TESTED live (Marshall Fire case and its sources were still present after the `de5aece` redeploy) |
+| Background jobs survive restarts and resume from the last completed stage; completed model calls reused from cache | Resume: TESTED offline. Cache reuse: TESTED offline and live (7 of 16 batches reused at no charge, 2026-10-01) |
+| Data survives Render redeploys (persistent disk at `/var/data`) | TESTED live (Marshall Fire case, sources and cached model replies were still present after the `de5aece`, `33a0c5e`, `e02de43` and `c57214a` redeploys) |
 
 ## 11. Cost safeguards
 
 | Requirement | Status |
 |---|---|
 | Per-case dollar budget (default $3) summed across all runs, model + search | TESTED offline |
-| Pre-run estimate; precise worst-case estimate before coding; pause when it exceeds the remaining case budget | TESTED offline |
+| Pre-run estimate; precise worst-case estimate before coding; pause when it exceeds the remaining case budget | Estimate shown live before re-analysis; pause path TESTED offline only |
 | Approval raises the case budget to an explicit amount (spent + worst case), logged with reviewer name; never removes the cap | TESTED offline |
 | Worst-case check before every model call (input +25%, all output tokens) | TESTED offline |
 | Retry only requests that surely were not processed (429/529/connection); timeouts and 5xx not retried and counted at worst case | TESTED offline |
@@ -131,7 +131,7 @@ citations, and leaves every final decision to a human reviewer.
 | Tavily counted at $0.016/request; budget checked before every query | TESTED offline |
 | Unknown model price pauses instead of running uncapped | TESTED offline |
 | Duplicate submissions for a running case return the same job | TESTED |
-| Truncated/invalid model replies never cached | TESTED offline |
+| Truncated/invalid model replies never cached | TESTED offline and live (9 cut-off batches were re-sent on the next re-analysis, 2026-10-01) |
 | **Per-case caps on number of model attempts and search requests** (project rule) | **UNRESOLVED** — current count caps are per run (`max_queries` 40); model attempts bounded only by batching and the dollar budget |
 
 ## 12. Security
@@ -152,7 +152,7 @@ citations, and leaves every final decision to a human reviewer.
 |---|---|
 | Bilingual (Chinese/English) interface; original English variable names kept | TESTED |
 | Pages: research entry, cases, progress, sources, search log, review, export/runs, schema, settings | TESTED |
-| Confirmations shown inside the page (browser popups can be blocked) | TESTED offline (fix deployed in `33a0c5e`; not yet confirmed by the user live) |
+| Confirmations shown inside the page (browser popups can be blocked) | TESTED offline and live (owner saw the Re-analyze dialog, 2026-10-01) |
 
 ## 14. Deployment
 

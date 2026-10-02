@@ -1,6 +1,6 @@
 # TEST_PLAN.md — acceptance criteria and tests
 
-Last reviewed: 2026-10-01 (commit `33a0c5e`).
+Last reviewed: 2026-10-02 (deployed code `c57214a`).
 
 ## 1. Automated tests (offline, no paid calls)
 
@@ -11,10 +11,10 @@ Set `WFD_TEST_PDFS` to a folder containing the Texas-flood source PDFs (claude.a
 
 | Suite | Command | Checks | Last result | Covers |
 |---|---|---|---|---|
-| Pipeline | `python3 -m tests.test_pipeline` | 44 | 44/44 pass (2026-10-01, `33a0c5e`) | schema vs workbook order/count, rule flags, `-9` rules; research stages with fixture search; PDF page numbers; exact/near duplicates; irrelevant sources; 403 recorded not bypassed; no-model mode invents nothing; validator (invented code, fake quote, unknown ID, per-option evidence, disputes); review preserved across reanalysis; cache reuse; TSV/XLSX/case-row/JSON exports; restart recovery |
-| Cost safety | `python3 -m tests.test_costs` | 29 | 29/29 pass (2026-10-01, `fix/output-limit`) | output allowance ≥1,200 tokens/variable, ≤12 variables per call, under the 16,000 ceiling, no variable dropped; retry only 429/529/connection; timeouts/5xx not retried and counted; no `temperature` sent; truncated replies not cached; complete replies cached; worst-case pre-check; repeated 4xx stops run; budget per case across runs; approval sets explicit amount and is logged; unknown price pauses; Tavily $0.016 counted and capped |
-| Login & security | `python3 -m tests.test_auth` | 24 | 24/24 pass (2026-10-01) | refuses public bind without password; health check; headers; API/export blocked when logged out; wrong password slowed; name required; HttpOnly SameSite cookie; JSON-only mutations; reviewer name in history and sources; tampered session rejected; per-address lockout; faked `X-Forwarded-For` doesn't bypass; site-wide pause; signed-in users unaffected; browser login flow |
-| Browser flow | `python3 -m tests.test_ui_flow` | flow | PASS (2026-10-01) | home form → research (fixture) → sources (irrelevant flagged) → review edit → citation opens highlighted passage → XLSX export contains reviewed value; no JS errors |
+| Pipeline | `python3 -m tests.test_pipeline` | 44 | 44/44 pass (2026-10-02, `c57214a` code) | schema vs workbook order/count, rule flags, `-9` rules; research stages with fixture search; PDF page numbers; exact/near duplicates; irrelevant sources; 403 recorded not bypassed; no-model mode invents nothing; validator (invented code, fake quote, unknown ID, per-option evidence, disputes); review preserved across reanalysis; cache reuse; TSV/XLSX/case-row/JSON exports; restart recovery |
+| Cost safety | `python3 -m tests.test_costs` | 29 | 29/29 pass (2026-10-02, `c57214a` code) | output allowance ≥1,200 tokens/variable, ≤12 variables per call, under the 16,000 ceiling, no variable dropped; retry only 429/529/connection; timeouts/5xx not retried and counted; no `temperature` sent; truncated replies not cached; complete replies cached; worst-case pre-check; repeated 4xx stops run; budget per case across runs; approval sets explicit amount and is logged; unknown price pauses; Tavily $0.016 counted and capped |
+| Login & security | `python3 -m tests.test_auth` | 24 | 24/24 pass (2026-10-02) | refuses public bind without password; health check; headers; API/export blocked when logged out; wrong password slowed; name required; HttpOnly SameSite cookie; JSON-only mutations; reviewer name in history and sources; tampered session rejected; per-address lockout; faked `X-Forwarded-For` doesn't bypass; site-wide pause; signed-in users unaffected; browser login flow |
+| Browser flow | `python3 -m tests.test_ui_flow` | flow | PASS (2026-10-02) | home form → research (fixture) → sources (irrelevant flagged) → review edit → citation opens highlighted passage → XLSX export contains reviewed value; no JS errors |
 
 Not automated: Docker image build, Render deployment, live Tavily/Anthropic calls, OCR on a scanned PDF,
 neural embeddings, start scripts' first-time `pip install`. There is no CI yet.
@@ -49,7 +49,9 @@ Run after each deploy that changes research or coding behavior. Set "Cost cap pe
 | L8 | Edit a value, re-analyze | edit preserved; Δ where suggestion changed | pending |
 | L9 | Export XLSX / case row | headers match workbook; unreviewed cells blank | pending |
 | L10 | Case spend vs Anthropic Console usage | app's recorded cost ≥ actual | pending |
-| L11 | Data after redeploy | case still present | PASS (after `de5aece`) |
+| L11 | Data after redeploy | case still present | PASS (after `de5aece`, `33a0c5e`, `e02de43`, `c57214a`) |
+| L12 | Re-analyze shows in-page cost dialog | dialog with calls, tokens, cost range | PASS (2026-10-01) |
+| L13 | Cached batches reused, cut-off batches re-sent | log shows "reused cached" for prior successes | PASS (2026-10-01, 7 reused) |
 
 ## 4. Benchmark cases
 
