@@ -2,6 +2,33 @@
 
 Completed changes, newest first. Commit hashes refer to `hesiyang5-glitch/wfd-research-assistant`.
 
+## 2026-10-02 — Stay responsive under load; pause interrupted jobs (branch `fix/health-under-load`, NOT merged, NOT deployed)
+- Numerical libraries limited to 1 thread (`app/__init__.py`, Dockerfile); `WFD_NATIVE_THREADS` overrides (D-033).
+- Evidence index built once per case/evidence set and shared by gap check, estimates, coding and evidence search;
+  rebuilt automatically when sources are added, excluded or restored (`retrieval.get_index`).
+- Background worker runs at lower CPU priority than web requests.
+- After a restart, a running job is paused ("Interrupted by a server restart") with Resume / Cancel on the Progress
+  page; it is no longer restarted automatically.
+- Model requests are recorded as `sending` (worst-case cost) before they are sent; at startup unfinished ones become
+  `interrupted_possibly_billed` and are counted at worst case.
+- Tests: new `tests/test_resilience.py` (31 checks); all 8 suites pass offline. Not tested: on Render (the 0.5-CPU
+  quota cannot be reproduced locally; the load test pins to one core and did not reproduce the original failure on the
+  old code either, so it shows no regression, not proof of the fix); the interrupted-job notice in a browser.
+
+Status at handoff (2026-10-02):
+- Completed and tested offline: thread limit, shared index, worker priority, paused recovery, pre-send ledger.
+- Completed, not fully tested: behavior on Render; interrupted-job notice in a browser.
+- Root cause confirmed on Render 2026-10-02 (32 threads per pool under a 0.5-CPU quota; 1,682 throttled periods).
+- Render event reason: "HTTP health check failed (timed out after 5 seconds)", not out of memory.
+- Unresolved: memory peak not checked; K-39.
+- Deferred: larger instance / separate worker (paid; only if the problem recurs).
+
+## 2026-10-01 — Production: bulk agreement merged (`66f53f8`), OpenAI key added, first live dual test
+- Owner approved; `66f53f8` auto-deployed. Owner added `OPENAI_API_KEY` in Render.
+- Single-variable dual re-analysis (SYSTEM_LEVEL, Marshall Fire) completed; both providers' results shown; app-recorded
+  cost about $0.02. During it Render health checks failed and the service restarted (502); the old code re-queued the
+  job, which then finished. Fix on branch `fix/health-under-load` (above).
+
 ## 2026-10-01 — Bulk confirmation of independent model agreement (branch `feature/bulk-agreement`, NOT merged, NOT deployed)
 - New `app/agreement.py`: eligibility rules (D-032) and `bulk_confirm()`; endpoints `GET /api/cases/{id}/bulk_agreements`
   (read-only) and `POST /api/cases/{id}/bulk_confirm` (requires `confirmed: true`; re-checks eligibility in one

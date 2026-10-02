@@ -172,3 +172,22 @@ kind (accepted, edited, cleared or deferred). Two blanks = "Both insufficient". 
 Edit actions; re-analysis never writes to Human final.
 **Owner choices (2026-10-01):** only the same dual-independent run qualifies (separate runs never); open lists only
 with listed options; a deferred review excludes the variable.
+
+## D-033 · 2026-10-02 · Stay responsive under load; never auto-restart an interrupted job — Proposed (branch `fix/health-under-load`, not merged)
+**Context.** 2026-10-01 ~11:45 pm (dual-mode test): while the server prepared one re-analysis, Render's health check
+(`/healthz`, 5 s timeout) failed repeatedly, Render restarted the service (502 for visitors), and on startup the code
+re-queued the running job, which repeated the heavy work. Logs show a 45 s gap between two steps that take ~0.3 s
+locally. Cause (confirmed on Render 2026-10-02: 32 host CPUs, 0.5-CPU quota, OpenMP/OpenBLAS pools of 32 threads, 1,682 throttled periods): numerical libraries (OpenBLAS/OpenMP via numpy/scikit-learn)
+start one thread per CPU of the whole host machine; on a 0.5-CPU plan these threads use up the CPU allowance and the
+kernel pauses the whole process, including the thread that answers the health check. The evidence index (BM25 + LSA)
+was also rebuilt for every cost estimate, the gap check and the run itself.
+**Decision.** (1) Limit native thread pools to 1 (`app/__init__.py` before numpy loads, and Dockerfile `ENV`;
+override with `WFD_NATIVE_THREADS`). (2) Build the evidence index once per case and evidence set, share it, rebuild
+automatically when passages change (`retrieval.get_index`). (3) Run the background worker at lower CPU priority
+(nice 10) than web requests. (4) After a restart, a job that was running is **paused** (`needs_input`,
+`awaiting = interrupted`) and only continues when the owner clicks Resume; a job being cancelled ends cancelled.
+(5) Every model request is written to `model_calls` with status `sending` and its worst-case cost **before** it is
+sent; at startup any `sending` row becomes `interrupted_possibly_billed` and a worst-case `usage` row is added, so a
+request cut off by a crash still counts toward the case budget and attempt limits.
+**Not chosen (yet).** A larger instance or a separate worker service would also isolate the web server from heavy
+work, but costs money; revisit only if the problem recurs after this fix (needs owner approval).

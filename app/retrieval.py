@@ -196,3 +196,40 @@ def evidence_strength(hits: list[dict], field: dict) -> float:
     key = set(tokenize(" ".join(re.split(r"[_\W]+", field["name"].lower()))))
     covered = max(len(key & set(tokenize(h["text"]))) / (len(key) or 1) for h in hits)
     return round(min(1.0, best / 12.0) * 0.6 + covered * 0.4, 3)
+
+
+# ----------------------------------------------------------------------------- shared index cache
+import hashlib as _hashlib
+import threading as _threading
+
+_INDEX_LOCK = _threading.Lock()
+_INDEX_CACHE: dict = {}  # (case_id, fingerprint) -> CorpusIndex; small LRU
+_INDEX_MAX = 3
+INDEX_BUILDS = {"n": 0}  # counter for tests
+
+
+def _fingerprint(passages: list[dict]) -> str:
+    h = _hashlib.sha256()
+    for p in passages:
+        h.update(str(p["id"]).encode())
+        h.update(b"\0")
+        h.update(str(len(p.get("text") or "")).encode())
+        h.update(b"\1")
+    return h.hexdigest()[:16]
+
+
+def get_index(case_id: int, passages: list[dict] | None = None) -> "CorpusIndex":
+    """The case's evidence index, built once and reused by the gap check, cost estimates, coding and manual search
+    (incident 2026-10-01: it was rebuilt for every estimate and again for the run). Rebuilt automatically when the
+    case's passages change (sources added, excluded or restored). Concurrent callers wait for one build."""
+    passages = passages if passages is not None else load_case_passages(case_id)
+    key = (case_id, _fingerprint(passages))
+    with _INDEX_LOCK:
+        idx = _INDEX_CACHE.pop(key, None)
+        if idx is None:
+            idx = CorpusIndex(passages)
+            INDEX_BUILDS["n"] += 1
+        _INDEX_CACHE[key] = idx  # most recently used last
+        while len(_INDEX_CACHE) > _INDEX_MAX:
+            _INDEX_CACHE.pop(next(iter(_INDEX_CACHE)))
+        return idx

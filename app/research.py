@@ -489,7 +489,8 @@ def stage_gaps(ctx: Ctx) -> list[dict]:
     if not passages:
         gaps = [{"name": f["name"], "strength": 0.0} for f in fields]
     else:
-        idx = CorpusIndex(passages)
+        from .retrieval import get_index
+        idx = get_index(ctx.case["id"], passages)
         gaps = []
         for f in fields:
             hits = idx.search(variable_query(f), k=5)
