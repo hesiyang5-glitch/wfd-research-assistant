@@ -37,7 +37,7 @@ standard-library server plus SQLite installs in one step and runs anywhere Pytho
 | `app/search/providers.py` | `TavilySearch` (advanced depth, no paging), `BraveSearch`, `SearxngSearch`; `FixtureSearch` only when `WFD_TEST_FIXTURE` is set (labeled `TEST-FIXTURE` everywhere) |
 | `app/ingest.py` | Fetch (public HTTP only, 60 MB cap, honest User-Agent), HTML/PDF/DOCX/TXT extraction, repeated header/footer removal, boilerplate filtering, OCR of text-less PDF pages, passage chunking (no count cap), content hashing, shingle-based near-duplicate detection, source-type heuristic |
 | `app/research.py` | Job context, identity scoring, query templates, gap queries, link following, relevance assessment, limits (time, queries, fetches, case budget), coverage report |
-| `app/retrieval.py` | Per-case index: BM25 + semantic ranking (embeddings if `EMBEDDING_MODEL` set, else LSA), reciprocal-rank fusion; variable queries built from codebook text only |
+| `app/retrieval.py` | Per-case index, built once per evidence set and shared (`get_index`, D-033): BM25 + semantic ranking (embeddings if `EMBEDDING_MODEL` set, else LSA), reciprocal-rank fusion; variable queries built from codebook text only |
 | `app/coding.py` | Modes and provider plans (`resolve_plan`), shared evidence preparation (`prepare`), provider-neutral `run_coding` / `run_coding_plan`, server-side `CaseLimits` (budgets and attempt caps from the ledgers), cache keys v2, provider comparison (`suggestion_sets`, `compare_pair`). Batches variables by codebook section (≤40 passages and ≤12 variables per call — batch sizes, not caps; output allowance 1,500 + 1,200 tokens per variable, ceiling 16,000), builds prompts with the coding rules, worst-case budget check per call, failed-call accounting, safe caching, repeated-error stop, derived/admin field generation |
 | `app/validator.py` | Validates each suggestion: codebook codes, single vs multi-select, per-option evidence, `-9` only where defined, numeric/date formats, evidence IDs exist, quotes verbatim |
 | `app/llm/clients.py` | `AnthropicClient` (Messages API, no `temperature`), `OpenAICompatClient` (legacy, OpenAI-compatible servers via `OPENAI_BASE_URL`, provider `openai_compatible`); provider resolution (`make_client`, `get_client`, `provider_status`); retry only 429/529/connection errors; `LLMError` flags `possibly_billed`, `config_error`, `attempts`; cost math incl. long-context surcharge; stale-price notes |
@@ -46,7 +46,7 @@ standard-library server plus SQLite installs in one step and runs anywhere Pytho
 | `app/migrations.py` | Additive, repeatable migration; `rollback` / `restore` commands |
 | `app/export.py` | Assembles results (display suggestion, every provider's suggestion, comparison, review, category) and writes exports; disagreements never exported without a human value |
 | `app/auth.py` | Shared-password login, signed session tokens, lockout (per address + site-wide) |
-| `app/jobs.py` | Job queue in SQLite, single worker thread, duplicate-submission guard, restart recovery |
+| `app/jobs.py` | Job queue in SQLite, single worker thread (lower CPU priority), duplicate-submission guard; restart recovery pauses interrupted jobs and counts in-flight requests (D-033) |
 | `app/server.py` | API routes, security headers, JSON-only mutations, health check `/healthz`, refuses public bind without password |
 
 ## Data model (SQLite tables)

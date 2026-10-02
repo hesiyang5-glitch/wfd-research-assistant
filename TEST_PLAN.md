@@ -74,17 +74,26 @@ Run after each deploy that changes research or coding behavior. Set "Cost cap pe
 | "Invalid output" on SUMMARY / INCLUSION_CRITERIA_INDICATORS | explained — earlier Claude run; quotes not verbatim in S1-P54/S1-P56 (validator), not caused by the update |
 | Stop/Resume buttons; a Claude call on the new version | not yet observed (appear on the next run; needs approval) |
 
+### Incident-fix checks (branch `fix/health-under-load`, after owner approval to merge; $0)
+
+| # | Check | Expected | Status |
+|---|---|---|---|
+| R1 | Render Shell read-only diagnostics (DEPLOY.md, "Slow or restarting service") on the **current** deployment | shows host CPU count, CPU quota, throttling counters, BLAS thread counts — confirms or rejects the root cause | requested from owner, not yet run |
+| R2 | Same diagnostics after deploying the fix | BLAS/OpenMP thread counts = 1 | pending (not deployed) |
+| R3 | Cost estimate in Re-analyze dialog (no model call) while watching Render Events | no failed health checks | pending |
+| R4 | Next paid re-analysis (separate approval) | no health-check failures; if a restart happens anyway, job shows "Interrupted… paused", not restarted | pending |
+
 ### OpenAI live checks (after merge + deploy approval; small paid usage, OpenAI case budget $1–3)
 
 | # | Check | Expected | Status |
 |---|---|---|---|
-| O1 | Settings with `OPENAI_API_KEY` set | "OpenAI — configured · gpt-6.1-sol"; no key value visible anywhere | pending |
+| O1 | Settings with `OPENAI_API_KEY` set | "OpenAI — configured · gpt-6.1-sol"; no key value visible anywhere | PASS (2026-10-01, owner screenshots: dual modes offered in Re-analyze; no key shown) |
 | O2 | Re-analyze B1 with "OpenAI only" on 1–3 variables | free model check passes; schema accepted (no HTTP 400); calls complete | pending |
 | O3 | Run log / Runs_Usage | input, output, **reasoning** tokens and request id per batch; cost at $2/$10 | pending |
 | O4 | Full OpenAI re-analysis of B1 | 0 cut off (`max_output_tokens`); note max reasoning tokens to tune D-028 | pending |
-| O5 | Dual independent on B1 | one search (none on re-analysis); both providers stored; disagreements in "disputed" | pending |
+| O5 | Dual independent on B1 | one search (none on re-analysis); both providers stored; disagreements in "disputed" | PARTIAL (2026-10-01, `66f53f8`): single-variable dual re-analysis of SYSTEM_LEVEL completed; Claude and OpenAI results both shown (owner screenshot); app-recorded cost about $0.02. During it the service failed health checks and restarted (K-38). Not yet checked: per-batch tokens/request ids in `model_calls` (owner Shell query not run), why the row shows "Pending human review", full-case dual run |
 | O6 | Accept a specific provider's value; re-analyze | human value kept; "accepted from" recorded | pending |
-| O7 | Recorded OpenAI spend vs OpenAI usage dashboard | app ≥ actual | pending |
+| O7 | Recorded OpenAI spend vs OpenAI usage dashboard | app ≥ actual | PARTIAL — owner saw about $0.01 on the OpenAI dashboard and about $1.29 total on the Anthropic console (2026-10-01); not yet compared line by line with the app's ledger |
 | O8 | Wrong `OPENAI_MODEL` | job pauses with "not available to this API project"; no paid call | pending |
 | O9 | Stop OpenAI during a dual run, then Resume OpenAI | Claude unaffected; only stopped OpenAI variables re-coded; spend matches calls actually sent | pending |
 

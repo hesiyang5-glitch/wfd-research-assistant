@@ -18,11 +18,11 @@ Last reviewed: 2026-10-01 (commit `33a0c5e`). Severity: **High** (blocks correct
 | K-05 | Live export, live causal-uncertainty handling, live review/reanalysis not yet exercised. | Medium |
 | K-06 | Recorded case spend vs Anthropic Console usage not yet reconciled. | Medium |
 
-## OpenAI provider (branch `feature/openai-provider`, not merged or deployed)
+## OpenAI provider (merged and deployed 2026-10-01: `cd4e6b8`, then `66f53f8`)
 
 | ID | Issue | Severity |
 |---|---|---|
-| K-26 | **No live OpenAI call has been made.** Unverified: that the owner's API project can use `gpt-6.1-sol`; that OpenAI accepts the generated strict schema (enums, `$defs`, sanitized keys) for every batch; real reasoning-token use vs the 16,000 reserve; real cost; refusal/incomplete shapes from the live API. Offline tests use the official SDK (3.23.0 from GitHub source) with a mocked transport. | High |
+| K-26 | **Only one live OpenAI call scenario so far** (2026-10-01: single-variable dual re-analysis of SYSTEM_LEVEL, completed). Still unverified at full scale: that the owner's API project can use `gpt-6.1-sol`; that OpenAI accepts the generated strict schema (enums, `$defs`, sanitized keys) for every batch; real reasoning-token use vs the 16,000 reserve; real cost; refusal/incomplete shapes from the live API. Offline tests use the official SDK (3.23.0 from GitHub source) with a mocked transport. | High |
 | K-27 | OpenAI output allowance and reasoning effort are first guesses (D-028); tune from the logged `reasoning_tokens` per batch. | Medium |
 | K-28 | Worst-case reserves are large: a full OpenAI run is about $2.5 worst case and dual ≈ $3.5, so at the default $3 budget most OpenAI/dual runs pause for approval first. Typical actual cost should be far lower but is unmeasured. | Medium |
 | K-29 | The reviewer-mode estimate approximates the extra input (primary suggestions) at ~250 tokens per variable. | Low |
@@ -32,7 +32,8 @@ Last reviewed: 2026-10-01 (commit `33a0c5e`). Severity: **High** (blocks correct
 | K-33 | Resolved on the branch: `docs/live-coding-result` was merged into `feature/openai-provider` (2026-10-01), so one later merge to `main` carries both. | — |
 | K-35 | Providers in one job run one after another (Claude first in dual mode), not in parallel. Stop takes effect before the next batch; a request already sent cannot be cancelled (up to the 600 s timeout) and may be billed. | Low |
 | K-36 | Existing-data migration is proven on a database produced by the deployed code `c57214a` (synthetic Marshall Fire case), not on a copy of the production database (not accessible from the development environment, and must not be used). Back up before merging. | Medium |
-| K-37 | Bulk confirmation (branch `feature/bulk-agreement`) only applies to dual-independent runs made after this change (runs need a recorded prompt version); in production that requires `OPENAI_API_KEY` and a paid dual run. No batch-undo button: undo is per variable (Reset). | Low |
+| K-37 | Bulk confirmation (deployed in `66f53f8`; the confirm dialog has not yet been used live) only applies to dual-independent runs made after this change (runs need a recorded prompt version); in production that requires `OPENAI_API_KEY` and a paid dual run. No batch-undo button: undo is per variable (Reset). | Low |
+| K-39 | SYSTEM_LEVEL row after the live dual test shows "Pending human review"; reason not yet explained (likely disagreement or validation flag — unconfirmed). | Low |
 | K-34 | D-025 changes Claude behavior: batches whose reply had an invalid item are re-sent (and re-paid) on re-analysis. | Low |
 
 ## Research quality

@@ -116,7 +116,7 @@ citations, and leaves every final decision to a human reviewer.
 | Requirement | Status |
 |---|---|
 | Cases, sources, passages, suggestions, reviews, jobs, usage in SQLite on disk (not browser memory) | TESTED |
-| Background jobs survive restarts and resume from the last completed stage; completed model calls reused from cache | TESTED offline |
+| Background jobs survive restarts and resume from the last completed stage; completed model calls reused from cache | TESTED offline. Branch `fix/health-under-load` (D-033, not deployed): an interrupted job is **paused** and resumes only when the owner clicks Resume; in-flight model requests counted at worst case — TESTED offline (`tests/test_resilience.py`), interrupted-job notice not viewed in a browser |
 | Data survives Render redeploys (persistent disk at `/var/data`) | TESTED live (Marshall Fire case and its sources were still present after the `de5aece` redeploy) |
 
 ## 11. Cost safeguards
