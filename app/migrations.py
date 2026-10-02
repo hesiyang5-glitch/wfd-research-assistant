@@ -40,6 +40,12 @@ CREATE TABLE IF NOT EXISTS model_calls (
 CREATE INDEX IF NOT EXISTS ix_calls_case ON model_calls(case_id, provider);
 CREATE TABLE IF NOT EXISTS suggestions_provider_archive (
   id INTEGER PRIMARY KEY, archived_at REAL, row_json TEXT);
+CREATE TABLE IF NOT EXISTS provider_controls (
+  job_id INTEGER, provider TEXT, stop_requested INTEGER DEFAULT 0, requested_by TEXT, requested_at REAL,
+  PRIMARY KEY (job_id, provider));
+CREATE TABLE IF NOT EXISTS limit_changes (
+  id INTEGER PRIMARY KEY, case_id INTEGER, job_id INTEGER, key TEXT, old_value TEXT, new_value TEXT,
+  changed_by TEXT, reason TEXT, at REAL);
 """
 
 

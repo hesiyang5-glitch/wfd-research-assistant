@@ -141,3 +141,21 @@ billed and discarded. The reserve only raises the worst-case figure checked agai
 ## D-029 · 2026-10-01 · Configuration errors stop immediately — Active (branch)
 **Decision.** Unknown/unavailable model, rejected key, missing permission and exhausted quota are configuration errors:
 never retried; a job pauses with a plain message before estimating or spending. Claude 401/403/404 follow the same rule.
+
+## D-030 · 2026-10-01 · Stop and resume each provider independently — Active (branch)
+**Decision.** Per job and provider, a stop flag (`provider_controls`) is checked before every batch. Providers in one job
+run one after another (Claude first in dual mode), on one shared evidence preparation. Stopping a provider: its batches
+not yet sent are recorded as `stopped` (no request, no cost; `model_calls` status `stopped`); a request already sent
+cannot be recalled — it finishes, is billed and is kept; completed and cached results stay; the other provider is not
+affected (if it has not started yet, it still runs). Resume: if the stop has not taken effect, the flag is withdrawn;
+otherwise a follow-up job codes only that provider's stopped variables in the same comparison group (other results are
+not re-sent). The job-level Cancel still stops everything.
+**Not chosen.** Running both providers in parallel threads: faster, but needs budget reservations to keep the combined
+budget strict under concurrency, and SQLite writes from two threads; not worth the risk for this release.
+
+## D-031 · 2026-10-01 · Review table shows one column per provider — Active (branch)
+**Decision.** Columns `# | Variable | Claude suggestion | OpenAI suggestion | Human final | Comparison | Review status`.
+Each provider column = that provider's latest result across all runs (rows before OpenAI support are Claude's). A run
+of one provider never replaces the other's column. A `stopped` row never hides that provider's earlier completed
+value (shown with a "latest run stopped" note). Comparison is labelled independent, reviewer (not independent) or
+separate runs (evidence may differ). Human final is `reviews` only; no model run writes to it.

@@ -506,7 +506,15 @@ def stage_coding(ctx: Ctx):
     from .coding import PROVIDER_LABELS, estimate, limit_needs, resolve_plan, run_coding_plan
     ctx.stage("coding", 0.85, "Coding and validating")
     mode = ctx.params.get("mode") or ctx.settings.get("coding_mode") or "single"
-    plan, mode, err = resolve_plan(ctx.settings, mode)
+    resume = ctx.params.get("resume")  # continue ONE provider's stopped variables inside an earlier coding group
+    if resume:
+        from .llm.clients import make_client
+        mode = resume.get("mode") or mode
+        c = make_client(resume["provider"], ctx.settings.get("model_name", "claude-sonnet-5-5"), ctx.settings)
+        plan, err = ([(c, resume.get("role") or "primary")], None) if c else \
+            ([], f"Cannot resume {PROVIDER_LABELS.get(resume['provider'], resume['provider'])}: its API key is not configured.")
+    else:
+        plan, mode, err = resolve_plan(ctx.settings, mode)
     if err:
         ctx.state["awaiting"] = "provider"
         ctx.save(status="needs_input", message=err)
@@ -523,10 +531,15 @@ def stage_coding(ctx: Ctx):
                     raise Budget("model provider configuration error")
                 ctx.log("warn", f"could not check {c.provider} model availability now ({str(e)[:160]}); will check again "
                                 f"before the first paid call")
-    variables = ctx.params.get("variables")
+    variables = (resume or {}).get("variables") or ctx.params.get("variables")
     spent, budget = ctx.spent(), ctx.budget()
     remaining = max(0.0, budget - spent)
     ctx.state["coding_mode"] = mode
+    runs = ctx.state.setdefault("provider_runs", {})
+    for c, role in plan:  # shown on the Progress page with Stop / Resume buttons
+        runs.setdefault(c.provider, {"status": "pending", "role": role, "model": c.model})
+    if resume:
+        ctx.state["resume_of"] = resume
     if plan:
         est = estimate(ctx.case, ctx.settings, variables, plan=plan)
         ctx.state["estimate"] = est
@@ -563,10 +576,16 @@ def stage_coding(ctx: Ctx):
     else:
         ctx.log("warn", "No language model configured — running local evidence retrieval only (manual coding mode).")
     # The cap always applies: approving raises the case budget to a set amount, it never removes the limit.
+    def on_status(provider, status, **extra):
+        r = ctx.state["provider_runs"].setdefault(provider, {})
+        r.update({"status": status, **extra, "updated_at": time.time()})
+        ctx.save()
+
     rep = run_coding_plan(ctx.case, ctx.settings, plan, ctx.id, ctx.log, (spent + remaining) if plan else None, variables,
                           cancelled=lambda: bool(db.q1("SELECT cancel_requested FROM jobs WHERE id=?", (ctx.id,))["cancel_requested"]),
-                          mode=mode)
+                          mode=mode, group_id=(resume or {}).get("group_id"), on_status=on_status)
     ctx.state["coding_report"] = rep
+    ctx.state["group_id"] = rep["group_id"]
 
 
 # ----------------------------------------------------------------------------- orchestration

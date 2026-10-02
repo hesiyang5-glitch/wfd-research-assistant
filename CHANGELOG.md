@@ -2,6 +2,25 @@
 
 Completed changes, newest first. Commit hashes refer to `hesiyang5-glitch/wfd-research-assistant`.
 
+## 2026-10-01 — Per-provider Stop/Resume, provider review table, legacy-data migration test (branch `feature/openai-provider`, NOT deployed)
+- Progress page: separate **Stop Claude / Stop OpenAI / Resume Claude / Resume OpenAI** buttons (D-030). Stop is checked
+  before every batch: batches not yet sent are recorded as "stopped" (never sent, never billed); a request already sent
+  finishes and is kept and billed; completed and cached results are kept; the other provider keeps going. The stop
+  dialog warns that a sent request may still finish and be billed. Resume withdraws a stop that has not taken effect,
+  or queues a follow-up job that codes only the stopped variables in the same comparison group.
+- Review table columns are now `# | Variable | Claude suggestion | OpenAI suggestion | Human final | Comparison |
+  Review status` (D-031). Each provider column shows that provider's latest result across runs, so one provider can
+  never hide or replace the other; a stopped run never hides an earlier completed result. Distinct states: Not run,
+  No supported value, Stopped, Failed, Invalid output, Limit reached, Disputed. Fields no model codes (IDs, derived,
+  admin, analyst notes) span both columns as "not model-coded".
+- Case limits can be set to explicit values from the re-analysis dialog (raise or lower, never remove); every change,
+  including approvals, is recorded in the new `limit_changes` table.
+- Migration adds `provider_controls` and `limit_changes` (additive, repeatable).
+- `docs/live-coding-result` merged into this branch, so one later merge to `main` carries everything.
+- Tests: `tests/test_providers.py` 138 checks (stop/resume, cells, browser columns and buttons);
+  new `tests/test_legacy_migration.py` (18 checks) on a database produced by the deployed code `c57214a`
+  (`tests/fixtures/legacy_c57214a_marshall.sqlite3`, built by `tools/make_legacy_fixture.py`).
+
 ## 2026-10-01 — OpenAI as a second model provider (branch `feature/openai-provider`, NOT merged, NOT deployed)
 - New `app/llm/openai_responses.py`: official `openai` SDK (≥3.23), Responses API, Structured Outputs with a strict
   JSON Schema per batch (`app/llm/structured.py`): codebook codes as enums, `-9` only where defined, passage ids limited

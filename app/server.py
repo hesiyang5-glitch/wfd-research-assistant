@@ -308,11 +308,15 @@ def api_recode(h, cid, body, **_):
 
 @route("GET", "/api/cases/{cid}/job")
 def api_job(h, cid, **_):
-    j = db.q1("SELECT * FROM jobs WHERE case_id=? ORDER BY id DESC LIMIT 1", (int(cid),))
+    # The running job comes first, so its Stop buttons stay visible while a Resume job waits behind it.
+    j = db.q1("SELECT * FROM jobs WHERE case_id=? ORDER BY (status='running') DESC, id DESC LIMIT 1", (int(cid),))
     if not j:
         return None
     j["state"] = json.loads(j.pop("state_json") or "{}")
     j["params"] = json.loads(j.pop("params_json") or "{}")
+    j["provider_controls"] = {r["provider"]: r for r in db.q("SELECT * FROM provider_controls WHERE job_id=?", (j["id"],))}
+    j["queued_after"] = db.q("SELECT id, kind, params_json FROM jobs WHERE case_id=? AND status='queued' AND id<>? ORDER BY id",
+                             (int(cid), j["id"]))
     j["log"] = db.q("SELECT * FROM job_log WHERE job_id=? ORDER BY id DESC LIMIT 200", (j["id"],))[::-1]
     return j
 
@@ -321,6 +325,90 @@ def api_job(h, cid, **_):
 def api_cancel(h, jid, **_):
     jobs.cancel(int(jid))
     return {"ok": True}
+
+
+PROVIDER_NAMES = {"anthropic": "Claude", "openai": "OpenAI", "openai_compatible": "OpenAI-compatible"}
+STOP_WARNING = ("A request already sent to the provider cannot be recalled: it may still finish and may still be billed; "
+                "its result will be kept. Batches not yet sent will not be sent. The other provider is not affected.")
+
+
+@route("POST", "/api/jobs/{jid}/providers/{prov}/stop")
+def api_stop_provider(h, jid, prov, **_):
+    """Stop ONE provider in a job: future batches of that provider are not sent; completed results are kept; the other
+    provider keeps running. Checked by the job before every batch."""
+    j = db.q1("SELECT * FROM jobs WHERE id=?", (int(jid),))
+    if not j:
+        raise ApiError(404, "no such job")
+    if prov not in PROVIDER_NAMES:
+        raise ApiError(400, "unknown provider")
+    who = getattr(h, "user", None) or "user"
+    db.ex("INSERT OR REPLACE INTO provider_controls (job_id, provider, stop_requested, requested_by, requested_at) "
+          "VALUES (?,?,?,?,?)", (int(jid), prov, 1, who, time.time()))
+    db.insert("job_log", {"job_id": int(jid), "at": time.time(), "stage": "coding", "level": "warn",
+                          "message": f"Stop {PROVIDER_NAMES[prov]} requested by {who}. {STOP_WARNING}"})
+    return {"ok": True, "warning": STOP_WARNING}
+
+
+@route("POST", "/api/jobs/{jid}/providers/{prov}/resume")
+def api_resume_provider(h, jid, prov, **_):
+    """Resume ONE provider. If the job has not finished that provider yet, the stop flag is simply cleared. If the
+    provider already stopped, a follow-up job codes only its stopped variables, in the same comparison group."""
+    j = db.q1("SELECT * FROM jobs WHERE id=?", (int(jid),))
+    if not j:
+        raise ApiError(404, "no such job")
+    if prov not in PROVIDER_NAMES:
+        raise ApiError(400, "unknown provider")
+    who = getattr(h, "user", None) or "user"
+    db.ex("UPDATE provider_controls SET stop_requested=0, requested_by=?, requested_at=? WHERE job_id=? AND provider=?",
+          (who, time.time(), int(jid), prov))
+    st = json.loads(j["state_json"] or "{}")
+    pr = (st.get("provider_runs") or {}).get(prov) or {}
+    if j["status"] in ("queued", "running") and pr.get("status") in (None, "pending", "running"):
+        db.insert("job_log", {"job_id": int(jid), "at": time.time(), "stage": "coding", "level": "info",
+                              "message": f"Resume {PROVIDER_NAMES[prov]} by {who}: stop request withdrawn before it took effect"})
+        return {"ok": True, "resumed_in_place": True}
+    gid = st.get("group_id") or ((st.get("coding_report") or {}).get("group_id"))
+    if not gid:
+        raise ApiError(400, "this job has no coding run to resume")
+    latest = {}
+    for r in db.q("SELECT variable, status FROM suggestions WHERE case_id=? AND group_id=? AND provider=? ORDER BY id",
+                  (j["case_id"], gid, prov)):
+        latest[r["variable"]] = r["status"]
+    todo = sorted(v for v, stt in latest.items() if stt == "stopped")
+    if not todo:
+        raise ApiError(400, f"{PROVIDER_NAMES[prov]} has no stopped variables in this run")
+    params = {"resume": {"provider": prov, "role": pr.get("role") or "primary", "group_id": gid, "variables": todo,
+                         "mode": st.get("coding_mode") or "single", "from_job": int(jid)}}
+    new_id = jobs.enqueue(j["case_id"], "recode", params, behind_active=True)
+    db.insert("job_log", {"job_id": int(jid), "at": time.time(), "stage": "coding", "level": "info",
+                          "message": f"Resume {PROVIDER_NAMES[prov]} by {who}: job {new_id} will code {len(todo)} stopped "
+                                     f"variable(s); completed results are not re-sent"})
+    return {"ok": True, "job_id": new_id, "variables": todo}
+
+
+@route("POST", "/api/cases/{cid}/limits")
+def api_case_limits(h, cid, body, **_):
+    """Set this case's limits to explicit values (raise or lower); every change is recorded in limit_changes."""
+    from .config import RAISABLE_LIMITS
+    c = db.q1("SELECT * FROM cases WHERE id=?", (int(cid),))
+    if not c:
+        raise ApiError(404, "no such case")
+    st = json.loads(c["settings_json"] or "{}")
+    who = getattr(h, "user", None) or "user"
+    changed = {}
+    for k, v in (body.get("limits") or {}).items():
+        if k not in RAISABLE_LIMITS:
+            raise ApiError(400, f"{k} is not a case limit")
+        nv = check_limit_value(k, v)
+        old = st.get(k, DEFAULT_SETTINGS[k])
+        if nv != old:
+            st[k] = nv
+            changed[k] = nv
+            db.insert("limit_changes", {"case_id": int(cid), "job_id": None, "key": k, "old_value": str(old),
+                                        "new_value": str(nv), "changed_by": who, "reason": body.get("reason") or "set on case",
+                                        "at": time.time()})
+    db.update("cases", int(cid), {"settings_json": json.dumps(st)})
+    return {"ok": True, "changed": changed, "limits": {k: st.get(k, DEFAULT_SETTINGS[k]) for k in RAISABLE_LIMITS}}
 
 
 @route("POST", "/api/jobs/{jid}/resume")
@@ -345,6 +433,8 @@ def api_resume(h, jid, body, **_):
         msg = (f"case budget changed from ${float(old):.2f} to ${float(new_value):.2f} by {who} ({why})" if key == "budget_usd"
                else f"case limit {key} changed from {old} to {new_value} by {who} ({why})")
         db.insert("job_log", {"job_id": j["id"], "at": time.time(), "stage": "coding", "level": "warn", "message": msg})
+        db.insert("limit_changes", {"case_id": c["id"], "job_id": j["id"], "key": key, "old_value": str(old),
+                                    "new_value": str(new_value), "changed_by": who, "reason": why, "at": time.time()})
 
     def set_case_budget(new_budget: float, why: str):
         set_case_limit("budget_usd", new_budget, why)

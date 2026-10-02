@@ -162,11 +162,11 @@ case. Approval only raises a limit to an explicit number. Dual mode costs roughl
 budget a dual or OpenAI run will usually pause first and ask you to approve explicit amounts.
 
 **数据库迁移 · Database migration:** 新版本启动时会自动、可重复地给数据库**增加**列和表（`model_calls`、
-`schema_migrations`、`suggestions_provider_archive` 以及若干 provider 字段），不会改动或删除已有的案例、来源、Claude
+`schema_migrations`、`suggestions_provider_archive`、`provider_controls`、`limit_changes` 以及若干 provider 字段），不会改动或删除已有的案例、来源、Claude
 结果、人工复核或费用记录。**合并前先备份：** Render → Disks → 确认今天有快照（或用 Shell：
 `sqlite3 /var/data/wfd.sqlite3 ".backup /var/data/backup-before-openai.sqlite3"`）。
 On start the new version automatically and repeatably **adds** columns and tables (`model_calls`, `schema_migrations`,
-`suggestions_provider_archive`, provider fields). Existing cases, sources, Claude results, reviews and usage are not
+`suggestions_provider_archive`, `provider_controls`, `limit_changes`, provider fields). Existing cases, sources, Claude results, reviews and usage are not
 changed or deleted. **Back up before merging:** Render → Disks → confirm today's snapshot (or in the Shell:
 `sqlite3 /var/data/wfd.sqlite3 ".backup /var/data/backup-before-openai.sqlite3"`).
 

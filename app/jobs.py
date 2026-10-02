@@ -12,10 +12,17 @@ _worker = None
 _wake = threading.Event()
 
 
-def enqueue(case_id: int, kind: str, params: dict | None = None) -> int:
+def enqueue(case_id: int, kind: str, params: dict | None = None, behind_active: bool = False) -> int:
+    """behind_active=True (provider Resume only) queues a new job after the case's running job instead of
+    returning the running one; the single worker runs them one after another."""
     active = db.q1("SELECT id FROM jobs WHERE case_id=? AND status IN ('queued','running')", (case_id,))
-    if active:  # prevents duplicate submissions (and duplicate paid calls)
+    if active and not behind_active:  # prevents duplicate submissions (and duplicate paid calls)
         return active["id"]
+    if behind_active:
+        dup = db.q1("SELECT id FROM jobs WHERE case_id=? AND status='queued' AND params_json=?",
+                    (case_id, json.dumps(params or {})))
+        if dup:
+            return dup["id"]
     jid = db.insert("jobs", {"case_id": case_id, "kind": kind, "stage": "queued", "status": "queued", "progress": 0,
                              "message": "Waiting to start", "params_json": json.dumps(params or {}), "state_json": "{}",
                              "created_at": time.time(), "updated_at": time.time(), "cancel_requested": 0})

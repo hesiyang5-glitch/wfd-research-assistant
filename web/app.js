@@ -21,6 +21,20 @@ const roleText = (r) => (ROLE_TEXT[r] ? L(ROLE_TEXT[r][0], ROLE_TEXT[r][1]) : (r
 const COMP_BADGE = { model_agreement: "ok", value_disagreement: "bad", evidence_disagreement: "warn", one_provider_blank: "warn", invalid_provider_output: "bad", needs_human_review: "dispute", human_approved: "ok" };
 const COMP_TEXT = { model_agreement: ["模型一致", "Model agreement"], value_disagreement: ["取值不一致", "Value disagreement"], evidence_disagreement: ["证据不一致", "Evidence disagreement"], one_provider_blank: ["一方为空", "One provider blank"], invalid_provider_output: ["模型输出无效", "Invalid provider output"], needs_human_review: ["需人工复核", "Needs human review"], human_approved: ["人工已确认", "Human approved"] };
 const compText = (c) => (COMP_TEXT[c] ? L(COMP_TEXT[c][0], COMP_TEXT[c][1]) : c);
+const CELL_TEXT = { not_run: ["未运行", "Not run"], suggested: ["建议", "Suggested"], disputed: ["有争议", "Disputed"], no_supported_value: ["无证据支持的值", "No supported value"], stopped: ["已停止", "Stopped"], failed: ["失败", "Failed"], invalid_output: ["输出无效", "Invalid output"], limit_reached: ["达到上限，未编码", "Limit reached"] };
+const cellText = (st) => (CELL_TEXT[st] ? L(CELL_TEXT[st][0], CELL_TEXT[st][1]) : st);
+function cellHtml(cell, row) {
+  // One provider's cell. Each state has its own look so "not run", "no supported value", "stopped", "failed" and
+  // "invalid output" can never be mistaken for one another or for a real value.
+  const c = cell || { state: "not_run" };
+  const stopNote = c.stopped_latest ? `<div><span class="cell-tag st-stopped">⏸ ${esc(L("最近一次已停止", "latest run stopped"))}</span></div>` : "";
+  const roleNote = c.role === "reviewer" ? ` <span class="badge warn" title="${esc(L("看过主模型结果，非独立", "saw the primary model's result; not independent"))}">${L("复核", "review")}</span>` : "";
+  if (["suggested", "disputed"].includes(c.state) && c.value) {
+    return `<div class="cell-val st-${c.state}"><span class="mono">${esc(c.value.slice(0, 48))}</span>${c.state === "disputed" ? ` <span class="cell-tag st-disputed">${esc(cellText("disputed"))}</span>` : ""}${c.changed ? ` <span class="badge warn" title="${esc(L("上次", "previous") + ": " + (c.previous_value || "∅"))}">Δ</span>` : ""}${roleNote}</div>${stopNote}`;
+  }
+  const icon = { not_run: "—", no_supported_value: "∅", stopped: "⏸", failed: "✕", invalid_output: "⚠", limit_reached: "⛔", disputed: "≠" }[c.state] || "";
+  return `<span class="cell-tag st-${esc(c.state)}">${icon} ${esc(cellText(c.state))}</span>${roleNote}${stopNote}`;
+}
 const availModes = () => (STATUS.modes || []).filter((m) => m.available);
 function providerCostRows(e) {
   return (e.providers || []).map((p) => `<div>${esc(PROV[p.provider] || p.provider)} · ${esc(p.model)}<br><span class="small muted">${esc(roleText(p.role))}${p.reasoning_effort ? " · effort " + esc(p.reasoning_effort) : ""}</span></div>
@@ -239,6 +253,7 @@ async function tabProgress(c, body) {
       <div class="row" style="margin-top:10px">${statusBadge(j)}<span>${esc(j.message || "")}</span><span class="spacer"></span>
       ${["running", "queued"].includes(j.status) ? `<button class="danger" id="cancelBtn">${t("cancel")}</button>` : `<button id="rerunBtn">${t("rerun")}</button> <button id="recodeBtn">${t("recode")}</button> <a href="#/case/${c.id}/review"><button class="primary">${t("tab_review")} →</button></a>`}</div>
       ${j.error ? `<div class="callout bad">${esc(j.error)}</div>` : ""}${needs}
+      ${providerPanel(j)}
       ${cov ? `<h3>${t("coverage")}</h3>${!cov.automatic_search_ran ? `<div class="callout warn">${LANG === "zh" ? "未进行自动网页搜索（未配置搜索服务，或本次只是重新分析）。结果只基于已有或手动补充的资料。" : "No automatic web search in this run (no search provider configured, or this was a re-analysis). Results rest only on existing or manually added sources."}</div>` : cov.research_complete ? `<div class="callout ok">${t("complete_note")}</div>` : `<div class="callout warn">${t("incomplete")}<br><span class="small">${esc((cov.limits_hit || []).join("; "))}</span></div>`}
         ${cov.search_is_test_fixture ? `<div class="callout bad">${t("svc_test")}</div>` : ""}
         <div class="kv"><div>${t("case_spend")}</div><div>${money(cov.spent_usd)} / ${money(cov.budget_usd)}${cov.search_provider && !cov.search_price_configured && !cov.search_is_test_fixture ? ` <span class="badge warn">${t("search_price_missing")}</span>` : ""}</div>
@@ -255,6 +270,23 @@ async function tabProgress(c, body) {
       <h3>${t("log")}</h3><div class="log">${(j.log || []).map((l) => `<div class="${l.level}">${new Date(l.at * 1000).toLocaleTimeString()} [${esc(l.stage)}] ${esc(l.message)}</div>`).join("")}</div></div>`;
     const on = (sel, fn) => { const el = $(sel, body); if (el) el.onclick = fn; };
     on("#cancelBtn", async () => { await api("POST", `/api/jobs/${j.id}/cancel`); draw(); });
+    $$("[data-stop-prov]", body).forEach((b) => (b.onclick = async () => {
+      const prov = b.dataset.stopProv;
+      const ok = await askDialog({ title: `${L("停止", "Stop")} ${PROV[prov] || prov}`,
+        body: `<p>${L("只停止这个模型；另一个模型继续运行。", "Only this provider stops; the other provider keeps running.")}</p>
+          <ul class="small"><li>${L("尚未发送的批次不会再发送，也不会计费。", "Batches not yet sent will not be sent and are not billed.")}</li>
+          <li><b>${L("已经发出的请求无法撤回：它可能仍会完成，并可能仍然计费；结果会保留。", "A request already sent to the API cannot be recalled: it may still finish and may still be billed; its result is kept.")}</b></li>
+          <li>${L("已完成和已缓存的结果全部保留。之后可以点“继续”只补做停止的部分。", "Completed and cached results are kept. Later, Resume codes only what was stopped.")}</li></ul>`,
+        okText: `${L("停止", "Stop")} ${PROV[prov] || prov}`, cancelText: L("不停止", "Keep running") });
+      if (!ok) return;
+      try { const r = await api("POST", `/api/jobs/${j.id}/providers/${prov}/stop`); toast(r.warning ? L("已请求停止。已发出的请求仍可能完成并计费。", "Stop requested. A request already sent may still finish and be billed.") : "ok"); draw(); }
+      catch (e) { toast(e.message, true); }
+    }));
+    $$("[data-resume-prov]", body).forEach((b) => (b.onclick = async () => {
+      const prov = b.dataset.resumeProv;
+      try { const r = await api("POST", `/api/jobs/${j.id}/providers/${prov}/resume`); toast(r.resumed_in_place ? L("已撤回停止请求", "Stop request withdrawn") : `${L("已排队继续", "Resume queued")}: ${r.variables.length} ${L("个变量", "variable(s)")}`); draw(); }
+      catch (e) { toast(e.message, true); }
+    }));
     on("#rerunBtn", (ev) => startResearch(c.id, ev.currentTarget));
     on("#recodeBtn", (ev) => startRecode(c.id, null, ev.currentTarget));
     on("#recodeBtn2", (ev) => startRecode(c.id, null, ev.currentTarget));
@@ -268,6 +300,28 @@ async function tabProgress(c, body) {
     else if (!POLL) POLL = setInterval(() => { if (location.hash.includes(`/case/${c.id}/progress`)) draw(); else { clearInterval(POLL); POLL = null; } }, 2000);
   };
   draw();
+}
+function providerPanel(j) {
+  const runs = (j.state || {}).provider_runs || {};
+  const ctl = j.provider_controls || {};
+  const provs = Object.keys(runs);
+  if (!provs.length) return "";
+  const RS = { pending: ["等待中", "waiting", ""], running: ["运行中", "running", "info"], stopped: ["已停止", "stopped", "warn"], done: ["已完成", "done", "ok"], failed: ["失败（配置错误）", "failed (configuration)", "bad"] };
+  const active = ["queued", "running", "needs_input"].includes(j.status);
+  return `<h3>${L("模型", "Model providers")}</h3><div class="prov-ctl">${provs.map((p) => {
+    const r = runs[p]; const stopReq = ctl[p] && ctl[p].stop_requested;
+    const st = stopReq && ["pending", "running"].includes(r.status) ? ["正在停止…", "stopping…", "warn"] : (RS[r.status] || [r.status, r.status, ""]);
+    const canStop = active && ["pending", "running"].includes(r.status) && !stopReq;
+    const canResume = (stopReq && ["pending", "running"].includes(r.status)) || r.status === "stopped";
+    return `<div class="prov-row" data-prov-row="${esc(p)}"><b>${esc(PROV[p] || p)}</b> <span class="small mono">${esc(r.model || "")}</span> <span class="small muted">${esc(roleText(r.role))}</span>
+      <span class="badge ${st[2]}">${esc(L(st[0], st[1]))}</span>
+      ${r.calls != null ? `<span class="small muted">${r.calls} call(s) · ${r.failed_calls || 0} failed · ${r.cache_hits || 0} cached · ${money(r.spent_usd)}${(r.stopped_variables || []).length ? ` · ${r.stopped_variables.length} ${L("个变量已停止", "variable(s) stopped")}` : ""}</span>` : ""}
+      <span class="spacer"></span>
+      ${canStop ? `<button class="danger small" data-stop-prov="${esc(p)}">${L("停止", "Stop")} ${esc(PROV[p] === "Claude (Anthropic)" ? "Claude" : PROV[p] || p)}</button>` : ""}
+      ${canResume ? `<button class="small" data-resume-prov="${esc(p)}">${L("继续", "Resume")} ${esc(PROV[p] === "Claude (Anthropic)" ? "Claude" : PROV[p] || p)}</button>` : ""}</div>`;
+  }).join("")}</div>
+  <p class="small muted">${L("“停止”只影响该模型，另一个模型不受影响。已经发出的请求无法撤回，可能仍会完成并计费。", "Stop affects only that provider; the other keeps running. A request already sent cannot be recalled and may still finish and be billed.")}</p>
+  ${(j.queued_after || []).length ? `<p class="small">${L("之后排队的任务", "Queued after this job")}: ${j.queued_after.length}</p>` : ""}`;
 }
 // In-page dialog. Browser confirm()/prompt() can be silently blocked (settings or extensions), which made buttons
 // look dead, so every confirmation is shown inside the page instead. Resolves to true / the typed text, or null.
@@ -321,6 +375,9 @@ async function startRecode(id, variables, btn) {
           ${(e.price_notes || []).length ? `<div class="callout warn small">${esc(e.price_notes.join("; "))}</div>` : ""}
           ${mode === "dual_independent" ? `<p class="small">${L("两个模型拿到相同证据、彼此看不到对方结果；不一致的变量会交给人工复核。模型一致不代表事实已核实。", "Both models get the same evidence and never see each other's result; disagreements go to human review. Agreement is not verification.")}</p>` : ""}
           ${mode.endsWith("_review") ? `<p class="small">${L("复核模型会看到主模型的建议，因此不是独立编码。", "The reviewer sees the primary model's suggestions, so it is not an independent coder.")}</p>` : ""}`}
+        ${e.manual ? "" : `<details style="margin-top:8px"><summary>${L("本案例的上限（明确数值）", "This case's limits (explicit values)")}</summary>
+          <div class="grid2">${[["budget_usd", L("总预算（美元）", "Combined budget ($)")], ["openai_budget_usd", L("OpenAI 预算（美元）", "OpenAI budget ($)")], ["max_openai_attempts_per_case", L("OpenAI 请求次数上限", "OpenAI attempts")], ["max_model_attempts_per_case", L("所有模型请求次数上限", "All model attempts")]].map(([k, lab]) => `<div><label>${esc(lab)}</label><input data-limit="${k}" value="${esc((e.limits || {})[k])}"></div>`).join("")}</div>
+          <button class="small" id="saveLimits" style="margin-top:6px">${L("保存上限", "Save limits")}</button><span class="small muted"> ${L("可以提高或降低；不能取消。每次修改都会记录。", "Raise or lower; never removed. Every change is recorded.")}</span></details>`}
         <p class="small muted">${LANG === "zh" ? "费用计入本案例的预算上限。只使用已读取的资料，不会产生新的搜索费用。" : "This counts toward the case's budget cap. It uses the sources already read, with no new search cost."}</p>`;
     };
     const ok = await new Promise((resolve) => {
@@ -329,6 +386,11 @@ async function startRecode(id, variables, btn) {
         <div class="row" style="margin-top:14px"><button class="primary" id="dlgOk">${LANG === "zh" ? "开始重新分析" : "Start re-analysis"}</button>
         <button id="dlgCancel">${LANG === "zh" ? "取消" : "Cancel"}</button></div></div></div></div>`;
       const wire = () => {
+        if ($("#saveLimits")) $("#saveLimits").onclick = async () => {
+          const limits = {}; $$("[data-limit]").forEach((el) => (limits[el.dataset.limit] = +el.value));
+          try { await api("POST", `/api/cases/${id}/limits`, { limits, reason: "set in re-analysis dialog" }); e = await estFor(mode); $("#rcBody").innerHTML = body(e); wire(); toast(t("saved")); }
+          catch (err) { toast(err.message, true); }
+        };
         $("#modeSel").onchange = async (ev) => {
           mode = ev.target.value; $("#dlgOk").disabled = true;
           try { e = await estFor(mode); $("#rcBody").innerHTML = body(e); wire(); }
@@ -371,18 +433,26 @@ async function tabReview(c, body) {
       <div class="row" style="margin-bottom:8px"><input id="wbq" placeholder="${esc(t("search_vars"))}" value="${esc(WB.q)}" style="max-width:260px">
       <select id="wbsec" style="max-width:260px"><option value="">— section —</option>${sections.map((s) => `<option ${WB.section === s ? "selected" : ""}>${esc(s)}</option>`).join("")}</select>
       <span class="small muted">${t("filter_note")}</span></div>
-      <div class="wb-table"><table><thead><tr><th>#</th><th>${t("col_var")}</th><th>${t("col_sugg")}</th><th>${t("col_rev")}</th><th>${t("col_status")}</th></tr></thead><tbody id="wbRows"></tbody></table></div>
+      <div class="wb-table"><table id="wbTable"><thead><tr><th>#</th><th>${t("col_var")}</th><th>${L("Claude 建议", "Claude suggestion")}</th><th>${L("OpenAI 建议", "OpenAI suggestion")}</th><th>${L("人工最终值", "Human final")}</th><th>${L("比较", "Comparison")}</th><th>${L("复核状态", "Review status")}</th></tr></thead><tbody id="wbRows"></tbody></table></div>
     </div><div class="wb-detail panel" id="wbDetail"><p class="muted">${t("select_var")}</p></div></div>`;
   const drawRows = () => {
     const rows = WB.data.rows.filter((r) => (WB.filter === "all" || r.category === WB.filter) && (!WB.section || r.section === WB.section) &&
       (!WB.q || r.name.toLowerCase().includes(WB.q.toLowerCase())));
     $("#wbRows").innerHTML = rows.map((r) => {
       const s = r.suggestion || {}; const rv = r.review;
+      const final = rv && ["accepted", "edited", "cleared"].includes(rv.action);
+      const sys = r.system && !(r.providers || []).length ? r.system : null;
+      const notModel = !["sourced", "judgment"].includes(r.field_class) || r.rule_missing;
+      const provCells = notModel && !(r.providers || []).length
+        ? `<td colspan="2" class="val"><span class="cell-tag st-system">${esc(r.rule_missing ? L("无编码规则", "no codebook rule") : r.field_class === "analyst_note" ? L("分析员填写", "analyst note") : r.field_class === "derived" ? L("计算得出（非模型）", "derived (not model-coded)") : r.field_class === "admin" ? L("系统生成（非模型）", "generated (not model-coded)") : L("非模型编码", "not model-coded"))}</span>${sys && sys.value ? ` <span class="mono">${esc(sys.value.slice(0, 50))}</span>` : ""}</td>`
+        : sys
+        ? `<td colspan="2" class="val"><span class="cell-tag st-system">${esc(sys.basis === "retrieval_only" ? L("仅候选证据（人工编码）", "candidates only (manual coding)") : sys.basis === "derived" ? L("计算得出", "derived") : sys.basis === "generated" ? L("系统生成", "generated") : sys.status)}</span> <span class="mono">${esc((sys.value || "").slice(0, 60))}</span></td>`
+        : `<td class="val pc-anthropic">${cellHtml((r.cells || {}).anthropic, r)}</td><td class="val pc-openai">${cellHtml((r.cells || {}).openai, r)}</td>`;
       return `<tr class="click ${WB.sel === r.name ? "sel" : ""}" data-v="${esc(r.name)}"><td class="small muted">${r.position}</td>
-        <td><b class="mono">${esc(r.name)}</b>${r.issues.length ? ` <span class="badge warn" title="${esc(r.issues.join("\n"))}">!</span>` : ""}${s.stale ? ` <span class="badge bad">stale</span>` : ""}${r.previous ? ` <span class="badge warn">Δ</span>` : ""}</td>
-        <td class="val">${(r.providers || []).length > 1 ? r.providers.map((m) => `<div><span class="badge">${esc(m.provider === "anthropic" ? "Claude" : m.provider === "openai" ? "OpenAI" : m.provider)}</span> ${esc((m.value || "").slice(0, 40)) || `<span class="muted small">${esc(m.status)}</span>`}</div>`).join("") : `${esc((s.value || "").slice(0, 70))}${!s.value && s.status ? `<span class="muted small">${esc(s.status)}</span>` : ""}`}
-          ${r.comparison ? `<div><span class="badge ${COMP_BADGE[r.comparison.status] || ""}">${esc(compText(r.comparison.status))}</span></div>` : ""}</td>
-        <td class="val">${rv ? (rv.action === "deferred" ? `<span class="muted small">deferred</span>` : esc((rv.value || "∅").slice(0, 60))) : ""}</td>
+        <td><b class="mono">${esc(r.name)}</b>${r.issues.length ? ` <span class="badge warn" title="${esc(r.issues.join("\n"))}">!</span>` : ""}${s.stale ? ` <span class="badge bad">stale</span>` : ""}</td>
+        ${provCells}
+        <td class="val human-final">${final ? `<span class="final-val mono">${esc((rv.value || "∅").slice(0, 60))}</span>${rv.source_provider ? `<div class="small muted">${esc(L("采纳自", "from"))} ${esc(PROV[rv.source_provider] || rv.source_provider)}</div>` : ""}` : rv && rv.action === "deferred" ? `<span class="muted small">${L("暂缓", "deferred")}</span>` : `<span class="muted small">—</span>`}</td>
+        <td>${r.comparison ? `<span class="badge ${COMP_BADGE[r.comparison.model_status] || ""}">${esc(compText(r.comparison.model_status))}</span>${r.comparison.kind === "reviewer" ? `<div class="small muted">${L("复核（非独立）", "review (not independent)")}</div>` : r.comparison.kind === "separate_runs" ? `<div class="small muted">${L("不同次运行", "separate runs")}</div>` : ""}` : `<span class="muted small">—</span>`}</td>
         <td><span class="badge ${CAT_BADGE[r.category]}">${t("filter_" + r.category)}</span></td></tr>`;
     }).join("");
     $$("#wbRows tr").forEach((tr) => (tr.onclick = () => { WB.sel = tr.dataset.v; drawRows(); drawDetail(c); }));
@@ -420,15 +490,15 @@ function drawDetail(c) {
     ${r.comparison ? `<div class="callout ${r.comparison.model_status === "model_agreement" ? "ok" : "warn"} small"><b>${esc(compText(r.comparison.status))}</b>${r.comparison.status === "human_approved" ? ` (${L("模型比较", "models")}: ${esc(compText(r.comparison.model_status))})` : ""}${r.comparison.note ? " — " + esc(r.comparison.note) : ""}
       ${r.comparison.kind === "reviewer" ? `<br>${L("复核模型看过主模型的结果，不是独立编码。", "The reviewer saw the primary model's result; it is not an independent coder.")}` : ""}
       <br>${L("模型一致不等于事实已核实；最终值以人工复核为准。", "Model agreement is not verification; the human-reviewed value is final.")}</div>` : ""}
-    ${(r.providers || []).length > 1 ? `<h3>${L("各模型的建议", "Suggestions by model")}</h3>${r.providers.map((m) => `<div class="panel" style="padding:10px 12px;margin:6px 0">
+    ${(r.providers || []).length >= 1 ? `<h3>${L("各模型的建议（互不覆盖）", "Suggestions by model (never overwrite each other)")}</h3>${["anthropic", "openai"].filter((k) => !(r.providers || []).some((m) => (m.provider === "openai_compatible" ? "openai" : m.provider) === k)).map((k) => `<div class="panel small" style="padding:8px 12px;margin:6px 0"><b>${esc(PROV[k])}</b> ${cellHtml((r.cells || {})[k], r)}</div>`).join("")}${r.providers.map((m) => `<div class="panel" style="padding:10px 12px;margin:6px 0">
       <div class="row"><b>${esc(m.provider_label || m.provider)}</b><span class="small mono">${esc(m.model || "")}</span><span class="badge ${m.role === "reviewer" ? "warn" : ""}">${esc(roleText(m.role))}</span>
-      <span class="badge">${esc(m.status)}</span>${m.cache_status && m.cache_status !== "new" ? `<span class="badge info">${L("缓存", "cache")}</span>` : ""}<span class="spacer"></span>
+      ${cellHtml((r.cells || {})[m.provider === "openai_compatible" ? "openai" : m.provider], r)}${m.cache_status && m.cache_status !== "new" ? `<span class="badge info">${L("缓存", "cache")}</span>` : ""}<span class="spacer"></span>
       <button class="small" data-accept-sid="${m.id}" ${m.value && !["model_error", "validation_failed"].includes(m.status) ? "" : "disabled"}>${L("接受此建议", "Accept this")}</button></div>
       <div class="val" style="margin:4px 0">${esc(m.value) || `<span class="muted">(blank)</span>`}${m.value && r.codes.length ? ` <span class="small">${esc(codeLabel(r, m.value))}</span>` : ""}</div>
       ${m.rationale ? `<div class="small"><b>${t("rationale")}:</b> ${esc(m.rationale)}</div>` : ""}
       ${m.unresolved ? `<div class="small"><b>${t("unresolved")}:</b> ${esc(m.unresolved)}</div>` : ""}
       ${((m.validation || {}).errors || []).length ? `<div class="callout bad small">${esc(m.validation.errors.join("; "))}</div>` : ""}
-      ${(m.evidence || []).map(evHtml).join("")}${(m.counter || []).map(evHtml).join("")}</div>`).join("")}<h3>${L("显示的建议（主模型或第一个模型）", "Displayed suggestion (primary or first model)")}</h3>` : `<h3>${t("suggestion")}</h3>`}
+      ${(m.evidence || []).map(evHtml).join("")}${(m.counter || []).map(evHtml).join("")}</div>`).join("")}<h3>${L("默认采用的建议（主模型或最近一次运行）", "Default suggestion (primary or most recent run)")}</h3>` : `<h3>${t("suggestion")}</h3>`}
     ${s.status ? `<div class="row"><span class="badge">${esc(s.status)}</span><span class="small muted">${t("basis")}: ${esc(s.basis || "")}${s.provider ? ` · ${esc(PROV[s.provider] || s.provider)} ${esc(s.model || "")}` : ""}</span></div>
       <div class="val" style="font-size:14px;margin:6px 0">${esc(s.value) || `<span class="muted">(blank)</span>`}</div>
       ${s.value && r.codes.length ? `<div class="small">${esc(codeLabel(r, s.value))}</div>` : ""}

@@ -172,7 +172,9 @@ citations, and leaves every final decision to a human reviewer.
 | Unknown model / bad key / no quota → configuration error, no retries | TESTED offline |
 | Usage per provider incl. reasoning tokens and request ids | TESTED offline; real token figures **UNVERIFIED** |
 | Anthropic-only, OpenAI-only and manual fallbacks | TESTED offline |
-| Additive migration with rollback/restore | TESTED offline (legacy database copy) |
+| Additive migration with rollback/restore | TESTED offline (database produced by deployed code `c57214a`) |
+| Stop Claude / Stop OpenAI / Resume Claude / Resume OpenAI, independently; warning that a sent request may still be billed | TESTED offline (incl. browser) |
+| Review table: Claude suggestion, OpenAI suggestion, Human final, Comparison, Review status; providers never overwrite each other; distinct states | TESTED offline (incl. browser) |
 
 ## 15. Deployment
 

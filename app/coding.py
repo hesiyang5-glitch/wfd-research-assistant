@@ -505,7 +505,7 @@ def run_coding(case: dict, settings: dict, client, job_id: int | None, log, budg
                variables: list[str] | None = None, cancelled=lambda: False, *, role: str = "primary",
                group_id: str | None = None, mode: str | None = None, prepared: dict | None = None,
                primary_rows: dict | None = None, derive: bool = True, store_system_rows: bool = True,
-               budget_cap: float | None = None) -> dict:
+               budget_cap: float | None = None, stop_check=lambda: None) -> dict:
     """Code one provider's suggestions. `budget_left` (remaining at start) or `budget_cap` (absolute case budget) bounds
     spend; every request is checked first against the case budget, the OpenAI budget and the attempt limits."""
     import uuid
@@ -529,6 +529,7 @@ def run_coding(case: dict, settings: dict, client, job_id: int | None, log, budg
     meta = {"provider": provider, "model": getattr(client, "model", None), "role": role, "group_id": group_id}
     report = {"run_id": run_id, "provider": provider, "model": getattr(client, "model", None), "role": role,
               "group_id": group_id, "calls": 0, "failed_calls": 0, "cache_hits": 0, "not_coded_budget": [],
+              "stopped": False, "stopped_variables": [], "config_error": None,
               "semantic_method": index.semantic_method, "n_passages_indexed": len(pmap), "spent_usd": 0.0}
 
     if store_system_rows:
@@ -553,10 +554,29 @@ def run_coding(case: dict, settings: dict, client, job_id: int | None, log, budg
         system = system_prompt_for(client)
         last_sig, abort_reason, preflight_done = None, None, False
         default_attempts = 3 if provider == "openai" else 4
+        stop_reason = None
         for bi, (fs, ids) in enumerate(batches):
-            if cancelled():
-                log("warn", "cancelled during coding")
-                break
+            if stop_reason is None:
+                if cancelled():
+                    stop_reason = "the whole job was cancelled"
+                else:
+                    stop_reason = stop_check()
+                if stop_reason:
+                    report["stopped"] = True
+                    log("warn", f"[{provider}] stopped ({stop_reason}) before batch {bi+1}/{len(batches)}; batches not yet "
+                                f"sent will not be sent; completed results are kept")
+            if stop_reason:  # never sent: recorded as stopped, nothing billed
+                _record_call({**{"case_id": case["id"], "job_id": job_id, "run_id": run_id, "group_id": group_id,
+                                 "provider": provider, "model": client.model, "role": role, "batch_no": bi + 1,
+                                 "n_batches": len(batches), "variables_json": json.dumps([f["name"] for f in fs]),
+                                 "evidence_ids_json": json.dumps(ids)}, "status": "stopped", "http_attempts": 0,
+                              "cost_usd": 0.0, "error": stop_reason[:200]})
+                for f in fs:
+                    report["stopped_variables"].append(f["name"])
+                    _store(case["id"], run_id, f["name"], "", "stopped",
+                           f"Stopped before this batch was sent ({stop_reason}). Not evidence of absence; nothing was "
+                           f"billed for it. Use Resume to code it.", basis="none", meta=meta)
+                continue
             if abort_reason:  # stop instead of sending every batch into the same error
                 for f in fs:
                     _store(case["id"], run_id, f["name"], "", "model_error", abort_reason, basis="none", meta=meta)
@@ -685,6 +705,7 @@ def run_coding(case: dict, settings: dict, client, job_id: int | None, log, budg
                         db.update("model_calls", call_id, {"status": "unusable_reply", "error": msg[:300]})
                 sig = getattr(e, "signature", msg[:160])
                 if isinstance(e, LLMError) and e.config_error:
+                    report["config_error"] = msg[:300]
                     abort_reason = f"Not sent: configuration error from {label} ({msg[:200]}). Fix the setting, then re-analyze."
                     log("error", "stopping coding for this provider: configuration error (not retried)")
                 elif isinstance(e, LLMError) and msg.startswith("HTTP 4") and sig == last_sig:
@@ -742,32 +763,62 @@ def run_coding(case: dict, settings: dict, client, job_id: int | None, log, budg
     return report
 
 
+def provider_stop_reason(job_id: int | None, provider: str) -> str | None:
+    """Stop flag for one provider in one job (set from the Progress page). Checked before every batch."""
+    if job_id is None:
+        return None
+    r = db.q1("SELECT * FROM provider_controls WHERE job_id=? AND provider=? AND stop_requested=1", (job_id, provider))
+    return f"stopped by {r.get('requested_by') or 'user'}" if r else None
+
+
+def group_primary_rows(case_id: int, group_id: str) -> dict:
+    """Latest primary-role suggestions of a coding group (what a reviewer sees)."""
+    out = {}
+    for s in db.q("SELECT s.*, r.model AS run_model FROM suggestions s LEFT JOIN runs r ON r.id=s.run_id "
+                  "WHERE s.case_id=? AND s.group_id=? AND s.role='primary' ORDER BY s.id", (case_id, group_id)):
+        out[s["variable"]] = {"value": s["value"], "status": s["status"], "rationale": s["rationale"],
+                              "evidence": json.loads(s["evidence_json"] or "[]"),
+                              "counter": json.loads(s["counter_json"] or "[]")}
+        out["_label"] = f"{PROVIDER_LABELS.get(s['provider'], s['provider'])} {s['model'] or s['run_model'] or ''}".strip()
+    return out
+
+
 def run_coding_plan(case: dict, settings: dict, plan: list, job_id: int | None, log, budget_cap: float | None,
-                    variables: list[str] | None = None, cancelled=lambda: False, mode: str = "single") -> dict:
+                    variables: list[str] | None = None, cancelled=lambda: False, mode: str = "single",
+                    group_id: str | None = None, on_status=None, derive: bool = True) -> dict:
     """Run every provider in the plan on ONE shared evidence preparation (search/fetch already happened once).
     Independent coders receive identical prompts and never see each other's results; a reviewer sees the primary's."""
     import uuid
     prep = prepare(case, settings, variables)
-    group_id = uuid.uuid4().hex[:12]
+    resumed = group_id is not None
+    group_id = group_id or uuid.uuid4().hex[:12]
     reps, primary_rows = [], None
+    status = on_status or (lambda *a, **k: None)
     if not plan:
         reps.append(run_coding(case, settings, None, job_id, log, None, variables, cancelled, group_id=group_id,
                                mode=mode, prepared=prep, derive=False))
     for i, (client, role) in enumerate(plan):
         rows = None
         if role == "reviewer":
-            rows = primary_rows or {}
+            rows = primary_rows if primary_rows is not None else group_primary_rows(case["id"], group_id)
+        prov = client.provider
+        status(prov, "running")
         rep = run_coding(case, settings, client, job_id, log, None, variables, cancelled, role=role, group_id=group_id,
-                         mode=mode, prepared=prep, primary_rows=rows, derive=False, store_system_rows=(i == 0),
-                         budget_cap=budget_cap)
+                         mode=mode, prepared=prep, primary_rows=rows, derive=False,
+                         store_system_rows=(i == 0 and not resumed), budget_cap=budget_cap,
+                         stop_check=lambda p=prov: provider_stop_reason(job_id, p))
         reps.append(rep)
+        status(prov, "stopped" if rep["stopped"] else ("failed" if rep["config_error"] else "done"),
+               stopped_variables=rep["stopped_variables"], calls=rep["calls"], failed_calls=rep["failed_calls"],
+               cache_hits=rep["cache_hits"], spent_usd=rep["spent_usd"], config_error=rep["config_error"])
         if role == "primary":
             primary_rows = {"_label": f"{PROVIDER_LABELS.get(client.provider, client.provider)} {client.model}"}
             for s in db.q("SELECT * FROM suggestions WHERE run_id=?", (rep["run_id"],)):
                 primary_rows[s["variable"]] = {"value": s["value"], "status": s["status"], "rationale": s["rationale"],
                                                "evidence": json.loads(s["evidence_json"] or "[]"),
                                                "counter": json.loads(s["counter_json"] or "[]")}
-    derive_fields(case, prep["schema"], reps[0]["run_id"], prep["targets"], group_id=group_id)
+    if derive and not resumed:
+        derive_fields(case, prep["schema"], reps[0]["run_id"], prep["targets"], group_id=group_id)
     comp = {}
     if len(plan) > 1:
         for row in suggestion_sets(case["id"]).values():
@@ -837,9 +888,18 @@ def _load_row(s: dict) -> dict:
     return s
 
 
+PROVIDER_COLUMN = {"anthropic": "anthropic", "openai": "openai", "openai_compatible": "openai"}
+CELL_STATE = {"suggested": "suggested", "rule_unclear": "suggested", "disputed": "disputed",
+              "insufficient_evidence": "no_supported_value", "stopped": "stopped", "model_error": "failed",
+              "validation_failed": "invalid_output", "not_coded_budget": "limit_reached"}
+
+
 def suggestion_sets(case_id: int) -> dict:
-    """Per variable: the latest coding group's suggestions per provider/role, the suggestion used for display/export
-    ('display'), the previous display suggestion (for Δ marks), and the provider comparison."""
+    """Per variable, one CELL per provider column (Claude, OpenAI): that provider's latest result across all runs.
+    A provider's run never hides or replaces the other provider's results. A batch that was stopped before sending does
+    not hide that provider's earlier completed result (the cell shows the earlier value with a 'stopped' note).
+    Also returns the display suggestion (used for default accept and unreviewed export), the comparison, and
+    system rows (derived/admin/manual) for variables no model codes."""
     rows = db.q("SELECT s.*, r.model AS run_model, r.coding_mode AS run_mode FROM suggestions s "
                 "LEFT JOIN runs r ON r.id = s.run_id WHERE s.case_id=? ORDER BY s.id", (case_id,))
     by_var: dict[str, list] = {}
@@ -847,34 +907,59 @@ def suggestion_sets(case_id: int) -> dict:
         by_var.setdefault(s["variable"], []).append(_load_row(s))
     out = {}
     for var, ss in by_var.items():
-        last = ss[-1]
-        gid = last.get("group_id")
-        group = [x for x in ss if gid and x.get("group_id") == gid] if gid else [last]
-        latest_by = {}
-        for x in group:
-            latest_by[(x.get("provider"), x.get("role"))] = x
-        members = list(latest_by.values())
-        models = [m for m in members if m.get("basis") == "model" or m.get("provider")]
-        prim = [m for m in models if m.get("role") in ("primary", None)]
-        indep = [m for m in models if m.get("role") == "independent"]
-        rev = [m for m in models if m.get("role") == "reviewer"]
-        display = (prim or indep or [last])[0] if models else last
+        prov_rows = [x for x in ss if x.get("provider")]
+        sys_rows = [x for x in ss if not x.get("provider")]
+        cells = {}
+        for col in ("anthropic", "openai"):
+            mine = [x for x in prov_rows if PROVIDER_COLUMN.get(x["provider"]) == col]
+            if not mine:
+                cells[col] = {"state": "not_run", "row": None}
+                continue
+            latest = mine[-1]
+            done = [x for x in mine if x["status"] != "stopped"]
+            shown = done[-1] if done else latest
+            prev = None
+            if len(done) >= 2 and (done[-2]["value"] != shown["value"] or done[-2]["status"] != shown["status"]) \
+                    and shown["status"] != "stopped":
+                prev = done[-2]
+            cells[col] = {"state": CELL_STATE.get(shown["status"], shown["status"]), "row": shown,
+                          "stopped_latest": latest["status"] == "stopped" and shown is not latest,
+                          "stopped_row": latest if latest["status"] == "stopped" else None, "previous": prev}
+        usable = [c["row"] for c in cells.values() if c["row"] is not None and c["state"] != "stopped"]
+        pick = [r for r in usable if r.get("role") != "reviewer"] or usable
+        display, previous = None, None
+        if pick:
+            gid = max(pick, key=lambda r: r["id"]).get("group_id")
+            same = [r for r in pick if r.get("group_id") == gid]
+            display = next((r for r in same if PROVIDER_COLUMN.get(r["provider"]) == "anthropic"), same[0])
+            previous = cells[PROVIDER_COLUMN[display["provider"]]]["previous"]
+        elif prov_rows:
+            display = prov_rows[-1]
+        elif sys_rows:
+            display = sys_rows[-1]
+            if len(sys_rows) >= 2 and (sys_rows[-2]["value"] != display["value"] or sys_rows[-2]["status"] != display["status"]):
+                previous = sys_rows[-2]
         comparison = None
-        if len(indep) >= 2:
-            comparison = {**compare_pair(indep[0], indep[1]), "kind": "independent",
-                          "providers": [indep[0]["provider"], indep[1]["provider"]]}
-        elif prim and rev:
-            comparison = {**compare_pair(prim[0], rev[0]), "kind": "reviewer",
-                          "providers": [prim[0]["provider"], rev[0]["provider"]],
-                          "note_reviewer": "The reviewer saw the primary model's result; not an independent coder."}
-        before = [x for x in ss if x["id"] < min(m["id"] for m in group) and x.get("role") != "reviewer"
-                  and (x.get("provider") == display.get("provider"))]
-        out[var] = {"display": display, "members": members, "comparison": comparison,
-                    "previous": before[-1] if before else None}
+        a, b = cells["anthropic"], cells["openai"]
+        if a["row"] is not None and b["row"] is not None and "stopped" not in (a["state"], b["state"]):
+            ra, rb = a["row"], b["row"]
+            comparison = compare_pair(ra, rb)
+            if ra.get("group_id") and ra.get("group_id") == rb.get("group_id"):
+                if "reviewer" in (ra.get("role"), rb.get("role")):
+                    comparison.update({"kind": "reviewer",
+                                       "note_reviewer": "The reviewer saw the primary model's result; not an independent coder."})
+                else:
+                    comparison["kind"] = "independent"
+            else:
+                comparison.update({"kind": "separate_runs",
+                                   "note_runs": "Results come from different runs; the evidence may have differed."})
+            comparison["providers"] = [ra["provider"], rb["provider"]]
+        members = [c["row"] for c in cells.values() if c["row"] is not None]
+        out[var] = {"display": display, "members": members, "comparison": comparison, "previous": previous,
+                    "cells": cells, "system": sys_rows[-1] if sys_rows else None}
     return out
 
 
-# ----------------------------------------------------------------------------- derived & admin
 def current_value(case_id: int, variable: str) -> tuple[str, str]:
     """Reviewed value if any, else the display suggestion (when two providers disagree, nothing). Returns (value, origin)."""
     r = db.q1("SELECT value, action FROM reviews WHERE case_id=? AND variable=?", (case_id, variable))

@@ -150,6 +150,7 @@ class ANMock:
     def __init__(self):
         self.policy = {}
         self.requests = []
+        self.after_request = None  # hook: called after each request (used to press "Stop" mid-run)
 
     def post(self, url, json=None, **kw):
         import json as js
@@ -157,6 +158,8 @@ class ANMock:
         class R:
             pass
         self.requests.append(json)
+        if self.after_request:
+            self.after_request(len(self.requests))
         user = json["messages"][0]["content"]
         names = [l.split("### ")[1].split("  (")[0] for l in user.splitlines() if l.startswith("### ")]
         r = R()
@@ -696,8 +699,154 @@ def main():
     check("27 redact() removes the key, sk- style keys and bearer tokens", "NOT-REAL" not in OR.redact(f"Bearer {KEY_OA} and {KEY_OA}", KEY_OA) and "abcdef12345" not in OR.redact("key sk-proj-abcdef12345xyz", ""))
 
     # =========================================================================================================
+
+    # =========================================================================================================
+    print("\n[11] Stop / resume each provider independently")
+    os.environ["WFD_TEST_FIXTURE"] = str(fx)
+    set_keys(True, True)
+    big = {"budget_usd": 20, "openai_budget_usd": 20}
+    VARS2 = VARS + ["SUMMARY", "ALERTING_AUTHORITY_TYPE", "POPULATION_SCOPE", "DELIVERY_COVERAGE"]
+
+    def run_job(jid):
+        research.run_research(db.q1("SELECT * FROM jobs WHERE id=?", (jid,)))
+        j = db.q1("SELECT * FROM jobs WHERE id=?", (jid,))
+        return j, json.loads(j["state_json"])
+
+    def stop_flag(jid, prov):
+        class HH:
+            user = "coder1"
+        return server.api_stop_provider(HH(), str(jid), prov)
+
+    # (a) Stop OpenAI before it starts: Claude unaffected, OpenAI sends nothing
+    c20, _ = new_case("case stop openai", big)
+    OA.policy, AN.policy, OA.requests, AN.requests = {"SYSTEM_LEVEL": "3"}, {"SYSTEM_LEVEL": "3"}, [], []
+    j20 = jobs.enqueue(c20, "recode", {"variables": VARS2, "mode": "dual_independent"})
+    r_stop = stop_flag(j20, "openai")
+    j, sj = run_job(j20)
+    check("stop warning says a sent request may still finish and be billed", "may still be billed" in r_stop["warning"])
+    check("Stop OpenAI: no OpenAI request sent; Claude ran normally", len(OA.requests) == 0 and len(AN.requests) > 0
+          and sj["provider_runs"]["openai"]["status"] == "stopped" and sj["provider_runs"]["anthropic"]["status"] == "done",
+          json.dumps(sj.get("provider_runs"))[:300])
+    rows = {r["name"]: r for r in export.case_results(c20)["rows"]}
+    check("Stop OpenAI: Claude results kept; OpenAI cells show 'Stopped'", rows["SYSTEM_LEVEL"]["cells"]["anthropic"]["state"] == "suggested"
+          and rows["SYSTEM_LEVEL"]["cells"]["openai"]["state"] == "stopped")
+    check("stopped batches cost nothing and are logged as 'stopped'",
+          db.q1("SELECT COUNT(*) n, COALESCE(SUM(cost_usd),0) c FROM model_calls WHERE job_id=? AND status='stopped'", (j20,))["n"] > 0
+          and db.q1("SELECT COALESCE(SUM(cost_usd),0) c FROM usage WHERE job_id=? AND provider='openai'", (j20,))["c"] == 0)
+
+    # (b) Stop Claude mid-run: the in-flight request finishes and is kept/billed; later Claude batches are not sent;
+    #     OpenAI is unaffected and codes everything
+    c21, _ = new_case("case stop claude", big)
+    OA.requests, AN.requests = [], []
+    j21 = jobs.enqueue(c21, "recode", {"variables": VARS2, "mode": "dual_independent"})
+    AN.after_request = lambda n: stop_flag(j21, "anthropic") if n == 1 else None
+    j, sj = run_job(j21)
+    AN.after_request = None
+    n_batches = len(coding.prepare(case_row(c21), {**DEFAULT_SETTINGS, **big}, VARS2)["batches"])
+    calls_an = db.q("SELECT status, cost_usd FROM model_calls WHERE job_id=? AND provider='anthropic' ORDER BY id", (j21,))
+    check("Stop Claude mid-run: exactly the in-flight request was sent; the rest were not",
+          len(AN.requests) == 1 and n_batches > 1 and [c["status"] for c in calls_an][0] == "complete"
+          and all(c["status"] == "stopped" for c in calls_an[1:]), f"{len(AN.requests)} sent of {n_batches}; {calls_an}")
+    check("in-flight Claude request result kept and billed", db.q1("SELECT COUNT(*) n FROM usage WHERE job_id=? AND provider='anthropic'", (j21,))["n"] == 1)
+    check("OpenAI unaffected by stopping Claude (all its batches sent)", len(OA.requests) == n_batches
+          and sj["provider_runs"]["openai"]["status"] == "done" and sj["provider_runs"]["anthropic"]["status"] == "stopped")
+    stopped_vars = set(sj["provider_runs"]["anthropic"]["stopped_variables"])
+    check("stopped Claude variables listed for the reviewer", len(stopped_vars) > 0)
+
+    # (c) Resume Claude: only the stopped variables are coded, in the same comparison group
+    class HH:
+        user = "coder1"
+    rr = server.api_resume_provider(HH(), str(j21), "anthropic")
+    AN.requests, OA.requests = [], []
+    j, sj2 = run_job(rr["job_id"])
+    sent_vars = set()
+    for rq in AN.requests:
+        sent_vars |= {l.split("### ")[1].split("  (")[0] for l in rq["messages"][0]["content"].splitlines() if l.startswith("### ")}
+    check("Resume Claude: only previously stopped variables are sent", sent_vars and sent_vars <= stopped_vars and set(rr["variables"]) == stopped_vars,
+          f"{sorted(sent_vars)} vs {sorted(stopped_vars)}")
+    check("Resume Claude: OpenAI not called again", len(OA.requests) == 0)
+    g1 = json.loads(db.q1("SELECT state_json FROM jobs WHERE id=?", (j21,))["state_json"])["group_id"]
+    check("Resume writes into the same comparison group", sj2["group_id"] == g1)
+    rows = {r["name"]: r for r in export.case_results(c21)["rows"]}
+    check("after Resume no Claude cell is 'stopped' and comparison is independent",
+          all(r["cells"]["anthropic"]["state"] != "stopped" for r in rows.values() if r["name"] in VARS2)
+          and rows["SYSTEM_LEVEL"]["comparison"]["kind"] == "independent")
+    try:
+        server.api_resume_provider(HH(), str(j21), "anthropic")
+        check("nothing left to resume → clear message", False)
+    except server.ApiError:
+        check("nothing left to resume → clear message", True)
+
+    # (d) Resume before the stop took effect: the flag is withdrawn, the provider runs normally
+    c22, _ = new_case("case resume in place", big)
+    OA.requests, AN.requests = [], []
+    j22 = jobs.enqueue(c22, "recode", {"variables": VARS, "mode": "dual_independent"})
+    stop_flag(j22, "openai")
+    ri = server.api_resume_provider(HH(), str(j22), "openai")
+    j, sj = run_job(j22)
+    check("Resume before the stop took effect: OpenAI runs normally", ri.get("resumed_in_place") and len(OA.requests) > 0
+          and sj["provider_runs"]["openai"]["status"] == "done")
+
+    # (e) A stopped run never hides that provider's earlier completed result
+    j23 = jobs.enqueue(c22, "recode", {"variables": VARS, "mode": "dual_independent"})
+    stop_flag(j23, "anthropic")
+    run_job(j23)
+    cell = {r["name"]: r for r in export.case_results(c22)["rows"]}["SYSTEM_LEVEL"]["cells"]["anthropic"]
+    check("stopped later run keeps the earlier Claude value visible (marked 'latest run stopped')",
+          cell["state"] == "suggested" and cell["value"] == "3" and cell["stopped_latest"], str(cell))
+    # (f) whole-job cancel still stops everything and records it
+    j24 = jobs.enqueue(c22, "recode", {"variables": VARS, "mode": "dual_independent"})
+    jobs.cancel(j24)
+    check("whole-job Cancel still available and stops both", db.q1("SELECT status FROM jobs WHERE id=?", (j24,))["status"] == "cancelled")
+
+    # =========================================================================================================
+    print("\n[12] Review cells: providers never overwrite each other; states are distinct")
+    c25, _ = new_case("case cells", big)
+    AN.policy = {"SYSTEM_LEVEL": "3", "FAILURE_TYPE": "2"}
+    jA = jobs.enqueue(c25, "recode", {"variables": VARS, "mode": "anthropic_only"})
+    run_job(jA)
+    rows = {r["name"]: r for r in export.case_results(c25)["rows"]}
+    check("Claude-only results appear in the Claude column; OpenAI shows 'Not run'",
+          rows["SYSTEM_LEVEL"]["cells"]["anthropic"]["value"] == "3" and rows["SYSTEM_LEVEL"]["cells"]["openai"]["state"] == "not_run")
+    server.api_review(HH(), str(c25), {"variable": "FAILURE_TYPE", "action": "edit", "value": "6", "reason": "AAR says redundancy failure"})
+    OA.policy, OA.script = {"SYSTEM_LEVEL": "4"}, ["good"]
+    jO = jobs.enqueue(c25, "recode", {"variables": VARS, "mode": "openai_only"})
+    run_job(jO)
+    rows = {r["name"]: r for r in export.case_results(c25)["rows"]}
+    check("a later OpenAI-only run does NOT overwrite the Claude column", rows["SYSTEM_LEVEL"]["cells"]["anthropic"]["value"] == "3"
+          and rows["SYSTEM_LEVEL"]["cells"]["openai"]["value"] == "4")
+    check("results from different runs are compared and labelled 'separate runs'",
+          rows["SYSTEM_LEVEL"]["comparison"]["kind"] == "separate_runs" and rows["SYSTEM_LEVEL"]["comparison"]["model_status"] == "value_disagreement")
+    check("Human final unchanged by both runs", rows["FAILURE_TYPE"]["review"]["value"] == "6")
+    OA.script = ["invalid_code"]
+    jI = jobs.enqueue(c25, "recode", {"variables": ["FAILURE_TYPE"], "mode": "openai_only"})  # new batch → not a cache hit
+    run_job(jI)
+    OA.script = ["good"]
+    rows = {r["name"]: r for r in export.case_results(c25)["rows"]}
+    states = {rows["FAILURE_TYPE"]["cells"]["openai"]["state"], rows["INTERAGENCY_COORDINATION"]["cells"]["openai"]["state"],
+              rows["SYSTEM_LEVEL"]["cells"]["anthropic"]["state"]}
+    check("states: invalid output, no supported value, suggested are distinct", states == {"invalid_output", "no_supported_value", "suggested"}, str(states))
+    c26, _ = new_case("case failed", big)
+    OA.script, OA.requests = ["500"], []
+    run_job(jobs.enqueue(c26, "recode", {"variables": ["SYSTEM_LEVEL"], "mode": "openai_only"}))
+    OA.script = ["good"]
+    r26 = {r["name"]: r for r in export.case_results(c26)["rows"]}["SYSTEM_LEVEL"]["cells"]
+    check("state 'Failed' for a failed call; Claude column 'Not run'", r26["openai"]["state"] == "failed" and r26["anthropic"]["state"] == "not_run")
+    labels = export.CELL_LABELS
+    check("the five required states have five different labels",
+          len({labels[k] for k in ("not_run", "no_supported_value", "stopped", "failed", "invalid_output")}) == 5)
+    os.environ.pop("WFD_TEST_FIXTURE", None)
+
     print("\n[10] Browser: provider status, mode choice, per-provider costs, comparison display")
-    ui_ok = ui_check(c14, KEY_AN, KEY_OA)
+    # A paused job (needs_input is never picked up by the worker) so the Progress page shows both Stop buttons.
+    db.insert("jobs", {"case_id": c25, "kind": "recode", "stage": "coding", "status": "needs_input", "progress": 0.85,
+                       "message": "Waiting for approval (test fixture)", "params_json": json.dumps({"mode": "dual_independent"}),
+                       "state_json": json.dumps({"coding_mode": "dual_independent", "provider_runs": {
+                           "anthropic": {"status": "pending", "role": "independent", "model": "claude-sonnet-5-5"},
+                           "openai": {"status": "pending", "role": "independent", "model": "gpt-6.1-sol"}}}),
+                       "created_at": time.time(), "updated_at": time.time(), "cancel_requested": 0})
+    db.ex("UPDATE jobs SET status='cancelled' WHERE status IN ('queued','running')")  # the test server must never run a job
+    ui_ok = ui_check(c14, KEY_AN, KEY_OA, stopped_case=c20, controls_case=c25)
     check("26 frontend provider/cost/comparison display (see details above)", ui_ok)
 
     print(f"\n{len(PASS)} passed, {len(FAIL)} failed")
@@ -706,7 +855,7 @@ def main():
     sys.exit(1 if FAIL else 0)
 
 
-def ui_check(cid: int, key_an: str, key_oa: str) -> bool:
+def ui_check(cid: int, key_an: str, key_oa: str, stopped_case=None, controls_case=None) -> bool:
     try:
         from playwright.sync_api import sync_playwright
     except ImportError:
@@ -768,6 +917,12 @@ def ui_check(cid: int, key_an: str, key_oa: str) -> bool:
                 if keys:
                     pg.goto(f"http://127.0.0.1:{port}/#/case/{cid}/review")
                     pg.wait_for_timeout(1500)
+                    heads = [h.strip() for h in pg.eval_on_selector_all("#wbTable thead th", "els => els.map(e => e.innerText)")]
+                    want_en = ["#", "Variable", "Claude suggestion", "OpenAI suggestion", "Human final", "Comparison", "Review status"]
+                    want_zh = ["#", "变量", "Claude 建议", "OpenAI 建议", "人工最终值", "比较", "复核状态"]
+                    print(f"  [{port}] review columns:", heads)
+                    ok &= heads in (want_en, want_zh)
+                    pg.screenshot(path=str(TMP / "ui_review_table.png"), full_page=False)
                     pg.click("tr[data-v='FAILURE_TYPE']")
                     pg.wait_for_timeout(600)
                     det = pg.inner_text("#wbDetail")
@@ -779,6 +934,28 @@ def ui_check(cid: int, key_an: str, key_oa: str) -> bool:
                     print(f"  [{port}] table shows comparison badges:", any(x in tbl for x in ("Human approved", "人工已确认", "Value disagreement", "取值不一致")))
                     ok &= any(x in tbl for x in ("Human approved", "人工已确认", "Value disagreement", "取值不一致"))
                     pg.screenshot(path=str(TMP / "ui_review_providers.png"))
+                    if stopped_case:
+                        pg.goto(f"http://127.0.0.1:{port}/#/case/{stopped_case}/progress")
+                        pg.wait_for_timeout(1500)
+                        has_resume = pg.locator("[data-resume-prov=openai]").count() == 1 and pg.locator("[data-stop-prov]").count() == 0
+                        print(f"  [{port}] stopped OpenAI run shows 'Resume OpenAI' (and no Stop on a finished job):", has_resume)
+                        ok &= has_resume
+                        pg.screenshot(path=str(TMP / "ui_progress_resume.png"))
+                    if controls_case:
+                        pg.goto(f"http://127.0.0.1:{port}/#/case/{controls_case}/progress")
+                        pg.wait_for_timeout(1500)
+                        both = pg.locator("[data-stop-prov=anthropic]").count() == 1 and pg.locator("[data-stop-prov=openai]").count() == 1
+                        print(f"  [{port}] separate 'Stop Claude' and 'Stop OpenAI' buttons:", both)
+                        ok &= both
+                        pg.screenshot(path=str(TMP / "ui_progress_stop_buttons.png"))
+                        pg.click("[data-stop-prov=openai]")
+                        pg.wait_for_selector("#dlgOk", timeout=5000)
+                        dlg = pg.inner_text(".modal")
+                        warn = ("may still be billed" in dlg) or ("可能仍然计费" in dlg)
+                        print(f"  [{port}] stop dialog warns that a sent request may still be billed:", warn)
+                        ok &= warn
+                        pg.screenshot(path=str(TMP / "ui_stop_dialog.png"))
+                        pg.click("#dlgCancel")
                 print(f"  [{port}] JS errors:", errors)
                 ok &= not errors
                 b.close()

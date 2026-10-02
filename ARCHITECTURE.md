@@ -127,3 +127,8 @@ server; `/api/status` reports only whether each key is set.
 - **Incomplete replies.** OpenAI `status=incomplete` (reason recorded, e.g. `max_output_tokens`), refusals, invalid JSON
   and schema violations are billed at actual usage when reported, logged, discarded and never cached.
 - **Cache key v2** — see DECISIONS D-026.
+- **Stop / resume** (D-030): `provider_controls(job_id, provider, stop_requested)` is read before every batch; never-sent
+  batches are stored as `stopped`; Resume queues a follow-up job (`params.resume`) that codes only stopped variables in
+  the same `group_id`. `limit_changes` records every case-limit change (who, old, new, why).
+- **Review cells** (D-031): `suggestion_sets()` returns one cell per provider column (latest result of that provider
+  across runs), the display suggestion, the comparison and system rows.

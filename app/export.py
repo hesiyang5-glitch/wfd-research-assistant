@@ -72,9 +72,31 @@ def case_results(case_id: int) -> dict:
             "codes": f.get("codes", []), "open_options": f.get("open_options", []), "missing_codes": f.get("missing_codes", []),
             "codebook_ref": f.get("codebook_ref"), "issues": f.get("issues", []), "rule_missing": f.get("rule_missing"),
             "suggestion": s, "previous": p if changed else None, "review": r, "providers": providers,
-            "comparison": comp_out, "category": cat,
+            "comparison": comp_out, "category": cat, "cells": _cells_out(ss.get("cells")),
+            "system": ss.get("system") if not providers else None,
         })
     return {"case": case, "schema_label": schema.get("label"), "schema_id": schema.get("id"), "rows": rows, "sources": srcs}
+
+
+CELL_LABELS = {"not_run": "Not run", "suggested": "Suggested", "disputed": "Disputed",
+               "no_supported_value": "No supported value", "stopped": "Stopped", "failed": "Failed",
+               "invalid_output": "Invalid output", "limit_reached": "Limit reached"}
+
+
+def _cells_out(cells: dict | None) -> dict:
+    """Per-provider cells for the Review table: Claude and OpenAI never share or overwrite a cell."""
+    out = {}
+    for col in ("anthropic", "openai"):
+        c = (cells or {}).get(col) or {"state": "not_run", "row": None}
+        row = c.get("row")
+        out[col] = {"state": c["state"], "label": CELL_LABELS.get(c["state"], c["state"]),
+                    "value": (row or {}).get("value") or "", "status": (row or {}).get("status"),
+                    "suggestion_id": (row or {}).get("id"), "model": (row or {}).get("model") or (row or {}).get("run_model"),
+                    "role": (row or {}).get("role"), "cache_status": (row or {}).get("cache_status"),
+                    "stopped_latest": bool(c.get("stopped_latest")),
+                    "previous_value": (c.get("previous") or {}).get("value") if c.get("previous") else None,
+                    "changed": bool(c.get("previous"))}
+    return out
 
 
 def export_value(row: dict, include_unreviewed: bool) -> tuple[str, str]:
