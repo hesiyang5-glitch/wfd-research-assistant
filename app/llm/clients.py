@@ -14,9 +14,15 @@ class LLMError(Exception):
     (e.g. a read timeout or a server error after sending). Such calls are never retried automatically
     and are counted against the budget at their worst-case cost."""
 
-    def __init__(self, msg: str, possibly_billed: bool = False):
+    def __init__(self, msg: str, possibly_billed: bool = False, config_error: bool = False, attempts: int | None = None,
+                 request_id: str | None = None, signature: str | None = None):
         super().__init__(msg)
         self.possibly_billed = possibly_billed
+        # config_error: wrong/missing model, key, permission or quota. Never retried; the run stops immediately.
+        self.config_error = config_error
+        self.attempts = attempts  # requests actually sent (None = unknown; counted as the maximum allowed)
+        self.request_id = request_id
+        self.signature = signature or msg[:160]  # used to detect "the same rejection twice in a row"
 
 
 # Failures where the request certainly never reached the provider: safe to retry.
@@ -37,10 +43,34 @@ def price_for(model: str) -> dict | None:
 
 
 def cost_usd(model: str, in_tok: int, out_tok: int) -> float | None:
+    """Cost at the configured list price. Cached input is deliberately charged at the full input price (overstates).
+    Reasoning tokens are part of `out_tok` (OpenAI bills them as output). A long-context surcharge applies when the
+    pricing entry defines one (e.g. gpt-6.1-sol: >272K input tokens -> 2x input, 1.5x output for the whole request)."""
+    p = price_for(model)
+    if not p or p.get("input_per_mtok") is None or p.get("output_per_mtok") is None:
+        return None
+    i_rate, o_rate = p["input_per_mtok"], p["output_per_mtok"]
+    lc = p.get("long_context")
+    if lc and in_tok > int(lc.get("threshold_input_tokens", 10 ** 12)):
+        i_rate *= float(lc.get("input_multiplier", 1))
+        o_rate *= float(lc.get("output_multiplier", 1))
+    return round(in_tok / 1e6 * i_rate + out_tok / 1e6 * o_rate, 5)
+
+
+def price_note(model: str, stale_days: int = 90) -> str | None:
+    """Warn when a price is missing or its verification date is old, instead of presenting false precision."""
+    import datetime as dt
+    import re as _re
     p = price_for(model)
     if not p or p.get("input_per_mtok") is None:
-        return None
-    return round(in_tok / 1e6 * p["input_per_mtok"] + out_tok / 1e6 * p["output_per_mtok"], 5)
+        return f"no price configured for {model}"
+    m = _re.search(r"(\d{4}-\d{2}-\d{2})", str(p.get("verified", "")))
+    if not m:
+        return f"price for {model} has no verification date"
+    age = (dt.date.today() - dt.date.fromisoformat(m.group(1))).days
+    if age > stale_days:
+        return f"price for {model} was last verified {age} days ago ({m.group(1)}); check the provider's pricing page"
+    return None
 
 
 class LLMClient:
@@ -60,12 +90,17 @@ class AnthropicClient(LLMClient):
         super().__init__(model)
         self.key = key
 
-    def complete(self, system, user, max_tokens=4000):
+    def generation_settings(self) -> dict:
+        return {"api": "messages"}
+
+    def complete(self, system, user, max_tokens=4000, max_attempts=4):
         # No `temperature`: current Claude models reject it ("temperature is deprecated for this model").
         body = {"model": self.model, "max_tokens": max_tokens, "system": system,
                 "messages": [{"role": "user", "content": user}]}
         last = None
-        for attempt in range(4):
+        n = 0
+        for attempt in range(max(1, min(4, int(max_attempts)))):
+            n += 1
             try:
                 r = httpx.post("https://api.anthropic.com/v1/messages", json=body,
                                timeout=httpx.Timeout(READ_TIMEOUT, connect=15.0),
@@ -77,27 +112,33 @@ class AnthropicClient(LLMClient):
                 continue
             except httpx.HTTPError as e:
                 raise LLMError(f"network error after the request was sent ({type(e).__name__}); not retried because it "
-                               f"may already have been billed", possibly_billed=True) from e
+                               f"may already have been billed", possibly_billed=True, attempts=n) from e
             if r.status_code in RETRY_STATUS_ANTHROPIC:
                 last = f"HTTP {r.status_code}: {r.text[:200]}"
                 time.sleep(3 * (attempt + 1))
                 continue
             if r.status_code >= 500:
                 raise LLMError(f"HTTP {r.status_code} from provider; not retried because it may already have been billed: "
-                               f"{r.text[:200]}", possibly_billed=True)
+                               f"{r.text[:200]}", possibly_billed=True, attempts=n)
             if r.status_code != 200:
-                raise LLMError(f"HTTP {r.status_code}: {r.text[:300]}")
+                cfg = r.status_code in (401, 403, 404)
+                raise LLMError(f"HTTP {r.status_code}: {r.text[:300]}", config_error=cfg, attempts=n)
             j = r.json()
             text = "".join(b.get("text", "") for b in j.get("content", []) if b.get("type") == "text")
             u = j.get("usage", {})
             return {"text": text, "input_tokens": u.get("input_tokens"), "output_tokens": u.get("output_tokens"),
-                    "stop_reason": j.get("stop_reason")}
-        raise LLMError(last or "failed after retries")
+                    "stop_reason": j.get("stop_reason"), "request_id": r.headers.get("request-id") if hasattr(r, "headers") else None,
+                    "response_id": j.get("id"), "attempts": n, "status": "completed"}
+        raise LLMError(last or "failed after retries", attempts=n)
 
 
 class OpenAICompatClient(LLMClient):
-    """OpenAI or any OpenAI-compatible server (e.g. a local Ollama / LM Studio / vLLM model via OPENAI_BASE_URL)."""
-    provider = "openai"
+    """Legacy adapter for an OpenAI-COMPATIBLE server set with OPENAI_BASE_URL (e.g. a local Ollama / LM Studio / vLLM
+    model), via Chat Completions. Official OpenAI uses OpenAIResponsesClient (app/llm/openai_responses.py)."""
+    provider = "openai_compatible"
+
+    def generation_settings(self) -> dict:
+        return {"api": "chat.completions", "temperature": 0, "base_url": self.base}
 
     def __init__(self, model: str, key: str, base: str):
         super().__init__(model)
@@ -137,14 +178,48 @@ class OpenAICompatClient(LLMClient):
         raise LLMError(last or "failed after retries")
 
 
-def get_client(provider: str, model: str) -> LLMClient | None:
-    order = [provider] if provider not in ("auto", "", None) else ["anthropic", "openai"]
+def openai_model() -> str:
+    from .openai_responses import DEFAULT_OPENAI_MODEL
+    return env("OPENAI_MODEL") or DEFAULT_OPENAI_MODEL
+
+
+def provider_status() -> dict:
+    """Which providers can be used — booleans and model names only, never key values."""
+    from .openai_responses import sdk_available
+    return {
+        "anthropic": {"configured": bool(env("ANTHROPIC_API_KEY")), "model_setting": "model_name"},
+        "openai": {"configured": bool(env("OPENAI_API_KEY")) and not env("OPENAI_BASE_URL"),
+                   "model": openai_model(), "model_from": "OPENAI_MODEL" if env("OPENAI_MODEL") else "default",
+                   "sdk_installed": sdk_available(), "api": "responses"},
+        "openai_compatible": {"configured": bool(env("OPENAI_BASE_URL")),
+                              "model": env("OPENAI_MODEL") or None, "api": "chat.completions"},
+    }
+
+
+def make_client(provider: str, model: str, settings: dict | None = None) -> LLMClient | None:
+    """Build exactly the named provider, or None when its key is not configured."""
+    settings = settings or {}
+    if provider == "anthropic" and env("ANTHROPIC_API_KEY"):
+        return AnthropicClient(model if (model or "").startswith("claude") else "claude-sonnet-5-5", env("ANTHROPIC_API_KEY"))
+    if provider == "openai" and env("OPENAI_API_KEY") and not env("OPENAI_BASE_URL"):
+        from .openai_responses import OpenAIResponsesClient
+        return OpenAIResponsesClient(openai_model(), env("OPENAI_API_KEY"),
+                                     reasoning_effort=str(settings.get("openai_reasoning_effort", "medium")),
+                                     timeout_s=float(settings.get("openai_timeout_seconds", READ_TIMEOUT)))
+    if provider in ("openai", "openai_compatible") and env("OPENAI_BASE_URL"):
+        return OpenAICompatClient(env("OPENAI_MODEL", model) if (model or "").startswith("claude") else model,
+                                  env("OPENAI_API_KEY"), env("OPENAI_BASE_URL"))
+    return None
+
+
+def get_client(provider: str, model: str, settings: dict | None = None) -> LLMClient | None:
+    """Single-provider resolution (legacy `model_provider` setting). 'auto' = Claude if its key exists, else OpenAI,
+    else an OpenAI-compatible local server. A second provider is never started automatically."""
+    order = [provider] if provider not in ("auto", "", None) else ["anthropic", "openai", "openai_compatible"]
     for p in order:
-        if p == "anthropic" and env("ANTHROPIC_API_KEY"):
-            return AnthropicClient(model if model.startswith("claude") else "claude-sonnet-5-5", env("ANTHROPIC_API_KEY"))
-        if p == "openai" and (env("OPENAI_API_KEY") or env("OPENAI_BASE_URL")):
-            return OpenAICompatClient(env("OPENAI_MODEL", model) if model.startswith("claude") else model,
-                                      env("OPENAI_API_KEY"), env("OPENAI_BASE_URL", "https://api.openai.com/v1"))
+        c = make_client(p, model, settings)
+        if c:
+            return c
     return None
 
 

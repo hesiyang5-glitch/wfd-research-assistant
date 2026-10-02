@@ -21,3 +21,5 @@ services:
         sync: false
       - key: ANTHROPIC_API_KEY
         sync: false
+      - key: OPENAI_API_KEY  # optional second model provider (OpenAI, Responses API). Leave unset to keep Claude-only behavior.
+        sync: false          # never stored in Git; set it in the Render dashboard. OPENAI_MODEL is optional (default gpt-6.1-sol).

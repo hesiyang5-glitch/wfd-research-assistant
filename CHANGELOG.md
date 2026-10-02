@@ -2,7 +2,64 @@
 
 Completed changes, newest first. Commit hashes refer to `hesiyang5-glitch/wfd-research-assistant`.
 
-## 2026-10-01 — Output limit fix (branch `fix/output-limit`, not yet deployed)
+## 2026-10-01 — Per-provider Stop/Resume, provider review table, legacy-data migration test (branch `feature/openai-provider`, NOT deployed)
+- Progress page: separate **Stop Claude / Stop OpenAI / Resume Claude / Resume OpenAI** buttons (D-030). Stop is checked
+  before every batch: batches not yet sent are recorded as "stopped" (never sent, never billed); a request already sent
+  finishes and is kept and billed; completed and cached results are kept; the other provider keeps going. The stop
+  dialog warns that a sent request may still finish and be billed. Resume withdraws a stop that has not taken effect,
+  or queues a follow-up job that codes only the stopped variables in the same comparison group.
+- Review table columns are now `# | Variable | Claude suggestion | OpenAI suggestion | Human final | Comparison |
+  Review status` (D-031). Each provider column shows that provider's latest result across runs, so one provider can
+  never hide or replace the other; a stopped run never hides an earlier completed result. Distinct states: Not run,
+  No supported value, Stopped, Failed, Invalid output, Limit reached, Disputed. Fields no model codes (IDs, derived,
+  admin, analyst notes) span both columns as "not model-coded".
+- Review detail panel: "Re-analyze this variable" (same dialog: mode choice + worst-case estimate) for the smallest
+  possible live test.
+- Case limits can be set to explicit values from the re-analysis dialog (raise or lower, never remove); every change,
+  including approvals, is recorded in the new `limit_changes` table.
+- Migration adds `provider_controls` and `limit_changes` (additive, repeatable).
+- `docs/live-coding-result` merged into this branch, so one later merge to `main` carries everything.
+- Tests: `tests/test_providers.py` 138 checks (stop/resume, cells, browser columns and buttons);
+  new `tests/test_legacy_migration.py` (18 checks) on a database produced by the deployed code `c57214a`
+  (`tests/fixtures/legacy_c57214a_marshall.sqlite3`, built by `tools/make_legacy_fixture.py`).
+
+## 2026-10-01 — OpenAI as a second model provider (branch `feature/openai-provider`, NOT merged, NOT deployed)
+- New `app/llm/openai_responses.py`: official `openai` SDK (≥3.23), Responses API, Structured Outputs with a strict
+  JSON Schema per batch (`app/llm/structured.py`): codebook codes as enums, `-9` only where defined, passage ids limited
+  to the batch, every variable required. SDK auto-retry off; only "never sent" errors and plain 429 are retried;
+  timeouts/5xx never retried (possibly billed, counted at worst case); bad key, no permission, unknown model and
+  exhausted quota are configuration errors (no retry, run stops). Free model-availability check before estimating.
+  API key read only from `OPENAI_API_KEY` and redacted from all error text.
+- Provider-neutral coding (`app/coding.py`): one shared evidence preparation and identical prompts for every provider;
+  one normalizer → the same server validator; results stored per provider/role/run group. Modes: `single` (default,
+  unchanged), `anthropic_only`, `openai_only`, `dual_independent`, `anthropic_primary_openai_review`,
+  `openai_primary_anthropic_review`. Search is never repeated per provider. Comparison statuses: model agreement,
+  value/evidence disagreement, one provider blank, invalid provider output, needs human review, human approved.
+- Limits checked on the server before every request: combined case budget, OpenAI case budget, OpenAI attempts and
+  total model attempts per case (new append-only `model_calls` ledger counts every request, incl. retries).
+  Approval raises each limit to an explicit value.
+- Cache key v2 (provider, model, prompt version, codebook version, variables, evidence hash, response schema,
+  generation settings, role). Existing Claude cache entries remain reusable read-only. Replies with invalid,
+  incomplete, refused, non-JSON or schema-noncompliant content are never cached — **this now also applies to Claude:
+  a reply with any invalid item is no longer cached** (D-025).
+- Claude: 401/403/404 responses are now configuration errors (run stops at the first one instead of the second).
+  Claude's prompt text is byte-identical to before.
+- Additive, repeatable DB migration (`app/migrations.py`) with `rollback`/`restore` commands.
+- UI: provider status; mode choice with per-provider and combined worst-case cost, spend by provider and attempt counts
+  in the re-analysis dialog; side-by-side provider suggestions with their own evidence and "accept this" buttons;
+  comparison badges; human-approved value shown separately; OpenAI settings only when its key is configured.
+- Export: new `Provider_Suggestions` sheet; extra columns in Results/Evidence/Runs_Usage; `Case_Row` unchanged;
+  provider disagreements are never exported as values without a human decision.
+- `render.yaml`: `OPENAI_API_KEY` (`sync: false`, no value). `config/pricing.json`: `gpt-6.1-sol` $2 / $10 per 1M
+  (cached $0.10; >272K input tokens 2×/1.5×), verified 2026-10-01.
+- Tests: new `tests/test_providers.py` (115 checks, real SDK through a mocked transport, browser checks);
+  `tests/test_pipeline.py` cache check updated for D-025. No live OpenAI call has been made.
+
+## 2026-10-01 — First complete live coding run (docs only)
+- Marshall Fire re-analysis on `c57214a`: 16 calls, 0 failed, 7 reused from cache; output use up to ~960 tokens
+  per variable. Case total $1.49 (including ~$0.68 for the earlier partly cut-off run).
+
+## 2026-10-01 — `c57214a` Output limit fix (deployed)
 - First partly successful live coding run (Marshall Fire): 7 of 16 batches coded; 9 replies cut off at the old
   output limit (600 + 450 tokens per variable) and discarded.
 - Output allowance raised to 1,500 + 1,200 tokens per variable (ceiling 16,000); at most 12 variables per call so

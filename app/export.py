@@ -39,35 +39,64 @@ def review_category(f: dict, sugg: dict | None, review: dict | None) -> str:
 
 
 def case_results(case_id: int) -> dict:
+    """Rows for the review table and exports. Each row has the display suggestion (single provider or primary), every
+    provider's suggestion from the latest coding run ('providers'), the provider comparison, and the human review.
+    The human-reviewed value is kept separately from all model suggestions."""
+    from .coding import COMPARISON_LABELS, PROVIDER_LABELS, ROLE_NOTES, suggestion_sets
     case = db.q1("SELECT * FROM cases WHERE id=?", (case_id,))
     schema = schema_for_case(case)
-    sugg_rows = db.q("SELECT * FROM suggestions WHERE case_id=? ORDER BY id", (case_id,))
-    latest, previous = {}, {}
-    for s in sugg_rows:
-        s["evidence"] = _load(s.pop("evidence_json"), [])
-        s["counter"] = _load(s.pop("counter_json"), [])
-        s["validation"] = _load(s.pop("validation_json"), {})
-        s.pop("raw_json", None)
-        if s["variable"] in latest:
-            previous[s["variable"]] = latest[s["variable"]]
-        latest[s["variable"]] = s
+    sets = suggestion_sets(case_id)
     reviews = {r["variable"]: r for r in db.q("SELECT * FROM reviews WHERE case_id=?", (case_id,))}
     srcs = {s["id"]: s for s in db.q("SELECT id,title,url,final_url,source_type,excluded,relevance_status FROM sources WHERE case_id=?", (case_id,))}
     rows = []
     for f in schema["fields"]:
-        s = latest.get(f["name"])
-        p = previous.get(f["name"])
+        ss = sets.get(f["name"]) or {}
+        s = ss.get("display")
+        p = ss.get("previous")
         r = reviews.get(f["name"])
         changed = bool(s and p and (s["value"] != p["value"] or s["status"] != p["status"]))
+        comp = ss.get("comparison")
+        providers = [{**m, "provider_label": PROVIDER_LABELS.get(m.get("provider"), m.get("provider")),
+                      "role_note": ROLE_NOTES.get(m.get("role"), "")}
+                     for m in ss.get("members", []) if m.get("provider")]
+        cat = review_category(f, s, r)
+        if comp and cat not in ("confirmed", "rule_missing") and comp["status"] != "model_agreement":
+            cat = "disputed"  # providers disagree (or one output is invalid): route to human review
+        comp_out = None
+        if comp:
+            st = "human_approved" if (r and r["action"] in ("accepted", "edited", "cleared")) else comp["status"]
+            comp_out = {**comp, "status": st, "model_status": comp["status"], "label": COMPARISON_LABELS.get(st, st)}
         rows.append({
             "name": f["name"], "position": f["position"], "raw_header": f["raw_header"], "type": f["type"], "multi": f.get("multi"),
             "field_class": f.get("field_class"), "section": f.get("section"), "definition": f.get("definition"),
             "codes": f.get("codes", []), "open_options": f.get("open_options", []), "missing_codes": f.get("missing_codes", []),
             "codebook_ref": f.get("codebook_ref"), "issues": f.get("issues", []), "rule_missing": f.get("rule_missing"),
-            "suggestion": s, "previous": p if changed else None, "review": r,
-            "category": review_category(f, s, r),
+            "suggestion": s, "previous": p if changed else None, "review": r, "providers": providers,
+            "comparison": comp_out, "category": cat, "cells": _cells_out(ss.get("cells")),
+            "system": ss.get("system") if not providers else None,
         })
     return {"case": case, "schema_label": schema.get("label"), "schema_id": schema.get("id"), "rows": rows, "sources": srcs}
+
+
+CELL_LABELS = {"not_run": "Not run", "suggested": "Suggested", "disputed": "Disputed",
+               "no_supported_value": "No supported value", "stopped": "Stopped", "failed": "Failed",
+               "invalid_output": "Invalid output", "limit_reached": "Limit reached"}
+
+
+def _cells_out(cells: dict | None) -> dict:
+    """Per-provider cells for the Review table: Claude and OpenAI never share or overwrite a cell."""
+    out = {}
+    for col in ("anthropic", "openai"):
+        c = (cells or {}).get(col) or {"state": "not_run", "row": None}
+        row = c.get("row")
+        out[col] = {"state": c["state"], "label": CELL_LABELS.get(c["state"], c["state"]),
+                    "value": (row or {}).get("value") or "", "status": (row or {}).get("status"),
+                    "suggestion_id": (row or {}).get("id"), "model": (row or {}).get("model") or (row or {}).get("run_model"),
+                    "role": (row or {}).get("role"), "cache_status": (row or {}).get("cache_status"),
+                    "stopped_latest": bool(c.get("stopped_latest")),
+                    "previous_value": (c.get("previous") or {}).get("value") if c.get("previous") else None,
+                    "changed": bool(c.get("previous"))}
+    return out
 
 
 def export_value(row: dict, include_unreviewed: bool) -> tuple[str, str]:
@@ -75,6 +104,9 @@ def export_value(row: dict, include_unreviewed: bool) -> tuple[str, str]:
     if r and r["action"] in ("accepted", "edited", "cleared"):
         return r["value"] or "", "reviewed"
     s = row["suggestion"]
+    comp = row.get("comparison")
+    if comp and comp.get("model_status") != "model_agreement":
+        return "", "blank"  # providers disagree or an output is invalid: never exported without a human decision
     if include_unreviewed and s and s["status"] in VALUE_STATUSES and s["value"]:
         return s["value"], "UNREVIEWED"
     return "", "blank"
@@ -101,6 +133,13 @@ def explanation_cell(row: dict, origin: str) -> str:
     parts = []
     if origin == "UNREVIEWED":
         parts.append("[UNREVIEWED SUGGESTION — not confirmed by a human coder]")
+    if s and s.get("provider") and origin != "reviewed":
+        parts.append(f"[model: {s.get('provider')} {s.get('model') or ''}]".replace(" ]", "]"))
+    if r and r.get("source_provider"):
+        parts.append(f"[accepted from {r['source_provider']} suggestion]")
+    comp = row.get("comparison")
+    if comp and comp.get("model_status") != "model_agreement":
+        parts.append(f"[providers: {comp.get('model_status')}; human decision needed]")
     if r and r["action"] in ("edited", "cleared") and r.get("reason"):
         parts.append(f"Reviewer: {r['reason']}")
     if s:
@@ -154,12 +193,14 @@ def xlsx(case_id: int, include_unreviewed=False) -> bytes:
     ws["A1"].font = Font(bold=True, size=13)
 
     wr = wb.create_sheet("Results")
-    wr.append(["Variable", "Value", "Source", "Explanation", "Review status", "Value origin", "Suggestion status"])
+    wr.append(["Variable", "Value", "Source", "Explanation", "Review status", "Value origin", "Suggestion status",
+               "Model comparison", "Accepted from provider"])
     yellow = PatternFill("solid", fgColor="FFF2CC")
     for row in res["rows"]:
         v, origin = export_value(row, include_unreviewed)
         wr.append([row["name"], v, source_cell(row, res["sources"]) if v else "", explanation_cell(row, origin), row["category"],
-                   origin, (row["suggestion"] or {}).get("status", "")])
+                   origin, (row["suggestion"] or {}).get("status", ""), (row.get("comparison") or {}).get("label", ""),
+                   (row["review"] or {}).get("source_provider") or ""])
         if origin == "UNREVIEWED":
             for c in wr[wr.max_row]:
                 c.fill = yellow
@@ -172,15 +213,26 @@ def xlsx(case_id: int, include_unreviewed=False) -> bytes:
             c.number_format = "yyyy-mm-dd"
 
     we = wb.create_sheet("Evidence")
-    we.append(["Variable", "Stance", "Passage", "Source", "Page", "Paragraph", "Quote", "URL", "Source type"])
+    we.append(["Variable", "Stance", "Passage", "Source", "Page", "Paragraph", "Quote", "URL", "Source type", "Provider", "Role"])
     for row in res["rows"]:
-        s = row["suggestion"]
-        if not s:
-            continue
-        for ev in s.get("evidence", []) + s.get("counter", []):
-            src = res["sources"].get(ev.get("source_id"), {})
-            we.append([row["name"], ev.get("stance"), ev.get("id"), f"S{ev.get('source_id')}", ev.get("page"), ev.get("para"),
-                       ev.get("quote"), src.get("final_url") or src.get("url"), src.get("source_type")])
+        members = row.get("providers") or ([row["suggestion"]] if row["suggestion"] else [])
+        for s in members:
+            for ev in s.get("evidence", []) + s.get("counter", []):
+                src = res["sources"].get(ev.get("source_id"), {})
+                we.append([row["name"], ev.get("stance"), ev.get("id"), f"S{ev.get('source_id')}", ev.get("page"), ev.get("para"),
+                           ev.get("quote"), src.get("final_url") or src.get("url"), src.get("source_type"),
+                           s.get("provider") or "", s.get("role") or ""])
+
+    wp = wb.create_sheet("Provider_Suggestions")
+    wp.append(["Variable", "Provider", "Model", "Role", "Independent?", "Suggested value", "Status", "Rationale", "Unresolved",
+               "Cache", "Comparison", "Human-approved value"])
+    for row in res["rows"]:
+        rv = row["review"] if (row["review"] and row["review"]["action"] in ("accepted", "edited", "cleared")) else None
+        for s in row.get("providers") or []:
+            wp.append([row["name"], s.get("provider"), s.get("model"), s.get("role"),
+                       "no (saw primary result)" if s.get("role") == "reviewer" else "yes", s.get("value"), s.get("status"),
+                       s.get("rationale"), s.get("unresolved"), s.get("cache_status"),
+                       (row.get("comparison") or {}).get("label", ""), (rv or {}).get("value", "") if rv else ""])
 
     wsr = wb.create_sheet("Sources")
     cols = ["id", "title", "publisher", "published_date", "source_type", "origin", "found_via", "url", "final_url", "fetch_status",
@@ -198,14 +250,17 @@ def xlsx(case_id: int, include_unreviewed=False) -> bytes:
                    q["target_vars"], dt.datetime.fromtimestamp(q["created_at"]).isoformat(timespec="seconds")])
 
     wu = wb.create_sheet("Runs_Usage")
-    wu.append(["Kind", "Provider", "Model", "Input tokens", "Output tokens", "Units", "Cost USD", "Estimated?", "Note", "Time"])
+    wu.append(["Kind", "Provider", "Model", "Input tokens", "Output tokens", "Units", "Cost USD", "Estimated?", "Note", "Time",
+               "Reasoning tokens", "Request id"])
     for u in db.q("SELECT * FROM usage WHERE case_id=? ORDER BY id", (case_id,)):
         wu.append([u["kind"], u["provider"], u["model"], u["input_tokens"], u["output_tokens"], u["units"], u["cost_usd"],
-                   "yes" if u["estimated"] else "no", u["note"], dt.datetime.fromtimestamp(u["at"]).isoformat(timespec="seconds")])
+                   "yes" if u["estimated"] else "no", u["note"], dt.datetime.fromtimestamp(u["at"]).isoformat(timespec="seconds"),
+                   u.get("reasoning_tokens"), u.get("request_id")])
     wu.append([])
-    wu.append(["Run id", "Mode", "Model", "Schema version", "Created"])
+    wu.append(["Run id", "Mode", "Model", "Schema version", "Created", "Provider", "Role", "Coding mode", "Group"])
     for r in db.q("SELECT * FROM runs WHERE case_id=? ORDER BY id", (case_id,)):
-        wu.append([r["id"], r["mode"], r["model"], r["schema_version_id"], dt.datetime.fromtimestamp(r["created_at"]).isoformat(timespec="seconds")])
+        wu.append([r["id"], r["mode"], r["model"], r["schema_version_id"], dt.datetime.fromtimestamp(r["created_at"]).isoformat(timespec="seconds"),
+                   r.get("provider"), r.get("role"), r.get("coding_mode"), r.get("group_id")])
 
     wm = wb.create_sheet("Field_Mapping")
     wm.append(["Position", "Workbook header", "Codebook variable", "Type", "Multi", "Class", "Codebook reference", "Issues"])

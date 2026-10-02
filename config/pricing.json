@@ -18,6 +18,19 @@
       "input_per_mtok": 1.0,
       "output_per_mtok": 5.0,
       "verified": "platform.claude.com/docs/en/about-claude/pricing, 2026-09-30"
+    },
+    "gpt-6.1-sol": {
+      "provider": "openai",
+      "input_per_mtok": 2.0,
+      "cached_input_per_mtok": 0.1,
+      "output_per_mtok": 10.0,
+      "long_context": {
+        "threshold_input_tokens": 272000,
+        "input_multiplier": 2.0,
+        "output_multiplier": 1.5
+      },
+      "notes": "Reasoning tokens are billed as output and count against max_output_tokens. The app charges cached input at the full input price (deliberate overstatement).",
+      "verified": "developers.openai.com/api/docs/models/gpt-6.1-sol, 2026-10-01"
     }
   },
   "search": {

@@ -71,4 +71,17 @@ DEFAULT_SETTINGS = {
     "max_passages_per_call": 40,        # batching size, NOT a cap: more evidence = more calls
     "language": "zh",
     "require_approval_over_budget": True,
+    # --- model providers (OpenAI support, 2026-10-01). The OpenAI model comes from the OPENAI_MODEL environment variable.
+    "coding_mode": "single",            # single (original: one provider via model_provider) | anthropic_only | openai_only |
+                                        # dual_independent | anthropic_primary_openai_review | openai_primary_anthropic_review
+    "openai_reasoning_effort": "medium",        # low | medium | high | xhigh | max (gpt-6.1-sol default: medium)
+    "openai_reasoning_reserve_tokens": 16000,   # added to the visible-output allowance (reasoning counts as output)
+    "openai_max_output_tokens": 32000,          # hard cap on max_output_tokens per OpenAI request
+    "openai_timeout_seconds": 600,              # per-request read timeout; a timeout is never retried
+    "openai_budget_usd": 3.00,                  # cap on OpenAI model spend per CASE (inside the overall budget_usd)
+    "max_openai_attempts_per_case": 50,         # every request sent to OpenAI, incl. retries and re-runs
+    "max_model_attempts_per_case": 100,         # every request sent to any model provider
 }
+
+# Limits that an approval may raise — always to an explicit number, never to "unlimited".
+RAISABLE_LIMITS = ("budget_usd", "openai_budget_usd", "max_openai_attempts_per_case", "max_model_attempts_per_case")

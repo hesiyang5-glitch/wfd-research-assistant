@@ -80,7 +80,7 @@ tr.sel.click:hover td { background: var(--accent-soft); }
 .callout.info { background: var(--accent-soft); border-color: #c8dbe8; }
 .callout.ok { background: var(--ok-soft); border-color: #bfdcc8; }
 
-.workbench { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(380px, 1fr); gap: 14px; align-items: start; }
+.workbench { display: grid; grid-template-columns: minmax(0, 1.75fr) minmax(360px, 1fr); gap: 14px; align-items: start; }
 .wb-table { max-height: calc(100vh - 250px); overflow: auto; border: 1px solid var(--line); border-radius: 10px; background: #fff; }
 .wb-detail { position: sticky; top: 12px; max-height: calc(100vh - 110px); overflow: auto; }
 .chips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
@@ -119,3 +119,22 @@ details summary { cursor: pointer; color: var(--muted); }
 td .row { flex-wrap: nowrap; }
 
 [hidden] { display: none !important; }
+
+/* Provider cells: each state looks different (never confuse "not run", "no supported value", stopped, failed, invalid) */
+.cell-tag { display: inline-block; padding: 1px 7px; border-radius: 4px; font-size: 11.5px; white-space: nowrap; border: 1px solid transparent; }
+.cell-tag.st-not_run { color: var(--muted); border: 1px dashed var(--line); background: transparent; }
+.cell-tag.st-no_supported_value { color: var(--muted); background: var(--soft); font-style: italic; }
+.cell-tag.st-stopped { color: var(--warn); background: var(--warn-soft); border-color: #e6c27a; }
+.cell-tag.st-failed { color: #fff; background: var(--bad); }
+.cell-tag.st-invalid_output { color: var(--bad); background: var(--bad-soft); border-color: var(--bad); }
+.cell-tag.st-limit_reached { color: var(--warn); background: #fff; border: 1px solid var(--warn); }
+.cell-tag.st-disputed { color: var(--dispute); background: var(--dispute-soft); }
+.cell-tag.st-system { color: var(--accent); background: var(--accent-soft); }
+.cell-val.st-suggested .mono { font-weight: 600; }
+td.human-final { background: #f3f8f4; }
+.final-val { font-weight: 700; color: var(--ok); }
+.prov-ctl { display: flex; flex-direction: column; gap: 6px; }
+.prov-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; }
+#wbTable th, #wbTable td { padding: 6px 7px; }
+#wbTable td b.mono { font-size: 12px; word-break: break-word; }
+#wbTable .pc-anthropic, #wbTable .pc-openai { min-width: 108px; }
