@@ -78,7 +78,7 @@ Run after each deploy that changes research or coding behavior. Set "Cost cap pe
 
 | # | Check | Expected | Status |
 |---|---|---|---|
-| R1 | Render Shell read-only diagnostics (DEPLOY.md, "Slow or restarting service") on the **current** deployment | shows host CPU count, CPU quota, throttling counters, BLAS thread counts — confirms or rejects the root cause | requested from owner, not yet run |
+| R1 | Render Shell read-only diagnostics (DEPLOY.md, "Slow or restarting service") on the **current** deployment | shows host CPU count, CPU quota, throttling counters, BLAS thread counts — confirms or rejects the root cause | DONE 2026-10-02 (owner): 32 host CPUs, quota 0.5 CPU, thread pools 32/32/32, 1682 throttled periods — root cause confirmed |
 | R2 | Same diagnostics after deploying the fix | BLAS/OpenMP thread counts = 1 | pending (not deployed) |
 | R3 | Cost estimate in Re-analyze dialog (no model call) while watching Render Events | no failed health checks | pending |
 | R4 | Next paid re-analysis (separate approval) | no health-check failures; if a restart happens anyway, job shows "Interrupted… paused", not restarted | pending |

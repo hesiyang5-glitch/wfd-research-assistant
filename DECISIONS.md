@@ -177,7 +177,7 @@ with listed options; a deferred review excludes the variable.
 **Context.** 2026-10-01 ~11:45 pm (dual-mode test): while the server prepared one re-analysis, Render's health check
 (`/healthz`, 5 s timeout) failed repeatedly, Render restarted the service (502 for visitors), and on startup the code
 re-queued the running job, which repeated the heavy work. Logs show a 45 s gap between two steps that take ~0.3 s
-locally. Most likely cause (not yet confirmed on Render): numerical libraries (OpenBLAS/OpenMP via numpy/scikit-learn)
+locally. Cause (confirmed on Render 2026-10-02: 32 host CPUs, 0.5-CPU quota, OpenMP/OpenBLAS pools of 32 threads, 1,682 throttled periods): numerical libraries (OpenBLAS/OpenMP via numpy/scikit-learn)
 start one thread per CPU of the whole host machine; on a 0.5-CPU plan these threads use up the CPU allowance and the
 kernel pauses the whole process, including the thread that answers the health check. The evidence index (BM25 + LSA)
 was also rebuilt for every cost estimate, the gap check and the run itself.

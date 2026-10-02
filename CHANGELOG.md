@@ -18,7 +18,8 @@ Completed changes, newest first. Commit hashes refer to `hesiyang5-glitch/wfd-re
 Status at handoff (2026-10-02):
 - Completed and tested offline: thread limit, shared index, worker priority, paused recovery, pre-send ledger.
 - Completed, not fully tested: behavior on Render; interrupted-job notice in a browser.
-- Unresolved: root cause not confirmed on Render (diagnostics requested, K-38); K-39.
+- Root cause confirmed on Render 2026-10-02 (32 threads per pool under a 0.5-CPU quota; 1,682 throttled periods).
+- Unresolved: "Instance failed" reason text and memory peak not yet seen (K-38); K-39.
 - Deferred: larger instance / separate worker (paid; only if the problem recurs).
 
 ## 2026-10-01 — Production: bulk agreement merged (`66f53f8`), OpenAI key added, first live dual test
