@@ -123,7 +123,7 @@ citations, and leaves every final decision to a human reviewer.
 
 | Requirement | Status |
 |---|---|
-| Per-case dollar budget (default $3) summed across all runs, model + search | TESTED offline |
+| Per-case dollar budget (default $5, D-034; was $3) summed across all runs, model + search | TESTED offline |
 | Pre-run estimate; precise worst-case estimate before coding; pause when it exceeds the remaining case budget | TESTED offline |
 | Approval raises the case budget to an explicit amount (spent + worst case), logged with reviewer name; never removes the cap | TESTED offline |
 | Worst-case check before every model call (input +25%, all output tokens) | TESTED offline |

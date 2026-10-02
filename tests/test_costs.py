@@ -190,23 +190,28 @@ def main():
     orig_get = cl.get_client
     fake = Fake("good")
     cl.get_client = lambda provider, model: fake
-    # Simulate earlier runs of this case having spent almost the whole $3.
+    check("default case budget is $5 (D-034)", DEFAULT_SETTINGS["budget_usd"] == 5.0, str(DEFAULT_SETTINGS["budget_usd"]))
+    check("OpenAI sub-budget stays $3 (unchanged by D-034)", DEFAULT_SETTINGS["openai_budget_usd"] == 3.0)
+    check("raised default is still a finite number, not unlimited",
+          isinstance(DEFAULT_SETTINGS["budget_usd"], float) and 0 < DEFAULT_SETTINGS["budget_usd"] < 100)
+    # Simulate earlier runs of this case having spent almost the whole default budget.
+    pre = DEFAULT_SETTINGS["budget_usd"] - 0.05
     db.insert("usage", {"case_id": cid, "job_id": 999, "kind": "model", "provider": "fake", "model": "claude-sonnet-5-5",
-                        "input_tokens": 0, "output_tokens": 0, "units": 1, "cost_usd": 2.95 - coding.case_spent(cid),
+                        "input_tokens": 0, "output_tokens": 0, "units": 1, "cost_usd": pre - coding.case_spent(cid),
                         "estimated": 0, "at": time.time(), "note": "earlier run"})
     jid = jobs.enqueue(cid, "recode", {})
     research.run_research(db.q1("SELECT * FROM jobs WHERE id=?", (jid,)))
     j = db.q1("SELECT * FROM jobs WHERE id=?", (jid,))
     stj = json.loads(j["state_json"])
     check("a new run sees what earlier runs of the case spent", j["status"] == "needs_input" and stj.get("awaiting") == "budget"
-          and abs(stj["budget"]["spent_usd"] - 2.95) < 0.01, f"{j['status']} {stj.get('budget')}")
+          and abs(stj["budget"]["spent_usd"] - pre) < 0.01, f"{j['status']} {stj.get('budget')}")
     check("no model call is made while waiting for approval", fake.n == 0)
 
     class H:
         user = "tester"
     api_resume(H(), str(jid), {"approve_over_budget": True})
     new_budget = json.loads(db.q1("SELECT settings_json FROM cases WHERE id=?", (cid,))["settings_json"])["budget_usd"]
-    expected = round(2.95 + stj["estimate"]["cost_high"], 2)
+    expected = round(pre + stj["estimate"]["cost_high"], 2)
     check("approval sets the budget to spent + worst-case estimate (a number, not unlimited)",
           abs(new_budget - expected) <= 0.011 and new_budget < 100, f"new={new_budget} expected≈{expected}")
     logged = db.q1("SELECT message FROM job_log WHERE job_id=? AND message LIKE '%budget changed%'", (jid,))

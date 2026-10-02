@@ -10,6 +10,7 @@ import re
 import time
 
 from . import db
+from .config import DEFAULT_SETTINGS
 from .llm.clients import LLMError, cost_usd, estimate_tokens, parse_json_block
 from .retrieval import CorpusIndex, load_case_passages, variable_query
 from .validator import validate
@@ -464,7 +465,7 @@ def limit_needs(case_id: int, settings: dict, est: dict) -> dict:
     """Which case limits this run could exceed, and the explicit value each would have to be raised to."""
     led = case_ledger(case_id)
     needs = {}
-    budget = float(settings.get("budget_usd", 3.0))
+    budget = float(settings.get("budget_usd", DEFAULT_SETTINGS["budget_usd"]))
     if est.get("cost_high") is not None and led["spent_total"] + est["cost_high"] > budget + 1e-9:
         needs["budget_usd"] = {"label": "case budget (all providers + search)", "current": budget,
                                "needed": math.ceil((led["spent_total"] + est["cost_high"]) * 100) / 100}

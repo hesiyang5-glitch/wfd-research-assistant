@@ -97,7 +97,7 @@ Full, current status: `PROJECT_SPEC.md`, `TEST_PLAN.md`, `KNOWN_ISSUES.md`. 完�
 ## 6. Defaults chosen (change any in Settings) · 默认选择
 
 - **Stack:** Python standard-library web server + SQLite + a no-build HTML/JS interface, instead of React/FastAPI. Reason: runs with one install step, no Node.js build, and was fully testable here. 技术栈选择理由：安装简单、无需构建，且可在此环境完整测试。
-- Search: 10 initial query templates by source type × 2 result pages; up to 3 gap-driven follow-up rounds; ≤40 queries; ≤60 sources read; 20-minute limit per run; **$3 cost cap per case**, summed across all runs and covering Claude and Tavily (checked at worst case before every call; approval raises the cap to a set amount, never removes it). Stopping at a limit is reported as "research incomplete".
+- Search: 10 initial query templates by source type × 2 result pages; up to 3 gap-driven follow-up rounds; ≤40 queries; ≤60 sources read; 20-minute limit per run; **$5 cost cap per case** (default; D-034), summed across all runs and covering Claude and Tavily (checked at worst case before every call; approval raises the cap to a set amount, never removes it). Stopping at a limit is reported as "research incomplete".
 - Model: `claude-sonnet-5-5` (no `temperature` parameter — this model rejects it); evidence batch = 40 passages per call (a batch size, not a cap); 8 top passages per variable.
 - Admin/derived fields (`VERSION_ENTRY_DATE`, `WFD_ID`, `INCIDENT_DURATION`, source counts/URLs, `DATA_EXTRACTION_METHOD`, `RECORD_STATUS`, `REVISION_HISTORY`) are generated or calculated with a stated basis — never presented as sourced facts. Analyst-comment fields are left for humans.
 - Uploaded files without a URL get source type `unknown` (set it on the Sources page) rather than a guess.

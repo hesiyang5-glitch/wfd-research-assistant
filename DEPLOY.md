@@ -149,17 +149,17 @@ no OpenAI options.
    $1–3, and work through TEST_PLAN §3 checks O1–O8.
 
 **费用控制 · Cost controls (per case, checked on the server before every request):** 总预算 `budget_usd`（Claude +
-OpenAI + 搜索）· OpenAI 预算 `openai_budget_usd`（默认 $3）· OpenAI 请求次数 `max_openai_attempts_per_case`（默认 50）·
+OpenAI + 搜索，默认 $5）· OpenAI 预算 `openai_budget_usd`（默认 $3）· OpenAI 请求次数 `max_openai_attempts_per_case`（默认 50）·
 所有模型请求次数 `max_model_attempts_per_case`（默认 100）· 每次 OpenAI 请求最多输出 `openai_max_output_tokens`
 （默认 32,000，含推理 token）· 单次请求超时 `openai_timeout_seconds`（默认 600 秒，超时不重试）。重试、重新运行、恢复的任务
-和单变量重新分析都计入同一案例。批准只会把上限提高到一个明确数字。双模型模式大约花两倍费用；按默认 3 美元预算，
-双模型或 OpenAI 运行通常会先暂停请你批准。
-Combined budget `budget_usd` (Claude + OpenAI + search) · OpenAI budget `openai_budget_usd` ($3) · OpenAI requests
+和单变量重新分析都计入同一案例。批准只会把上限提高到一个明确数字。双模型模式大约花两倍费用；默认总预算已从 3 美元提高到 5 美元（D-034），
+双模型运行（最坏估算约 3.5 美元）一般不再因总预算暂停，但完整的 OpenAI 运行仍可能碰到 3 美元的 OpenAI 预算。
+Combined budget `budget_usd` (Claude + OpenAI + search, default $5) · OpenAI budget `openai_budget_usd` ($3) · OpenAI requests
 `max_openai_attempts_per_case` (50) · all model requests `max_model_attempts_per_case` (100) · max output per OpenAI
 request `openai_max_output_tokens` (32,000, reasoning included) · per-request timeout `openai_timeout_seconds` (600 s;
 a timeout is never retried). Retries, re-runs, resumed jobs and single-variable re-analysis all count toward the same
-case. Approval only raises a limit to an explicit number. Dual mode costs roughly twice as much; at the default $3
-budget a dual or OpenAI run will usually pause first and ask you to approve explicit amounts.
+case. Approval only raises a limit to an explicit number. Dual mode costs roughly twice as much. The default combined budget was raised from $3 to $5 (D-034), so a dual run
+(worst case ≈ $3.5) usually no longer pauses on the combined budget, but a full OpenAI run can still reach the $3 OpenAI budget.
 
 **数据库迁移 · Database migration:** 新版本启动时会自动、可重复地给数据库**增加**列和表（`model_calls`、
 `schema_migrations`、`suggestions_provider_archive`、`provider_controls`、`limit_changes` 以及若干 provider 字段），不会改动或删除已有的案例、来源、Claude
@@ -213,8 +213,8 @@ an OpenAI value there; human-reviewed values are unaffected.)
 
 ## 费用上限 · Spending limits
 
-- **每个案例都有费用上限（默认 3 美元）**，包括 Claude 和 Tavily，并累计该案例的所有重新运行。超过时程序会停下，等你把这个案例的预算提高到一个具体金额；它不会取消上限。
-  **Each case has a spending cap (default $3)** covering Claude and Tavily, summed across every re-run of that case. If a run would exceed it, the app stops and asks you to raise that case's budget to a specific amount; it never removes the cap.
+- **每个案例都有费用上限（默认 5 美元）**，包括 Claude 和 Tavily，并累计该案例的所有重新运行。超过时程序会停下，等你把这个案例的预算提高到一个具体金额；它不会取消上限。
+  **Each case has a spending cap (default $5)** covering Claude and Tavily, summed across every re-run of that case. If a run would exceed it, the app stops and asks you to raise that case's budget to a specific amount; it never removes the cap.
 - 每次 Claude 调用之前，程序按最坏情况（每个输出 token 都用满）检查剩余预算。超时等可能已经计费的失败调用不会自动重试，并按最坏情况计入预算。
   Before every Claude call, the app checks the remaining budget against the worst case (every allowed output token used). Failed calls that may already have been billed, such as timeouts, are not retried automatically and are counted at worst case.
 - Tavily 按每次 0.016 美元计入预算（advanced 搜索 2 credits × 0.008 美元）。免费额度内实际不收费，所以这个数字偏高、偏保守。
