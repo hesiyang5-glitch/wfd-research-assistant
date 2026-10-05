@@ -3,6 +3,17 @@
 Completed changes, newest first. Commit hashes refer to `hesiyang5-glitch/wfd-research-assistant`.
 
 
+
+## 2026-10-02 — Session handoff (documentation only)
+Completed and tested (offline suites; live where stated):
+- D-033 incident fix: deployed `f664344`; on Render thread pools = 1 and no failed health checks after deploy (owner).
+- D-035 separate-run bulk confirmation: offline 64/64 bulk tests + all suites pass; merged `2fbd11b`.
+Completed but not fully tested:
+- `2fbd11b` live: deploy pushed, owner did not yet confirm "Deploy live" or try the dialog; Excel sync test (accept/edit/bulk/export, edit kept after re-analysis) not yet done live.
+- Full OpenAI-only run completed live ($0.465); per-batch reasoning tokens / cut-offs not yet inspected; Render Events during the run not seen.
+Unresolved: K-40 (cache does not cross single/dual modes), K-41, K-06/K-26 cost reconciliation, K-04 coding accuracy.
+Deferred/planned: K-40 fix; lower OpenAI reasoning reserve from measured data (K-27); "Re-analyze selected" (K-42); Anthropic key rotation before 2026-10-31 (K-22).
+
 ## 2026-10-02 — Bulk confirmation for agreement from separate runs (merged to `main` 2026-10-02 with owner approval; live check pending)
 - `app/agreement.py`: new status `eligible_separate_runs` (D-035); core checks kept, prompt/evidence differences become
   warnings; confirmations use method `bulk_separate_run_agreement` with warnings in the reason and audit row.
