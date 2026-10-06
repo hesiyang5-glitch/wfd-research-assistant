@@ -186,7 +186,7 @@ def main():
     aE = ag(cE)
     check("Claude-only job, then OpenAI-only job, same evidence and analysis version → eligible (no warning)",
           aE["SYSTEM_LEVEL"]["status"] == "eligible" and aE["SYSTEM_LEVEL"]["eligible"]
-          and "same analysis version" in aE["SYSTEM_LEVEL"]["label"], str(aE["SYSTEM_LEVEL"]))
+          and "matched analysis version" in aE["SYSTEM_LEVEL"]["label"], str(aE["SYSTEM_LEVEL"]))
     check("their provenance is kept (two different runs, not relabelled 'same run')",
           aE["SYSTEM_LEVEL"]["claude"]["run_id"] != aE["SYSTEM_LEVEL"]["openai"]["run_id"])
     check("core checks still block (counter-evidence)", not aE["ALERTING_AUTHORITY_TYPE"]["eligible"]
@@ -216,8 +216,9 @@ def main():
                   "ORDER BY id DESC", (cE,))["run_id"]
     db.ex("UPDATE suggestions SET evidence_snapshot_id=NULL, analysis_spec_id=NULL WHERE run_id=?", (rid_c,))
     aE2 = ag(cE)["SYSTEM_LEVEL"]
-    check("result without a recorded evidence/analysis version → Not comparable (never eligible)",
-          aE2["status"] == "not_comparable" and not aE2["eligible"], str(aE2))
+    check("result without a recorded evidence/analysis version → cross-version agreement, still eligible (D-035)",
+          aE2["status"] == "eligible_cross_version" and aE2["eligible"] and "version not recorded" in aE2["differences"],
+          str(aE2))
     db.ex("UPDATE suggestions SET evidence_snapshot_id=(SELECT evidence_snapshot_id FROM runs WHERE id=?), "
           "analysis_spec_id=(SELECT analysis_spec_id FROM runs WHERE id=?) WHERE run_id=?", (rid_c, rid_c, rid_c))
     sv = db.q1("SELECT schema_version_id FROM runs WHERE id=?", (rid_c,))["schema_version_id"]
@@ -228,7 +229,7 @@ def main():
     rvE = db.q1("SELECT * FROM reviews WHERE case_id=? AND variable='SYSTEM_LEVEL'", (cE,))
     auE = db.q1("SELECT * FROM bulk_confirmations WHERE case_id=? AND variable='SYSTEM_LEVEL'", (cE,))
     check("confirmation writes Human final; the reason names the analysis version and the cache reuse",
-          rE["confirmed"] and rvE["method"] == "bulk_independent_agreement" and "same analysis version" in rvE["reason"]
+          rE["confirmed"] and rvE["method"] == "bulk_independent_agreement" and "matched analysis version" in rvE["reason"]
           and "validated cache" in rvE["reason"], str(rvE))
     check("audit row keeps original runs, cache status, generation times, evidence and analysis versions",
           auE["evidence_snapshot_id"] and auE["analysis_spec_id"] and auE["claude_run_id"] and auE["openai_run_id"]
@@ -239,9 +240,9 @@ def main():
     run(cH, stH, [(claude(), "independent")], VARS, "anthropic_only")
     research.ingest_manual(cH, "text", {"title": "Later county update", "text": SRC1 + " Additional detail was released later."})
     run(cH, stH, [(openai(), "independent")], VARS, "openai_only")
-    check("Claude and OpenAI interpreted different evidence versions → Not comparable",
-          ag(cH)["SYSTEM_LEVEL"]["status"] == "not_comparable" and not ag(cH)["SYSTEM_LEVEL"]["eligible"],
-          str(ag(cH)["SYSTEM_LEVEL"]))
+    check("Claude and OpenAI interpreted different evidence versions → cross-version agreement, eligible with disclosure",
+          ag(cH)["SYSTEM_LEVEL"]["status"] == "eligible_cross_version" and ag(cH)["SYSTEM_LEVEL"]["eligible"]
+          and "evidence version" in ag(cH)["SYSTEM_LEVEL"]["differences"], str(ag(cH)["SYSTEM_LEVEL"]))
     import openpyxl
 
     print("\n[3] Dialog data, explicit confirmation, unchecking, protection of existing Human final")

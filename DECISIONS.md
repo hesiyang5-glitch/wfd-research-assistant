@@ -204,7 +204,7 @@ Settings page (database) → each case's own settings. Existing cases keep the b
 defaults were saved with $3, new cases keep using $3 until that value is changed on the Settings page.
 **Not chosen.** Raising the OpenAI sub-budget or attempt caps (not requested; dual worst case fits under $5).
 
-## D-035 · 2026-10-02 · Agreement from separate runs can be bulk-confirmed, with a warning — REPLACED by D-036 (branch `feature/independent-providers`, not merged); confirmations made under it keep their method `bulk_separate_run_agreement`
+## D-035 · 2026-10-02 · Agreement from separate runs can be bulk-confirmed, with a warning — Active, RETAINED (owner 2026-10-05); refined by D-036 into matched-version vs cross-version classes
 **Context.** Owner (2026-10-02): the Marshall Fire case has Claude results from an earlier run and OpenAI results from a
 later OpenAI-only run; equal values were shown as "Agreement from separate runs — not eligible". Owner asked that
 separate runs not block bulk confirmation. This **changes the owner choice recorded in D-032** ("only the same
@@ -221,36 +221,49 @@ warnings, not blocks. Confirmations are written with `method = bulk_separate_run
 **Risk.** Two models may have seen different evidence or prompts; agreement is weaker evidence than in a
 dual-independent run. Mitigated by the unticked default, the warning and the distinct audit method.
 
-## D-036 · 2026-10-05 · Equal independent providers; provider choice on the first form; cache by model-visible input — Proposed (branch `feature/independent-providers`, not merged)
+## D-036 · 2026-10-05 · Equal independent providers; provider choice on the first form; matched vs cross-version comparison; cache by model-visible input — Approved for merge (owner 2026-10-05)
+**D-035 is retained. Cross-version results may be compared and may remain eligible for human bulk confirmation with explicit disclosure. Matched-version and cross-version comparisons must be visually and methodologically distinguished.** (owner, verbatim)
 **Owner requirements (2026-10-05).** No primary/secondary/reviewer hierarchy: Claude and OpenAI are equal, independent
-providers and the human researcher is the only final decision-maker. Research belongs to the case (searched, fetched,
-deduplicated and indexed once); providers only interpret it. The first research form offers Claude only / OpenAI only /
-Claude + OpenAI — independent comparison. The cache must not depend on role labels (K-40).
-**Decision (owner said to proceed with the recommended options 1–5 and A–E; can still be changed before merge).**
-1. *Shared evidence version:* `evidence_snapshots` = fingerprint of every eligible passage (id + text), eligible sources
-   (content hash, excluded state), codebook and retrieval settings; identical evidence → same id, any change → new id;
-   never deleted. *Analysis version:* `analysis_specs` = prompt version, hash of the shared coding rules, response-schema
-   version, batching, codebook (provider wire formatting excluded). Every new run/suggestion/model call records both, plus
-   `interpretation` (`independent` | `cross_model_review`), `generated_at` and, for cache reuse, `cache_source_run_id`.
-2. *Roles:* all new runs are `independent`. Cross-model review (one model sees the other's answer) is outside scope:
-   refused by the server for new runs; historical rows are derived at read time (role `reviewer` → `cross_model_review`),
-   never rewritten, and never count toward agreement.
-3. *No preferred provider:* with two results the display is a neutral combined view (agreed value, or blank) — never
-   Claude's row. Plain Accept works only on agreement (recorded as from `anthropic+openai`); otherwise the reviewer picks a
-   provider's suggestion or edits. Unreviewed export stays blank on disagreement with both values noted.
-4. *Comparison / bulk confirmation (replaces D-035):* comparable only with the same evidence snapshot AND analysis version,
-   both independent; results may come from different jobs or from cache and keep their provenance ("Independent agreement
-   using the same analysis version"; "One or more results reused from validated cache"). Otherwise "Not comparable".
-5. *Cache identity (fixes K-40):* key `llm3:` = provider, model, exact system+user text (all evidence and variable specs),
-   variable list, evidence fingerprint, codebook, prompt version, response-schema version, generation settings; no role.
-   Read-only fallback to `llm2:` keys stored under role primary/independent — those also hashed the exact prompt text, so a
-   hit proves identical model-visible input — and to the pre-2026-10-01 Claude keys. The origin run/time is stored with
-   each new cache entry.
-6. *First form:* radio cards (keyboard accessible), default Claude only when available (else nothing pre-selected),
-   disabled options with a plain reason; preliminary estimate per mode (one shared search line, unselected provider $0,
-   combined, caps; worst case labelled as such; note when it exceeds a cap); confirmation dialog; free availability check
-   (OpenAI `models.retrieve`, Anthropic `GET /v1/models/{model}` — neither billed; cannot detect missing credit); a mode is
-   refused if its caps cannot cover one worst-case request per provider; mode stored in case settings and job params;
+providers; the human researcher is the only final decision-maker. Research belongs to the case (searched, fetched,
+deduplicated, indexed once); providers only interpret it. First form offers Claude only / OpenAI only / Claude + OpenAI —
+independent comparison. Cache identity must not depend on role labels (K-40).
+**Decision.**
+1. *Versions.* `evidence_snapshots` = fingerprint of every eligible passage (id + text), eligible sources (content hash,
+   excluded state), codebook, retrieval settings; it also stores each passage's text hash so differences can be listed.
+   `analysis_specs` = prompt version, hash of the shared coding rules, response-schema version, batching, codebook
+   (provider wire formatting excluded). New runs/suggestions/model calls record both, plus `interpretation`,
+   `generated_at` and, for cache reuse, `cache_source_run_id`.
+2. *Roles.* All new runs are `independent`; cross-model review (one model sees the other's answer) is refused for new
+   runs; historical rows read as `cross_model_review` (derived at read time, never rewritten) and never count as
+   independent agreement.
+3. *No preferred provider.* Two results → neutral combined view (agreed value or blank), never one provider's row.
+4. *Two comparison classes.*
+   - **Matched version** — both independent, same evidence snapshot (includes codebook) and same analysis version.
+     Owner choice: separate runs or validated-cache reuse with identical versions are matched (run dates and cache status
+     are shown, never called "same run"). Label "Independent agreement — matched analysis version"; eligible and ticked
+     by default; still one explicit human confirmation.
+   - **Cross-version** — both independent and valid, but evidence, codebook, prompt or analysis version differ or were not
+     recorded. Labels "Cross-version agreement — review version differences" / "Cross-version disagreement — model and
+     input differences may both contribute"; wording "Same suggested value, different analysis versions" / "Results
+     differ, but the models also used different analysis inputs". Agreement is eligible (D-035) but NOT ticked; ticking
+     shows the owner's warning text and Confirm stays disabled until "I have reviewed the version differences and
+     supporting evidence" is ticked; the server refuses without that acknowledgement. Owner choice: a codebook-version
+     difference is shown and compared but never bulk-confirmed (the same code may mean different things) — confirm
+     individually. Cross-version confirmations keep method `bulk_separate_run_agreement`.
+   - Disagreements, invalid, insufficient, stopped, failed or blank results are never eligible.
+   - Version-difference panel: both providers' evidence/codebook/prompt/analysis versions, model, original run, generation
+     time, cache status, which dimensions differ, sources and passages added/removed/changed.
+   - Audit (`bulk_confirmations`): class, differences, warning shown, acknowledgement, both result ids, original runs,
+     models, versions (JSON per provider), cache status, the selected variables, user, time.
+5. *Cache identity (K-40)* — independent of comparison eligibility and NOT weakened by D-035: key `llm3:` = provider,
+   model, exact system+user text (all evidence and variable specs), variable list, evidence fingerprint, codebook, prompt
+   version, response-schema version, generation settings; no role. Read-only fallback to `llm2:` keys stored under role
+   primary/independent (they hashed the identical prompt text) and to pre-2026-10-01 Claude keys. Different evidence or
+   prompt input is never answered from cache; both results are kept and compared under the cross-version rules.
+6. *First form.* Radio cards (keyboard accessible), default Claude only when available, disabled options with a plain
+   reason, preliminary estimate per mode (one shared search line; unselected provider $0; combined; caps; worst case
+   labelled; note when it exceeds a cap), confirmation dialog, free availability check (not billed; cannot detect missing
+   credit), refusal when caps cannot cover one worst-case request per provider, mode saved in case settings and job params,
    optional (default ticked) pause after research with the exact estimate before any paid request.
-**Deferred:** incremental research ("use existing / search for new sources / rebuild"), stable request groups and sticky
-evidence bundles — owner asked to postpone (2026-10-05).
+**Deferred:** incremental research (owner, 2026-10-05). When built it must keep old results with their versions, add
+results only for affected variables and providers, and classify old-vs-new comparisons by these two classes.

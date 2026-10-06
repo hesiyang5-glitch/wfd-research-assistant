@@ -752,13 +752,69 @@ def api_bulk_agreements(h, cid, **_):
 @route("POST", "/api/cases/{cid}/bulk_confirm")
 def api_bulk_confirm(h, cid, body, **_):
     """Write Human final for the variables the reviewer left checked — only those still eligible at this moment."""
-    from .agreement import bulk_confirm
+    from .agreement import AcknowledgementRequired, bulk_confirm
     variables = body.get("variables")
     if not isinstance(variables, list) or not variables:
         raise ApiError(400, "choose at least one variable to confirm")
     if not body.get("confirmed"):
         raise ApiError(400, "explicit confirmation is required")
-    return bulk_confirm(int(cid), [str(v) for v in variables], getattr(h, "user", None))
+    try:
+        return bulk_confirm(int(cid), [str(v) for v in variables], getattr(h, "user", None),
+                            acknowledged_cross_version=bool(body.get("acknowledged_cross_version")))
+    except AcknowledgementRequired as e:
+        raise ApiError(400, str(e))
+
+
+@route("GET", "/api/cases/{cid}/version_diff")
+def api_version_diff(h, cid, query, **_):
+    """Version-difference panel (D-035 retained, D-036): for one variable, the Claude and OpenAI results' evidence,
+    codebook, prompt/analysis and model versions, run dates, cache status, which dimensions differ, and the sources
+    and passages added / removed / changed between the two evidence versions. Read-only."""
+    from .coding import suggestion_sets, version_differences
+    var = (query.get("variable") or [None])[0]
+    cells = ((suggestion_sets(int(cid)).get(var) or {}).get("cells") or {})
+    rows = {k: (cells.get(k) or {}).get("row") for k in ("anthropic", "openai")}
+    if not all(rows.values()):
+        raise ApiError(400, "both providers need a result for this variable")
+
+    def run(r):
+        return db.q1("SELECT * FROM runs WHERE id=?", (r.get("run_id"),)) or {}
+
+    def snap(sid):
+        return db.q1("SELECT * FROM evidence_snapshots WHERE id=?", (sid,)) if sid else None
+
+    def spec(pid):
+        return db.q1("SELECT * FROM analysis_specs WHERE id=?", (pid,)) if pid else None
+    side = {}
+    for k, r in rows.items():
+        ru = run(r)
+        side[k] = {"provider": k, "model": r.get("model") or ru.get("model"), "run_id": ru.get("id"),
+                   "original_run_id": r.get("cache_source_run_id") or ru.get("id"),
+                   "generated_at": r.get("generated_at") or r.get("created_at"), "cache_status": r.get("cache_status") or "new",
+                   "evidence_snapshot_id": r.get("evidence_snapshot_id"), "analysis_spec_id": r.get("analysis_spec_id"),
+                   "codebook_version": ru.get("schema_version_id"), "prompt_version": ru.get("prompt_version"),
+                   "value": r.get("value"), "status": r.get("status")}
+    a, b = rows["anthropic"], rows["openai"]
+    out = {"variable": var, "claude": side["anthropic"], "openai": side["openai"],
+           "differences": version_differences(a, b, run(a), run(b))}
+    sa, sb = snap(a.get("evidence_snapshot_id")), snap(b.get("evidence_snapshot_id"))
+    if sa and sb and sa["id"] != sb["id"]:
+        s1, s2 = set(json.loads(sa["sources_json"] or "[]")), set(json.loads(sb["sources_json"] or "[]"))
+        out["sources"] = {"only_in_claude_version": sorted(s1 - s2), "only_in_openai_version": sorted(s2 - s1)}
+        if sa.get("passages_json") and sb.get("passages_json"):
+            p1, p2 = json.loads(sa["passages_json"]), json.loads(sb["passages_json"])
+            out["passages"] = {"only_in_claude_version": sorted(set(p1) - set(p2)),
+                               "only_in_openai_version": sorted(set(p2) - set(p1)),
+                               "changed_text": sorted(x for x in set(p1) & set(p2) if p1[x] != p2[x])}
+        else:
+            out["passages"] = None  # one snapshot predates the passage list
+    elif not (sa and sb):
+        out["sources"] = None  # at least one result predates evidence versioning ("version not recorded")
+    qa, qb = spec(a.get("analysis_spec_id")), spec(b.get("analysis_spec_id"))
+    if qa and qb and qa["id"] != qb["id"]:
+        out["analysis"] = {k: [qa.get(k), qb.get(k)] for k in ("prompt_version", "rules_sha", "response_schema_version",
+                                                               "batching_json", "codebook_version") if qa.get(k) != qb.get(k)}
+    return out
 
 
 @route("GET", "/api/cases/{cid}/history")

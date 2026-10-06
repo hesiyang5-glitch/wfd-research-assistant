@@ -152,13 +152,18 @@ def explanation_cell(row: dict, origin: str) -> str:
             f"{v or '(blank)'}" for p, v in sorted(vb.items())) + "]")
     if r and r.get("method") == "bulk_independent_agreement":
         parts.append(f"[human-confirmed independent model agreement (bulk confirmation) by {r.get('reviewer') or 'reviewer'}]")
-    elif r and r.get("method") == "bulk_separate_run_agreement":  # D-035, 2026-10-02 only (history)
-        parts.append(f"[human-confirmed model agreement from SEPARATE runs (bulk confirmation) by {r.get('reviewer') or 'reviewer'}]")
+    elif r and r.get("method") == "bulk_separate_run_agreement":  # D-035 (retained): cross-version agreement
+        parts.append(f"[human-confirmed CROSS-VERSION model agreement (bulk confirmation, version warning acknowledged) "
+                     f"by {r.get('reviewer') or 'reviewer'}]")
     elif r and r.get("source_provider"):
         parts.append(f"[accepted from {r['source_provider']} suggestion]")
     comp = row.get("comparison")
     if comp and comp.get("model_status") != "model_agreement":
         parts.append(f"[providers: {comp.get('model_status')}; human decision needed]")
+    if comp and comp.get("kind") == "cross_version":
+        parts.append("[cross-version: " + ("same suggested value, different analysis versions"
+                                           if comp.get("same_value")
+                                           else "results differ, but the models also used different analysis inputs") + "]")
     if r and r["action"] in ("edited", "cleared") and r.get("reason"):
         parts.append(f"Reviewer: {r['reason']}")
     if s:
@@ -221,7 +226,7 @@ def xlsx(case_id: int, include_unreviewed=False) -> bytes:
                    origin, (row["suggestion"] or {}).get("status", ""), (row.get("comparison") or {}).get("label", ""),
                    (row["review"] or {}).get("source_provider") or "", (row.get("agreement") or {}).get("label", ""),
                    ("human-approved model agreement (bulk)" if (row["review"] or {}).get("method") == "bulk_independent_agreement"
-                    else "human-approved model agreement, separate runs (bulk)"
+                    else "human-approved cross-version agreement (bulk, D-035)"
                     if (row["review"] or {}).get("method") == "bulk_separate_run_agreement"
                     else ((row["review"] or {}).get("action") or ""))])
         if origin == "UNREVIEWED":
@@ -266,7 +271,8 @@ def xlsx(case_id: int, include_unreviewed=False) -> bytes:
     bcols = ["batch_id", "variable", "value", "claude_suggestion_id", "openai_suggestion_id", "claude_model", "openai_model",
              "group_id", "codebook_version", "prompt_version", "evidence_difference", "previous_value", "reviewer", "at", "method",
              "evidence_snapshot_id", "analysis_spec_id", "claude_run_id", "openai_run_id", "claude_cache_status",
-             "openai_cache_status", "claude_generated_at", "openai_generated_at"]
+             "openai_cache_status", "claude_generated_at", "openai_generated_at", "comparison_class", "differences_json",
+             "warning_shown", "acknowledged", "claude_versions_json", "openai_versions_json", "selected_json"]
     wbk.append(bcols)
     for bc in db.q("SELECT * FROM bulk_confirmations WHERE case_id=? ORDER BY id", (case_id,)):
         for k in ("at", "claude_generated_at", "openai_generated_at"):

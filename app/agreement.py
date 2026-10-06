@@ -36,11 +36,12 @@ BULK_METHODS = (METHOD, METHOD_SEPARATE)
 FINAL_ACTIONS = ("accepted", "edited", "cleared")
 ELIGIBLE_TYPES = ("categorical", "numeric", "date", "open_list")
 LABELS = {
-    "eligible": "Independent agreement using the same analysis version — eligible",
-    "eligible_evidence_difference": "Value agreement with evidence difference — eligible",
+    "eligible": "Independent agreement — matched analysis version",
+    "eligible_cross_version": "Cross-version agreement — review version differences",
+    "cross_version_disagreement": "Cross-version disagreement — model and input differences may both contribute",
+    "eligible_evidence_difference": "Independent agreement — matched analysis version (different supporting sources)",
     "confirmed": "Independent model agreement — human confirmed",
     "cross_model_review": "Cross-model review (audit only) — not independent",
-    "not_comparable": "Not comparable — different evidence/analysis version",
     "value_disagreement": "Value disagreement",
     "both_insufficient": "Both insufficient",
     "claude_only": "Claude only",
@@ -87,7 +88,7 @@ def _batch_hash(run_id, variable):
 
 def assess(case_id: int, field: dict, sset: dict | None, review: dict | None) -> dict | None:
     """Agreement status for one variable. Returns None for fields no model codes."""
-    from .coding import comparison_kind, interpretation_of, is_cached
+    from .coding import comparison_kind, is_cached, version_differences
     if field.get("field_class") not in ("sourced", "judgment") or field.get("rule_missing"):
         return None
     cells = (sset or {}).get("cells") or {}
@@ -112,9 +113,6 @@ def assess(case_id: int, field: dict, sset: dict | None, review: dict | None) ->
     kind = comparison_kind(a, b)
     if kind == "cross_model_review":
         return out("cross_model_review", "one model saw the other's answer; excluded from independent agreement")
-    if kind == "different_versions":  # never compared as equivalent (D-036)
-        return out("not_comparable", "the two results used different or unrecorded evidence/analysis versions; "
-                                     "re-analyze so both interpret the same evidence version")
     if a["status"] == "validation_failed" or b["status"] == "validation_failed":
         return out("validation_failed", "a provider's output failed server validation")
     na = normalize(field, a["value"]) if a["status"] in ("suggested", "rule_unclear", "disputed") else None
@@ -127,15 +125,22 @@ def assess(case_id: int, field: dict, sset: dict | None, review: dict | None) ->
         return out("pending", "free-text field: never confirmed in bulk")
     if na is None or nb is None:
         return out("pending", "value could not be normalized safely")
-    if na != nb:
-        return out("value_disagreement", "the providers' values differ")
     ra, rb = _run(a.get("run_id")), _run(b.get("run_id"))
+    cross = kind == "cross_version"
+    diffs = version_differences(a, b, ra, rb) if cross else []
+    vinfo = {"comparison_class": "cross_version" if cross else "matched_version", "differences": diffs,
+             "claude": _prov_info(a, ra), "openai": _prov_info(b, rb)}
+    if na != nb:
+        if cross:  # never attributed to Claude vs OpenAI alone (D-035/D-036)
+            return out("cross_version_disagreement", "Results differ, but the models also used different analysis "
+                                                     "inputs (" + ", ".join(diffs) + ")", **vinfo)
+        return out("value_disagreement", "the providers' values differ", **vinfo)
     if not (ra and rb):
-        return out("not_comparable", "a run record is missing")
+        return out("pending", "a run record is missing", **vinfo)
     if final:
         conf = review.get("method") in BULK_METHODS or (normalize(field, review.get("value") or "") == na)
         return out("confirmed" if conf else "pending", "Human final already set" if not conf else "",
-                   method=review.get("method"))
+                   method=review.get("method"), **vinfo)
     problems = []
     if a["status"] != "suggested" or b["status"] != "suggested":
         problems.append("a provider marked it disputed or the rule unclear")
@@ -153,33 +158,43 @@ def assess(case_id: int, field: dict, sset: dict | None, review: dict | None) ->
         if any(p.split("(")[0].strip().upper() not in listed for p in na[1]):
             problems.append("open-list value not among the codebook's listed options")
     if ra.get("schema_version_id") != rb.get("schema_version_id"):
-        problems.append("different codebook versions")
-    ha, hb = _batch_hash(ra["id"], field["name"]), _batch_hash(rb["id"], field["name"])
-    if (ha or hb) and ha != hb:
-        problems.append("evidence given to the two models for this variable was not identical")
+        # owner choice 2026-10-05: compared and shown, but never bulk-confirmed — the same code may mean different
+        # things in two codebook versions; confirm such a variable individually
+        problems.append("codebook versions differ — the same code may mean different things; confirm individually")
+    if not cross:
+        ha, hb = _batch_hash(ra["id"], field["name"]), _batch_hash(rb["id"], field["name"])
+        if (ha or hb) and ha != hb:
+            problems.append("evidence given to the two models for this variable was not identical")
     if review and review.get("action") == "deferred":
         problems.append("deferred by a reviewer")
     if problems:
-        return out("pending", "; ".join(problems))
+        return out("pending", "; ".join(problems), **vinfo)
     src_a = {e.get("source_id") for e in a.get("evidence") or []}
     src_b = {e.get("source_id") for e in b.get("evidence") or []}
     diff = not (src_a & src_b)
     cached = [p for p, r in (("claude", a), ("openai", b)) if is_cached(r)]
-    notes = (["One or more results reused from validated cache"] if cached else [])
-    return out("eligible_evidence_difference" if diff else "eligible", "; ".join(notes), evidence_difference=diff,
-               reused_from_cache=bool(cached), cached_providers=cached,
-               value=a["value"], claude=_prov_info(a, ra), openai=_prov_info(b, rb),
-               group_id=a.get("group_id") if a.get("group_id") == b.get("group_id") else
-               f"runs {ra['id']} + {rb['id']}", prompt_version=ra.get("prompt_version"),
-               codebook_version=str(ra.get("schema_version_id")),
-               evidence_snapshot_id=a.get("evidence_snapshot_id"), analysis_spec_id=a.get("analysis_spec_id"))
+    notes = (["Same suggested value, different analysis versions (" + ", ".join(diffs) + ")"] if cross else []) + \
+            (["One or more results reused from validated cache"] if cached else [])
+    status = "eligible_cross_version" if cross else ("eligible_evidence_difference" if diff else "eligible")
+    return out(status, "; ".join(notes), evidence_difference=diff, reused_from_cache=bool(cached),
+               cached_providers=cached, value=a["value"],
+               group_id=a.get("group_id") if a.get("group_id") == b.get("group_id") else f"runs {ra['id']} + {rb['id']}",
+               prompt_version=ra.get("prompt_version") if ra.get("prompt_version") == rb.get("prompt_version") else
+               f"claude:{ra.get('prompt_version') or 'not recorded'} / openai:{rb.get('prompt_version') or 'not recorded'}",
+               codebook_version=str(ra.get("schema_version_id")) if ra.get("schema_version_id") == rb.get("schema_version_id")
+               else f"claude:{ra.get('schema_version_id')} / openai:{rb.get('schema_version_id')}",
+               evidence_snapshot_id=a.get("evidence_snapshot_id") if not cross else None,
+               analysis_spec_id=a.get("analysis_spec_id") if not cross else None, **vinfo)
 
 
-def _prov_info(row: dict, run: dict) -> dict:
-    return {"suggestion_id": row["id"], "model": row.get("model") or run.get("model"), "run_id": run["id"],
-            "original_run_id": row.get("cache_source_run_id") or run["id"],
+def _prov_info(row: dict, run: dict | None) -> dict:
+    run = run or {}
+    return {"suggestion_id": row["id"], "model": row.get("model") or run.get("model"), "run_id": run.get("id"),
+            "original_run_id": row.get("cache_source_run_id") or run.get("id"),
             "generated_at": row.get("generated_at") or row.get("created_at"),
-            "cache_status": row.get("cache_status") or "new"}
+            "cache_status": row.get("cache_status") or "new",
+            "evidence_snapshot_id": row.get("evidence_snapshot_id"), "analysis_spec_id": row.get("analysis_spec_id"),
+            "codebook_version": run.get("schema_version_id"), "prompt_version": run.get("prompt_version")}
 
 
 def case_assessments(case_id: int) -> dict:
@@ -209,21 +224,41 @@ def eligible_summary(case_id: int) -> dict:
                           "status": a["status"], "label": a["label"], "evidence_difference": a["evidence_difference"],
                           "reused_from_cache": a.get("reused_from_cache", False),
                           "cached_providers": a.get("cached_providers") or [],
+                          "comparison_class": a.get("comparison_class"), "differences": a.get("differences") or [],
+                          "cross_version": a.get("comparison_class") == "cross_version",
                           "claude": a["claude"], "openai": a["openai"]})
         else:
             excluded[a["label"]] = excluded.get(a["label"], 0) + 1
     return {"eligible": items, "excluded": excluded, "excluded_count": sum(excluded.values()),
-            "note": "Agreement between two models does not independently prove a value is correct."}
+            "note": "Agreement between two models does not independently prove a value is correct.",
+            "cross_version_warning": CROSS_VERSION_WARNING}
 
 
-def bulk_confirm(case_id: int, variables: list[str], reviewer: str | None) -> dict:
+CROSS_VERSION_WARNING = ("These model results were generated using different evidence, codebook, prompt, or analysis "
+                         "versions. Agreement does not represent a controlled same-input comparison, and disagreement "
+                         "cannot be attributed to the models alone. Review the version differences and supporting "
+                         "evidence before confirming.")
+
+
+class AcknowledgementRequired(Exception):
+    pass
+
+
+def bulk_confirm(case_id: int, variables: list[str], reviewer: str | None, acknowledged_cross_version: bool = False) -> dict:
     """Write Human final for the selected variables that are STILL eligible right now. Never touches a variable that
-    has any review. One transaction; returns what was confirmed and what was skipped (with reasons)."""
+    has any review. One transaction; returns what was confirmed and what was skipped (with reasons).
+    Cross-version agreements (D-035, retained) need the reviewer's explicit acknowledgement of CROSS_VERSION_WARNING;
+    without it nothing is written."""
     batch = uuid.uuid4().hex[:12]
     now = time.time()
     confirmed, skipped = [], []
+    selected = list(dict.fromkeys(variables or []))
     with db._lock:
         current = case_assessments(case_id)
+        if any((current.get(v) or {}).get("status") == "eligible_cross_version" for v in selected) \
+                and not acknowledged_cross_version:
+            raise AcknowledgementRequired("cross-version results were selected: the version warning must be "
+                                          "acknowledged before confirming")
         with db.tx() as c:
             for var in dict.fromkeys(variables or []):
                 a = current.get(var)
@@ -233,13 +268,18 @@ def bulk_confirm(case_id: int, variables: list[str], reviewer: str | None) -> di
                 if c.execute("SELECT 1 FROM reviews WHERE case_id=? AND variable=?", (case_id, var)).fetchone():
                     skipped.append({"variable": var, "reason": "a review already exists"})
                     continue
-                method = METHOD
-                reason = (f"Bulk confirmation of independent model agreement using the same analysis version "
-                          f"(Claude {a['claude']['model']} + OpenAI {a['openai']['model']}; evidence snapshot "
-                          f"{a['evidence_snapshot_id']}, analysis version {a['analysis_spec_id']})"
-                          + ("; evidence differed but both sets passed validation" if a["evidence_difference"] else "")
-                          + (f"; reused from validated cache: {', '.join(a['cached_providers'])}"
-                             if a.get("cached_providers") else ""))
+                cross = a.get("comparison_class") == "cross_version"
+                method = METHOD_SEPARATE if cross else METHOD
+                if cross:
+                    reason = (f"Bulk confirmation of CROSS-VERSION agreement (D-035): same suggested value, different "
+                              f"analysis versions ({', '.join(a.get('differences') or [])}); Claude {a['claude']['model']} "
+                              f"+ OpenAI {a['openai']['model']}; version warning acknowledged by the reviewer")
+                else:
+                    reason = (f"Bulk confirmation of independent agreement — matched analysis version "
+                              f"(Claude {a['claude']['model']} + OpenAI {a['openai']['model']}; evidence snapshot "
+                              f"{a['evidence_snapshot_id']}, analysis version {a['analysis_spec_id']})"
+                              + ("; evidence differed but both sets passed validation" if a["evidence_difference"] else ""))
+                reason += (f"; reused from validated cache: {', '.join(a['cached_providers'])}" if a.get("cached_providers") else "")
                 c.execute("INSERT INTO reviews (case_id,variable,value,action,reason,suggestion_id,updated_at,reviewer,"
                           "source_provider,method) VALUES (?,?,?,?,?,?,?,?,?,?)",
                           (case_id, var, a["value"], "accepted", reason, a["claude"]["suggestion_id"], now, reviewer,
@@ -253,11 +293,16 @@ def bulk_confirm(case_id: int, variables: list[str], reviewer: str | None) -> di
                           "openai_suggestion_id,claude_model,openai_model,group_id,codebook_version,prompt_version,"
                           "evidence_difference,previous_value,reviewer,at,method,evidence_snapshot_id,analysis_spec_id,"
                           "claude_run_id,openai_run_id,claude_cache_status,openai_cache_status,claude_generated_at,"
-                          "openai_generated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                          "openai_generated_at,comparison_class,differences_json,warning_shown,acknowledged,"
+                          "claude_versions_json,openai_versions_json,selected_json) "
+                          "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                           (batch, case_id, var, a["value"], ca["suggestion_id"], oa["suggestion_id"],
                            ca["model"], oa["model"], a["group_id"], a["codebook_version"],
                            a["prompt_version"], 1 if a["evidence_difference"] else 0, None, reviewer, now, method,
                            a["evidence_snapshot_id"], a["analysis_spec_id"], ca["original_run_id"], oa["original_run_id"],
-                           ca["cache_status"], oa["cache_status"], ca["generated_at"], oa["generated_at"]))
+                           ca["cache_status"], oa["cache_status"], ca["generated_at"], oa["generated_at"],
+                           a.get("comparison_class"), json.dumps(a.get("differences") or []),
+                           CROSS_VERSION_WARNING if cross else None, 1 if (cross and acknowledged_cross_version) else 0,
+                           json.dumps(ca, default=str), json.dumps(oa, default=str), json.dumps(selected)))
                 confirmed.append({"variable": var, "value": a["value"]})
     return {"batch_id": batch, "confirmed": confirmed, "skipped": skipped}

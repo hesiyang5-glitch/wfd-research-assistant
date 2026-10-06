@@ -469,8 +469,10 @@ def evidence_snapshot(case_id: int, pmap: dict, smeta: dict, codebook: str, sett
     if row:
         return row["id"]
     try:
+        phash = {pid: hashlib.sha256(pmap[pid]["text"].encode()).hexdigest()[:16] for pid in sorted(pmap)}
         return db.insert("evidence_snapshots", {"case_id": case_id, "fingerprint": fp, "n_sources": len(srcs),
                                                 "n_passages": len(pmap), "sources_json": json.dumps(srcs),
+                                                "passages_json": json.dumps(phash),
                                                 "codebook_version": codebook, "retrieval_json": json.dumps(retrieval),
                                                 "created_at": time.time()})
     except Exception:  # concurrent insert of the same snapshot
@@ -1158,11 +1160,14 @@ def suggestion_sets(case_id: int) -> dict:
             ra, rb = a["row"], b["row"]
             comparison = compare_pair(ra, rb)
             comparison["kind"] = comparison_kind(ra, rb)
+            va, vb = _vals(ra), _vals(rb)
+            comparison["same_value"] = bool(va) and va == vb
             if comparison["kind"] == "cross_model_review":
                 comparison["note_kind"] = "Cross-model review (audit only): one model saw the other's answer."
-            elif comparison["kind"] == "different_versions":
-                comparison["note_kind"] = ("The two results used different or unrecorded evidence/analysis versions; "
-                                           "they are not treated as comparable.")
+            elif comparison["kind"] == "cross_version":
+                comparison["note_kind"] = (
+                    "Same suggested value, different analysis versions." if comparison["same_value"]
+                    else "Results differ, but the models also used different analysis inputs.")
             comparison["providers"] = [ra["provider"], rb["provider"]]
             comparison["reused_from_cache"] = any(is_cached(r) for r in (ra, rb))
         members = [c["row"] for c in cells.values() if c["row"] is not None]
@@ -1176,16 +1181,39 @@ def is_cached(row: dict) -> bool:
 
 
 def comparison_kind(ra: dict, rb: dict) -> str:
-    """How two providers' results relate (D-036): an independent comparison needs the SAME evidence snapshot and the
-    SAME analysis version; results from different jobs qualify when those match (provenance is kept, they are never
-    relabelled 'same run'). A cross-model review never counts as independent."""
+    """Comparison class of two providers' results (D-035 retained, D-036):
+    - 'matched_version': both independent, same evidence snapshot (which includes the codebook) and same analysis
+      version. Results from different jobs or from the validated cache qualify — their run dates and cache status are
+      shown, never relabelled 'same run' (owner choice 2026-10-05: separate runs with identical versions are matched).
+    - 'cross_version': both independent, but evidence, codebook, prompt/analysis version differ or were not recorded.
+      Still compared and (D-035) eligible for bulk confirmation with explicit disclosure and acknowledgement.
+    - 'cross_model_review': one model saw the other's answer; never independent agreement."""
     if "cross_model_review" in (interpretation_of(ra), interpretation_of(rb)):
         return "cross_model_review"
     sa, sb = ra.get("evidence_snapshot_id"), rb.get("evidence_snapshot_id")
     pa, pb = ra.get("analysis_spec_id"), rb.get("analysis_spec_id")
     if sa and sa == sb and pa and pa == pb:
-        return "same_analysis_version"
-    return "different_versions"
+        return "matched_version"
+    return "cross_version"
+
+
+def version_differences(ra: dict, rb: dict, runa: dict | None = None, runb: dict | None = None) -> list[str]:
+    """Which version dimensions differ between two results (empty for a matched-version pair)."""
+    out = []
+    sa, sb = ra.get("evidence_snapshot_id"), rb.get("evidence_snapshot_id")
+    pa, pb = ra.get("analysis_spec_id"), rb.get("analysis_spec_id")
+    if not (sa and sb and pa and pb):
+        out.append("version not recorded")
+    if sa and sb and sa != sb:
+        out.append("evidence version")
+    if (runa or {}).get("schema_version_id") != (runb or {}).get("schema_version_id") and runa and runb:
+        out.append("codebook version")
+    if pa and pb and pa != pb:
+        out.append("analysis version")
+    pva, pvb = (runa or {}).get("prompt_version"), (runb or {}).get("prompt_version")
+    if runa and runb and pva != pvb:
+        out.append("prompt version")
+    return out
 
 
 def _combined_view(rows: list[dict]) -> dict:

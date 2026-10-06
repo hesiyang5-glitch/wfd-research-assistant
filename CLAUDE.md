@@ -43,7 +43,8 @@ If a request conflicts with an established requirement here, point out the confl
 - Model suggestions stay separate from human-approved values. Reanalysis never overwrites reviewed values.
 - Claude and OpenAI are EQUAL independent providers (no primary/secondary/reviewer; D-036). They interpret the same
   shared evidence snapshot with the same analysis version and never see each other's answers. Agreement is not
-  verification; results are comparable only with matching evidence and analysis versions; disagreement goes to human
+  verification. Matched-version and cross-version comparisons are distinguished (D-035 retained): cross-version results
+  may be compared and bulk-confirmed only with explicit disclosure and acknowledgement; disagreement goes to human
   review; the human researcher is the only final decision-maker. A second provider never starts unless chosen explicitly.
 
 ## Non-negotiable engineering rules
@@ -73,6 +74,7 @@ python3 -m tests.test_legacy_migration # opens a copy of a database made by depl
 python3 -m tests.test_bulk_agreement  # bulk confirmation of independent model agreement (eligibility, audit, export, UI)
 python3 -m tests.test_resilience      # thread limits, shared evidence index, crash-safe ledger, paused recovery, health under load
 python3 -m tests.test_independent_providers  # equal providers, first-form provider choice, versions, cache identity (D-036)
+python3 -m tests.test_cross_version   # matched vs cross-version comparison, warning + acknowledgement, version panel (D-035/D-036)
 ```
 
 Tests need the Texas-flood sample PDFs: set `WFD_TEST_PDFS=/path/to/folder` (they are in the claude.ai

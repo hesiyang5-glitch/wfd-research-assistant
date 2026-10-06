@@ -538,7 +538,7 @@ async function tabReview(c, body) {
         <td><b class="mono">${esc(r.name)}</b>${r.issues.length ? ` <span class="badge warn" title="${esc(r.issues.join("\n"))}">!</span>` : ""}${s.stale ? ` <span class="badge bad">stale</span>` : ""}</td>
         ${provCells}
         <td class="val human-final">${final ? `<span class="final-val mono">${esc((rv.value || "∅").slice(0, 60))}</span>${rv.source_provider ? `<div class="small muted">${esc(L("采纳自", "from"))} ${esc(PROV[rv.source_provider] || rv.source_provider)}</div>` : ""}` : rv && rv.action === "deferred" ? `<span class="muted small">${L("暂缓", "deferred")}</span>` : `<span class="muted small">—</span>`}</td>
-        <td class="ag-cell">${r.agreement ? `<span class="badge wrap ${AG_BADGE[r.agreement.status] || ""}" title="${esc(r.agreement.reason || "")}">${esc(agText(r.agreement.status))}</span>` : r.comparison ? `<span class="badge ${COMP_BADGE[r.comparison.model_status] || ""}">${esc(compText(r.comparison.model_status))}</span>${r.comparison.kind === "cross_model_review" ? `<div class="small muted">${L("跨模型复核（非独立）", "cross-model (not independent)")}</div>` : r.comparison.kind === "different_versions" ? `<div class="small muted">${L("证据/分析版本不同", "different versions")}</div>` : ""}` : `<span class="muted small">—</span>`}</td>
+        <td class="ag-cell">${r.agreement ? `<span class="badge wrap ${AG_BADGE[r.agreement.status] || ""}" title="${esc(r.agreement.reason || "")}">${esc(agText(r.agreement.status))}</span>` : r.comparison ? `<span class="badge ${COMP_BADGE[r.comparison.model_status] || ""}">${esc(compText(r.comparison.model_status))}</span>${r.comparison.kind === "cross_model_review" ? `<div class="small muted">${L("跨模型复核（非独立）", "cross-model (not independent)")}</div>` : r.comparison.kind === "cross_version" ? `<div class="small muted">${L("跨版本", "cross-version")}</div>` : ""}` : `<span class="muted small">—</span>`}</td>
         <td><span class="badge ${CAT_BADGE[r.category]}">${t("filter_" + r.category)}</span></td></tr>`;
     }).join("");
     $$("#wbRows tr").forEach((tr) => (tr.onclick = () => { WB.sel = tr.dataset.v; drawRows(); drawDetail(c); }));
@@ -552,8 +552,8 @@ async function tabReview(c, body) {
   drawRows();
   if (WB.sel) drawDetail(c);
 }
-const AG_BADGE = { eligible: "info", eligible_evidence_difference: "info", confirmed: "ok", cross_model_review: "warn", not_comparable: "warn", value_disagreement: "bad", both_insufficient: "", claude_only: "", openai_only: "", validation_failed: "bad", pending: "dispute" };
-const AG_TEXT = { eligible: ["使用同一分析版本的独立一致 — 可批量确认", "Independent agreement using the same analysis version — eligible"], cross_model_review: ["跨模型复核（仅供审核）— 非独立", "Cross-model review (audit only) — not independent"], not_comparable: ["不可比较 — 证据/分析版本不同", "Not comparable — different evidence/analysis version"], eligible_evidence_difference: ["取值一致但证据不同 — 可批量确认", "Value agreement with evidence difference — eligible"], confirmed: ["独立一致 — 已人工确认", "Independent model agreement — human confirmed"], value_disagreement: ["取值不一致", "Value disagreement"], both_insufficient: ["均证据不足", "Both insufficient"], claude_only: ["仅 Claude", "Claude only"], openai_only: ["仅 OpenAI", "OpenAI only"], validation_failed: ["验证失败", "Validation failed"], pending: ["待人工复核", "Pending human review"] };
+const AG_BADGE = { eligible: "info", eligible_evidence_difference: "info", eligible_cross_version: "warn", cross_version_disagreement: "bad", confirmed: "ok", cross_model_review: "warn", value_disagreement: "bad", both_insufficient: "", claude_only: "", openai_only: "", validation_failed: "bad", pending: "dispute" };
+const AG_TEXT = { eligible: ["独立一致 — 分析版本相同", "Independent agreement — matched analysis version"], eligible_cross_version: ["跨版本一致 — 请核对版本差异", "Cross-version agreement — review version differences"], cross_version_disagreement: ["跨版本不一致 — 模型差异和输入差异都可能有影响", "Cross-version disagreement — model and input differences may both contribute"], cross_model_review: ["跨模型复核（仅供审核）— 非独立", "Cross-model review (audit only) — not independent"], eligible_evidence_difference: ["独立一致 — 分析版本相同（支持来源不同）", "Independent agreement — matched analysis version (different supporting sources)"], confirmed: ["独立一致 — 已人工确认", "Independent model agreement — human confirmed"], value_disagreement: ["取值不一致", "Value disagreement"], both_insufficient: ["均证据不足", "Both insufficient"], claude_only: ["仅 Claude", "Claude only"], openai_only: ["仅 OpenAI", "OpenAI only"], validation_failed: ["验证失败", "Validation failed"], pending: ["待人工复核", "Pending human review"] };
 const agText = (s) => (AG_TEXT[s] ? L(AG_TEXT[s][0], AG_TEXT[s][1]) : s);
 async function openBulkConfirm(c) {
   let d;
@@ -565,13 +565,20 @@ async function openBulkConfirm(c) {
       ${L("只有你勾选并点击“确认”后，才会写入“人工最终值”；之后仍可在每个变量里撤销或修改。", "Nothing is written until you click Confirm. Each value can still be reset or edited afterwards in that variable's review panel.")}</div>
     <p class="small">${L("可确认", "Eligible")}: <b id="bulkN">${d.eligible.length}</b> · ${L("不符合条件（保持待复核）", "Excluded (stay pending)")}: <b>${d.excluded_count}</b>
       ${Object.keys(d.excluded).length ? `<span class="muted">(${Object.entries(d.excluded).map(([k, v]) => `${esc(agTextFromLabel(k))}: ${v}`).join("; ")})</span>` : ""}</p>
-    <div class="wb-table" style="max-height:52vh"><table id="bulkTable"><thead><tr><th><input type="checkbox" id="bulkAll" checked style="width:auto"></th><th>${t("col_var")}</th><th>${L("一致的取值", "Agreed value")}</th><th>Claude</th><th>OpenAI</th><th>${L("备注", "Note")}</th></tr></thead><tbody>
-    ${d.eligible.map((x) => `<tr><td><input type="checkbox" class="bulkChk" style="width:auto" value="${esc(x.variable)}" checked></td><td class="mono">${esc(x.variable)}</td>
+    <div class="wb-table" style="max-height:52vh"><table id="bulkTable"><thead><tr><th><input type="checkbox" id="bulkAll" ${d.eligible.some((x) => x.cross_version) ? "" : "checked"} style="width:auto"></th><th>${t("col_var")}</th><th>${L("一致的取值", "Agreed value")}</th><th>Claude</th><th>OpenAI</th><th>${L("备注", "Note")}</th></tr></thead><tbody>
+    ${d.eligible.map((x) => `<tr><td><input type="checkbox" class="bulkChk" style="width:auto" value="${esc(x.variable)}" data-cross="${x.cross_version ? 1 : 0}" ${x.cross_version ? "" : "checked"}></td><td class="mono">${esc(x.variable)}</td>
       <td><b class="mono">${esc(x.value)}</b>${x.value_label ? `<div class="small muted">${esc(x.value_label)}</div>` : ""}</td>
       <td class="small mono">${esc(x.claude.model || "")}<div class="muted">#${x.claude.suggestion_id}</div></td><td class="small mono">${esc(x.openai.model || "")}<div class="muted">#${x.openai.suggestion_id}</div></td>
-      <td class="small">${x.reused_from_cache ? `<div><span class="badge info">${L("有结果从已验证缓存复用", "reused from validated cache")}</span></div>` : ""}${x.evidence_difference ? `<span class="badge warn">${L("证据来源不同（均已通过验证）", "different evidence (both validated)")}</span>` : ""}</td></tr>`).join("")}</tbody></table></div>
-    <div class="row" style="margin-top:14px"><button class="primary" id="bulkOk">${L("确认所选", "Confirm selected")} (<span id="bulkK">${d.eligible.length}</span>)</button><button id="bulkCancel">${L("取消", "Cancel")}</button></div></div></div></div>`;
-  const upd = () => { const k = $$(".bulkChk").filter((x) => x.checked).length; $("#bulkK").textContent = k; $("#bulkOk").disabled = k === 0; };
+      <td class="small">${x.cross_version ? `<div><span class="badge warn">${L("跨版本：取值相同，但分析版本不同", "Cross-version: same suggested value, different analysis versions")}</span></div><div class="muted">${L("不同之处", "Differs in")}: ${esc((x.differences || []).join(", "))}</div>` : ""}${x.reused_from_cache ? `<div><span class="badge info">${L("有结果从已验证缓存复用", "reused from validated cache")}</span></div>` : ""}${x.evidence_difference ? `<span class="badge warn">${L("证据来源不同（均已通过验证）", "different evidence (both validated)")}</span>` : ""}</td></tr>`).join("")}</tbody></table></div>
+    <div class="callout warn small" id="xvBox" style="display:none"><b>${L("跨版本结果", "Cross-version results")}</b><p style="margin:4px 0">${esc(d.cross_version_warning || "")}</p>
+      <label class="chk"><input type="checkbox" id="xvAck" style="width:auto"> ${L("我已核对版本差异和支持证据", "I have reviewed the version differences and supporting evidence")}</label></div>
+    <div class="row" style="margin-top:14px"><button class="primary" id="bulkOk">${L("确认所选", "Confirm selected")} (<span id="bulkK">${d.eligible.filter((x) => !x.cross_version).length}</span>)</button><button id="bulkCancel">${L("取消", "Cancel")}</button></div></div></div></div>`;
+  const upd = () => {
+    const sel = $$(".bulkChk").filter((x) => x.checked); const xv = sel.some((x) => x.dataset.cross === "1");
+    $("#bulkK").textContent = sel.length; $("#xvBox").style.display = xv ? "" : "none";
+    $("#bulkOk").disabled = sel.length === 0 || (xv && !$("#xvAck").checked);
+  };
+  $("#xvAck").onchange = upd;
   $$(".bulkChk").forEach((x) => (x.onchange = upd));
   $("#bulkAll").onchange = (e) => { $$(".bulkChk").forEach((x) => (x.checked = e.target.checked)); upd(); };
   upd();
@@ -580,7 +587,7 @@ async function openBulkConfirm(c) {
     const vars = $$(".bulkChk").filter((x) => x.checked).map((x) => x.value);
     $("#bulkOk").disabled = true;
     try {
-      const r = await api("POST", `/api/cases/${c.id}/bulk_confirm`, { variables: vars, confirmed: true });
+      const r = await api("POST", `/api/cases/${c.id}/bulk_confirm`, { variables: vars, confirmed: true, acknowledged_cross_version: $("#xvAck").checked });
       $("#modalRoot").innerHTML = "";
       toast(`${L("已确认", "Confirmed")}: ${r.confirmed.length}${r.skipped.length ? ` · ${L("跳过", "skipped")}: ${r.skipped.length} (${r.skipped.map((s) => s.variable + ": " + s.reason).join("; ")})` : ""}`, r.skipped.length > 0);
       tabReview(c, $("#tabBody"));
@@ -615,7 +622,8 @@ function drawDetail(c) {
     ${r.agreement ? `<div class="small" style="margin:6px 0"><span class="badge ${AG_BADGE[r.agreement.status] || ""}">${esc(agText(r.agreement.status))}</span> ${r.agreement.reason ? `<span class="muted">${esc(r.agreement.reason)}</span>` : ""}${r.review && (r.review.method === "bulk_independent_agreement" || r.review.method === "bulk_separate_run_agreement") ? ` <span class="muted">${L("（通过批量确认写入；可用“撤销复核”或“修改”更正）", "(written by bulk confirmation; use Reset or Edit to correct)")}</span>` : ""}</div>` : ""}
     ${r.comparison ? `<div class="callout ${r.comparison.model_status === "model_agreement" ? "ok" : "warn"} small"><b>${esc(compText(r.comparison.status))}</b>${r.comparison.status === "human_approved" ? ` (${L("模型比较", "models")}: ${esc(compText(r.comparison.model_status))})` : ""}${r.comparison.note ? " — " + esc(r.comparison.note) : ""}
       ${r.comparison.kind === "cross_model_review" ? `<br>${L("跨模型复核：一个模型看过另一个模型的答案，不算独立结果（仅供审核）。", "Cross-model review: one model saw the other's answer; not an independent result (audit only).")}` : ""}
-      ${r.comparison.kind === "different_versions" ? `<br>${L("两个结果使用了不同（或未记录）的证据/分析版本，不视为可比较。", "The two results used different (or unrecorded) evidence/analysis versions; not treated as comparable.")}` : ""}
+      ${r.comparison.kind === "cross_version" ? `<br><b>${r.comparison.same_value ? L("取值相同，但分析版本不同。", "Same suggested value, different analysis versions.") : L("结果不同，但两个模型用的分析输入也不同。", "Results differ, but the models also used different analysis inputs.")}</b> ${L("这不是相同输入下的对照比较。", "This is not a controlled same-input comparison.")}
+        <details id="vdBox" style="margin-top:4px"><summary>${L("查看版本差异", "Show version differences")}</summary><div id="vdOut" class="small">${t("loading")}</div></details>` : ""}
       ${r.comparison.reused_from_cache ? `<br>${L("有结果是从已验证的缓存中复用的（保留原始运行记录）。", "One or more results reused from validated cache (original run kept).")}` : ""}
       <br>${L("模型一致不等于事实已核实；最终值以人工复核为准。", "Model agreement is not verification; the human-reviewed value is final.")}</div>` : ""}
     ${(r.providers || []).length >= 1 ? `<h3>${L("各模型的建议（互不覆盖）", "Suggestions by model (never overwrite each other)")}</h3>${["anthropic", "openai"].filter((k) => !(r.providers || []).some((m) => (m.provider === "openai_compatible" ? "openai" : m.provider) === k)).map((k) => `<div class="panel small" style="padding:8px 12px;margin:6px 0"><b>${esc(PROV[k])}</b> ${cellHtml((r.cells || {})[k], r)}</div>`).join("")}${r.providers.map((m) => `<div class="panel" style="padding:10px 12px;margin:6px 0">
@@ -667,6 +675,21 @@ function drawDetail(c) {
   $("#editBtn").onclick = () => {
     const val = r.multi && r.type === "categorical" && r.codes.length ? $$(".mcode", d).filter((x) => x.checked).map((x) => x.value).join(", ") : $("#edVal").value;
     send("edit", { value: val });
+  };
+  if ($("#vdBox")) $("#vdBox").ontoggle = async () => {
+    if (!$("#vdBox").open) return;
+    try {
+      const v = await api("GET", `/api/cases/${c.id}/version_diff?variable=${encodeURIComponent(r.name)}`);
+      const rowv = (lab, k) => `<tr><td>${lab}</td><td class="mono">${esc(v.claude[k] ?? L("未记录", "not recorded"))}</td><td class="mono">${esc(v.openai[k] ?? L("未记录", "not recorded"))}</td></tr>`;
+      const lst = (o) => (o ? `${L("仅 Claude 版本", "only in Claude's version")}: ${esc((o.only_in_claude_version || []).join(", ") || "—")}; ${L("仅 OpenAI 版本", "only in OpenAI's version")}: ${esc((o.only_in_openai_version || []).join(", ") || "—")}${o.changed_text ? `; ${L("文字有变化", "text changed")}: ${esc(o.changed_text.join(", ") || "—")}` : ""}` : L("未记录（版本化之前的结果）", "not recorded (result from before versioning)"));
+      $("#vdOut").innerHTML = `<div><b>${L("不同之处", "Differs in")}:</b> ${esc((v.differences || []).join(", ") || "—")}</div>
+        <table class="small" style="margin:6px 0"><thead><tr><th></th><th>Claude</th><th>OpenAI</th></tr></thead><tbody>
+        ${rowv(L("证据版本", "Evidence version"), "evidence_snapshot_id")}${rowv(L("编码手册版本", "Codebook version"), "codebook_version")}${rowv(L("提示词版本", "Prompt version"), "prompt_version")}${rowv(L("分析版本", "Analysis version"), "analysis_spec_id")}${rowv(L("模型", "Model"), "model")}${rowv(L("原始运行", "Original run"), "original_run_id")}
+        <tr><td>${L("生成时间", "Generated")}</td><td>${esc(fmtTime(v.claude.generated_at))}</td><td>${esc(fmtTime(v.openai.generated_at))}</td></tr>${rowv(L("缓存", "Cache"), "cache_status")}</tbody></table>
+        <div><b>${L("来源", "Sources")}:</b> ${"sources" in v ? lst(v.sources) : "—"}</div>
+        <div><b>${L("段落", "Passages")}:</b> ${"passages" in v ? lst(v.passages) : "—"}</div>
+        ${v.analysis ? `<div><b>${L("分析设置的差异", "Analysis differences")}:</b> ${esc(Object.keys(v.analysis).join(", "))}</div>` : ""}`;
+    } catch (err) { $("#vdOut").textContent = err.message; }
   };
   if ($("#recodeOne")) $("#recodeOne").onclick = () => startRecode(c.id, [r.name]);
   if ($("#recodeVar")) $("#recodeVar").onclick = (ev) => startRecode(c.id, [r.name], ev.currentTarget);

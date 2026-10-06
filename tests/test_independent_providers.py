@@ -312,7 +312,7 @@ def main():
     a = db.q1("SELECT * FROM suggestions WHERE case_id=? AND variable='FAILURE_TYPE' AND provider='anthropic'", (r3["id"],))
     b = db.q1("SELECT * FROM suggestions WHERE case_id=? AND variable='FAILURE_TYPE' AND provider='openai'", (r3["id"],))
     check("E6b comparison is symmetric (order of providers does not matter)",
-          coding.comparison_kind(a, b) == coding.comparison_kind(b, a) == "same_analysis_version")
+          coding.comparison_kind(a, b) == coding.comparison_kind(b, a) == "matched_version")
     row3 = {r["name"]: r for r in export.case_results(r3["id"])["rows"]}["FAILURE_TYPE"]
     check("E6c with two providers the default suggestion is a neutral combined view (blank when they differ), "
           "never Claude's row", row3["suggestion"]["display_kind"] == "two_providers" and row3["suggestion"]["provider"] is None
@@ -403,7 +403,7 @@ def main():
     con.close()
 
     a2 = dict(a); a2["evidence_snapshot_id"] = (a2["evidence_snapshot_id"] or 0) + 1000
-    check("E19 independent comparison requires matching versions", coding.comparison_kind(a2, b) == "different_versions")
+    check("E19 matched-version class requires matching versions (otherwise cross-version)", coding.comparison_kind(a2, b) == "cross_version")
     rv_ = dict(b); rv_["role"] = "reviewer"; rv_["interpretation"] = None
     check("E20 cross-model results are excluded from independent agreement", coding.comparison_kind(a, rv_) == "cross_model_review")
 

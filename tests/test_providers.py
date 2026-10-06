@@ -788,7 +788,7 @@ def main():
     rows = {r["name"]: r for r in export.case_results(c21)["rows"]}
     check("after Resume no Claude cell is 'stopped' and comparison is independent",
           all(r["cells"]["anthropic"]["state"] != "stopped" for r in rows.values() if r["name"] in VARS2)
-          and rows["SYSTEM_LEVEL"]["comparison"]["kind"] == "same_analysis_version")
+          and rows["SYSTEM_LEVEL"]["comparison"]["kind"] == "matched_version")
     try:
         server.api_resume_provider(HH(), str(j21), "anthropic")
         check("nothing left to resume → clear message", False)
@@ -835,7 +835,7 @@ def main():
           and rows["SYSTEM_LEVEL"]["cells"]["openai"]["value"] == "4")
     cl = rows["SYSTEM_LEVEL"]["providers"]
     check("results from different jobs on the SAME evidence and analysis version are compared (D-036), keeping "
-          "their own runs", rows["SYSTEM_LEVEL"]["comparison"]["kind"] == "same_analysis_version"
+          "their own runs", rows["SYSTEM_LEVEL"]["comparison"]["kind"] == "matched_version"
           and rows["SYSTEM_LEVEL"]["comparison"]["model_status"] == "value_disagreement"
           and len({p["run_id"] for p in cl}) == 2)
     check("Human final unchanged by both runs", rows["FAILURE_TYPE"]["review"]["value"] == "6")

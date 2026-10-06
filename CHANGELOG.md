@@ -5,17 +5,19 @@ Completed changes, newest first. Commit hashes refer to `hesiyang5-glitch/wfd-re
 
 
 
-## 2026-10-05 — Equal independent providers + provider choice on the first form (branch `feature/independent-providers`, NOT merged, NOT deployed)
-- D-036. Migration `2026-10-05-independent-providers` (additive): `evidence_snapshots`, `analysis_specs`; new columns on
-  runs, suggestions, model_calls, bulk_confirmations. Nothing old is rewritten.
-- Neutral providers: new runs `independent`; cross-model review refused for new runs (history readable, labelled
-  `cross_model_review`); no Claude-preferred default suggestion; neutral UI wording, export "Interpretation" columns.
-- Agreement and bulk confirmation require the same evidence snapshot and analysis version (replaces D-035).
-- K-40 fixed: cache keyed by model-visible input, not role; earlier entries still found (read-only).
-- First form: Coding provider choice, preliminary estimate per mode, confirmation dialog, free availability check,
-  one-request minimum budget check, optional pause after research. Re-analyze uses the same mode list.
-- Tests: new `tests/test_independent_providers.py` (66 checks incl. browser, network guard); updated
-  `test_providers` (141) and `test_bulk_agreement` (67). All 9 suites pass offline.
+## 2026-10-05 — Equal independent providers, provider choice on the first form, matched vs cross-version comparison (branch `feature/independent-providers`; merge approved by owner)
+- D-036 (D-035 retained). Migration `2026-10-05-independent-providers` (additive): `evidence_snapshots` (with passage
+  hashes), `analysis_specs`; new columns on runs, suggestions, model_calls, bulk_confirmations. Nothing old is rewritten.
+- Neutral providers: new runs `independent`; cross-model review refused for new runs (history labelled
+  `cross_model_review`); no Claude-preferred default; neutral wording; export "Interpretation" columns.
+- Two comparison classes: matched version (ticked by default) and cross-version (eligible under D-035, not ticked,
+  warning + acknowledgement required; codebook-version differences never bulk-confirmed); version-difference panel;
+  full audit of class, differences, warning, acknowledgement, versions, selection.
+- K-40 fixed: cache keyed by model-visible input, not role; earlier entries still found (read-only); not weakened by D-035.
+- First form: Coding provider choice, estimate per mode, confirmation, free availability check, one-request minimum,
+  optional pause after research. Re-analyze uses the same mode list.
+- Tests: new `test_independent_providers.py` (66) and `test_cross_version.py` (27), both with browser checks and a
+  network guard; `test_providers` 141, `test_bulk_agreement` 67. All 10 suites pass offline.
 
 ## 2026-10-02 — Session handoff (documentation only)
 Completed and tested (offline suites; live where stated):

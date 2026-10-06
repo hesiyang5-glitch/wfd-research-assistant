@@ -31,6 +31,7 @@ ADD_COLUMNS = {
     "review_history": [("source_provider", "TEXT"), ("method", "TEXT")],
 }
 ADD_COLUMNS_2 = {
+    "evidence_snapshots": [("passages_json", "TEXT")],
     "runs": [("evidence_snapshot_id", "INTEGER"), ("analysis_spec_id", "INTEGER"), ("interpretation", "TEXT")],
     "suggestions": [("evidence_snapshot_id", "INTEGER"), ("analysis_spec_id", "INTEGER"), ("interpretation", "TEXT"),
                     ("cache_source_run_id", "INTEGER"), ("generated_at", "REAL")],
@@ -39,7 +40,10 @@ ADD_COLUMNS_2 = {
     "bulk_confirmations": [("evidence_snapshot_id", "INTEGER"), ("analysis_spec_id", "INTEGER"),
                            ("claude_run_id", "INTEGER"), ("openai_run_id", "INTEGER"),
                            ("claude_cache_status", "TEXT"), ("openai_cache_status", "TEXT"),
-                           ("claude_generated_at", "REAL"), ("openai_generated_at", "REAL")],
+                           ("claude_generated_at", "REAL"), ("openai_generated_at", "REAL"),
+                           ("comparison_class", "TEXT"), ("differences_json", "TEXT"), ("warning_shown", "TEXT"),
+                           ("acknowledged", "INTEGER"), ("claude_versions_json", "TEXT"),
+                           ("openai_versions_json", "TEXT"), ("selected_json", "TEXT")],
 }
 
 NEW_TABLES = """
@@ -64,7 +68,7 @@ CREATE TABLE IF NOT EXISTS bulk_confirmations (
   previous_value TEXT, reviewer TEXT, at REAL, method TEXT);
 CREATE TABLE IF NOT EXISTS evidence_snapshots (
   id INTEGER PRIMARY KEY, case_id INTEGER, fingerprint TEXT, n_sources INTEGER, n_passages INTEGER, sources_json TEXT,
-  codebook_version TEXT, retrieval_json TEXT, created_at REAL, UNIQUE (case_id, fingerprint));
+  codebook_version TEXT, retrieval_json TEXT, created_at REAL, passages_json TEXT, UNIQUE (case_id, fingerprint));
 CREATE TABLE IF NOT EXISTS analysis_specs (
   id INTEGER PRIMARY KEY, spec_hash TEXT UNIQUE, prompt_version TEXT, rules_sha TEXT, response_schema_version TEXT,
   batching_json TEXT, codebook_version TEXT, created_at REAL);
