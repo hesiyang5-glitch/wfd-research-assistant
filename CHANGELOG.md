@@ -5,6 +5,14 @@ Completed changes, newest first. Commit hashes refer to `hesiyang5-glitch/wfd-re
 
 
 
+
+## 2026-10-05 — Services list without a single "Language model"; interface files never served stale (branch `fix/labels-and-browser-cache`, NOT merged)
+- The home page's Services list no longer shows one "Language model" line (a leftover of the legacy single-provider
+  default that suggested Claude was the model); Claude and OpenAI are listed side by side as before (D-036). The line
+  only appears when no model is configured.
+- K-16: `Cache-Control: no-cache, must-revalidate` on interface files.
+- Tests: `test_independent_providers` 68 (2 new checks); auth, providers, UI flow pass.
+
 ## 2026-10-05 — Equal independent providers, provider choice on the first form, matched vs cross-version comparison (merged to `main` 2026-10-05 with owner approval after a backup; live verification pending)
 - D-036 (D-035 retained). Migration `2026-10-05-independent-providers` (additive): `evidence_snapshots` (with passage
   hashes), `analysis_specs`; new columns on runs, suggestions, model_calls, bulk_confirmations. Nothing old is rewritten.
