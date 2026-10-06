@@ -916,10 +916,12 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
-    def send_bytes(self, data: bytes, ctype: str, filename: str | None = None):
+    def send_bytes(self, data: bytes, ctype: str, filename: str | None = None, cache: str | None = None):
         self.send_response(200)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(data)))
+        if cache:
+            self.send_header("Cache-Control", cache)
         if filename:
             self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
         self.end_headers()
@@ -979,7 +981,9 @@ class Handler(BaseHTTPRequestHandler):
             ctype = mimetypes.guess_type(str(fp))[0] or "application/octet-stream"
             if ctype.startswith("text/") or ctype in ("application/javascript",):
                 ctype += "; charset=utf-8"
-            return self.send_bytes(fp.read_bytes(), ctype)
+            # K-16: the interface files must never be served from a stale browser copy after a deploy — the browser
+            # re-checks them on every load (they are small; no build step, so no hashed file names)
+            return self.send_bytes(fp.read_bytes(), ctype, cache="no-cache, must-revalidate")
         except ApiError as e:
             return self.send_json({"error": e.msg}, e.status)
         except Exception as e:

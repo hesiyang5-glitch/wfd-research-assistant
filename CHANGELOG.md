@@ -6,7 +6,7 @@ Completed changes, newest first. Commit hashes refer to `hesiyang5-glitch/wfd-re
 
 
 
-## 2026-10-06 — Multi-select validation per selection (branch `fix/multiselect-validation`, NOT merged, NOT deployed)
+## 2026-10-06 — Multi-select validation per selection (merged to `main` 2026-10-06 with owner approval)
 - D-037. `app/validator.py`: per-selection validation, no redundant top-level evidence for multi-select, JSON-list
   values accepted, `partially_valid` outcome, machine-readable `reason_codes`/`selections`/`rejected_citations`,
   structural problems = `malformed_output`.
@@ -16,6 +16,12 @@ Completed changes, newest first. Commit hashes refer to `hesiyang5-glitch/wfd-re
 - Intended behaviour change: `test_pipeline` multi-select case (one option without its own evidence) is now
   `partially_valid` with the supported code kept, instead of `validation_failed`.
 - Tests: new `tests/test_multiselect_validation.py` (24); all 11 suites pass offline.
+## 2026-10-05 — Services list without a single "Language model"; interface files never served stale (merged to `main` 2026-10-06 with owner approval)
+- The home page's Services list no longer shows one "Language model" line (a leftover of the legacy single-provider
+  default that suggested Claude was the model); Claude and OpenAI are listed side by side as before (D-036). The line
+  only appears when no model is configured.
+- K-16: `Cache-Control: no-cache, must-revalidate` on interface files.
+- Tests: `test_independent_providers` 68 (2 new checks); auth, providers, UI flow pass.
 
 ## 2026-10-05 — Equal independent providers, provider choice on the first form, matched vs cross-version comparison (merged to `main` 2026-10-05 with owner approval after a backup; live verification pending)
 - D-036 (D-035 retained). Migration `2026-10-05-independent-providers` (additive): `evidence_snapshots` (with passage

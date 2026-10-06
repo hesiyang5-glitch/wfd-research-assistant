@@ -268,7 +268,7 @@ independent comparison. Cache identity must not depend on role labels (K-40).
 **Deferred:** incremental research (owner, 2026-10-05). When built it must keep old results with their versions, add
 results only for affected variables and providers, and classify old-vs-new comparisons by these two classes.
 
-## D-037 · 2026-10-06 · Multi-select values are validated per selection — Proposed (branch `fix/multiselect-validation`, not merged)
+## D-037 · 2026-10-06 · Multi-select values are validated per selection — Active (merged to `main` 2026-10-06 with owner approval)
 **Context.** The four-case benchmark found multi-select results with valid per-option evidence rejected as a whole
 (`validation_failed`). Causes (reproduced): (1) the validator required a redundant top-level supporting citation for
 every non-blank value; (2) any error on one option failed the whole result; (3) a multi-select value given as a JSON

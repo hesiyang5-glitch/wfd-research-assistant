@@ -121,7 +121,7 @@ function serviceList() {
   const li = (ok, label, text) => `<li><span class="dot ${ok}"></span><b>${label}</b> — ${text}</li>`;
   return `<ul class="services" style="padding-left:0;list-style:none;margin:0">
     ${li(s.search_provider ? (s.search_is_test ? "warn" : "ok") : "bad", t("svc_search"), s.search_provider ? (s.search_is_test ? t("svc_test") : esc(s.search_provider)) : t("svc_none_search"))}
-    ${li(s.model ? "ok" : "warn", t("svc_model"), s.model ? esc(`${s.model.provider}: ${s.model.name}`) : t("svc_none_model"))}
+    ${s.providers && (s.providers.anthropic.configured || s.providers.openai.configured) ? "" : li("warn", t("svc_model"), t("svc_none_model"))}
     ${s.providers ? li(s.providers.anthropic.configured ? "ok" : "warn", "Claude (Anthropic)", s.providers.anthropic.configured ? L("已配置", "configured") : L("未配置（ANTHROPIC_API_KEY）", "not configured (ANTHROPIC_API_KEY)")) : ""}
     ${s.providers ? li(s.providers.openai.configured ? (s.providers.openai.sdk_installed ? "ok" : "bad") : "warn", "OpenAI", s.providers.openai.configured ? esc(`${L("已配置", "configured")} · ${s.providers.openai.model}`) + (s.providers.openai.sdk_installed ? "" : L(" · 未安装 openai 软件包", " · openai package not installed")) : L("未配置（OPENAI_API_KEY）— OpenAI 选项不会显示", "not configured (OPENAI_API_KEY) — OpenAI options are hidden")) : ""}
     ${li(s.ocr_available ? "ok" : "warn", t("svc_ocr"), s.ocr_available ? "tesseract" : (LANG === "zh" ? "未安装 — 扫描页会被标记为未读取" : "not installed — scanned pages are reported as unread"))}

@@ -472,6 +472,9 @@ def main():
             pg.wait_for_selector("#providerChoice")
             pg.wait_for_timeout(600)
             ui_ok["default_claude_only"] = pg.is_checked("input[name=pmode][value=anthropic_only]")
+            ui_ok["services_list_has_no_single_language_model_line"] = "Language model" not in pg.inner_text(".services")
+            hdr = urllib.request.urlopen(f"http://127.0.0.1:{port}/app.js", timeout=5).headers.get("Cache-Control", "")
+            ui_ok["interface_files_not_served_stale (K-16)"] = "no-cache" in hdr
             pg.focus("input[name=pmode][value=anthropic_only]")
             pg.keyboard.press("ArrowRight")
             pg.wait_for_timeout(500)

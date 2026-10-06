@@ -41,7 +41,7 @@ Last reviewed: 2026-10-01 (commit `33a0c5e`). Severity: **High** (blocks correct
 | K-43 | Resolved by the cross-version class (D-036): existing results without recorded versions stay comparable as "cross-version (version not recorded)" and can be bulk-confirmed with the warning and acknowledgement. Re-analysis on unchanged evidence is expected to come from cache at ~$0 — not yet verified on production data. | Low |
 | K-44 | The free availability check confirms the key and model but cannot detect an account without credit; that only shows on the first paid request (configuration error, not retried). The Anthropic check (`GET /v1/models/{model}`) has never been called live. | Low |
 | K-45 | First-form worst case is very conservative (e.g. dual ≈ $9 against a $5 cap); the run then pauses before coding for an explicit raise. One measured full OpenAI run cost ≈1/9 of its worst case (K-27). | Low |
-| K-46 | D-037 (branch `fix/multiselect-validation`, not merged): results stored as `validation_failed` before the fix are not re-validated automatically; their replies were never cached (D-025), so re-analyzing those variables sends new (paid) requests. Whether a passage substantively supports a code is not machine-checked (human review). | Low |
+| K-46 | D-037 (merged 2026-10-06): results stored as `validation_failed` before the fix are not re-validated automatically; their replies were never cached (D-025), so re-analyzing those variables sends new (paid) requests. Whether a passage substantively supports a code is not machine-checked (human review). | Low |
 
 ## Research quality
 
@@ -74,7 +74,7 @@ Last reviewed: 2026-10-01 (commit `33a0c5e`). Severity: **High** (blocks correct
 
 | ID | Issue | Severity |
 |---|---|---|
-| K-16 | Static files are served without cache headers; after a deploy, browsers may keep old JavaScript until a hard refresh (Ctrl/Cmd+Shift+R). | Medium |
+| K-16 | Fixed 2026-10-06: interface files are served with `Cache-Control: no-cache, must-revalidate`, so browsers re-check them after a deploy. A browser that still holds a copy from before this fix needs one last hard refresh (Ctrl/Cmd+Shift+R). | — |
 | K-17 | 512 MB / 0.5 CPU instance: large or scanned PDFs (OCR) may run out of memory; heavy work shares the half CPU with the web server (see K-38). Measured locally: peak ~210 MB for an 825-passage case. Upgrade path: larger plan or separate worker (paid; owner approval). | Medium |
 | K-18 | Single worker thread: one job at a time across all cases. | Low |
 | K-19 | Shared password; no per-user accounts or roles; any signed-in user can change settings and raise budgets. | Medium |
