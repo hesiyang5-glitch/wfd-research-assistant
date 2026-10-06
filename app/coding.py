@@ -943,6 +943,11 @@ def run_coding(case: dict, settings: dict, client, job_id: int | None, log, budg
                 if not v["ok"]:
                     status, value = "validation_failed", ""
                     all_valid = False
+                elif v.get("outcome") == "partially_valid":
+                    # supported selections kept, rejected ones reported; always routed to human review; the reply is
+                    # not cached because it contained invalid items (D-025)
+                    status, value = "partially_valid", v["value"]
+                    all_valid = False
                 elif not v["value"]:
                     status = "disputed" if mstatus == "disputed" else "insufficient_evidence"
                     value = ""
@@ -952,7 +957,9 @@ def run_coding(case: dict, settings: dict, client, job_id: int | None, log, budg
                 unresolved = item.get("unresolved", "") or ""
                 _store(case["id"], run_id, f["name"], value, status, item.get("rationale", ""), v["evidence"], v["counter"],
                        unresolved, {"errors": v["errors"], "warnings": v["warnings"], "options": v["options"],
-                                    "proposed_value": str(item.get("value", ""))}, item, basis="model",
+                                    "proposed_value": str(item.get("value", "")), "outcome": v.get("outcome"),
+                                    "reason_codes": v.get("reason_codes", []), "selections": v.get("selections", []),
+                                    "rejected_citations": v.get("rejected_citations", [])}, item, basis="model",
                        meta={**meta, **bmeta, "call_id": call_id, "cache_status": cache_status})
             if cached is None:
                 if all_valid:
@@ -1049,7 +1056,7 @@ def run_coding_plan(case: dict, settings: dict, plan: list, job_id: int | None, 
 
 
 # ----------------------------------------------------------------------------- comparison
-VALUE_OK = ("suggested", "derived", "admin_generated", "rule_unclear")
+VALUE_OK = ("suggested", "derived", "admin_generated", "rule_unclear", "partially_valid")
 INVALID = ("model_error", "validation_failed")
 COMPARISON_LABELS = {
     "model_agreement": "Model agreement",
@@ -1074,6 +1081,9 @@ def compare_pair(a: dict, b: dict) -> dict:
         return {"status": "invalid_provider_output"}
     if a["status"] in ("not_coded_budget",) or b["status"] in ("not_coded_budget",):
         return {"status": "needs_human_review", "note": "one provider did not code this variable (limit reached)"}
+    if "partially_valid" in (a["status"], b["status"]) and _vals(a) == _vals(b):
+        return {"status": "needs_human_review",
+                "note": "same kept value, but some selections of a provider were rejected by validation"}
     va, vb = _vals(a), _vals(b)
     if a["status"] == "disputed" or b["status"] == "disputed" or a.get("counter") or b.get("counter"):
         if va != vb:
@@ -1105,7 +1115,7 @@ def _load_row(s: dict) -> dict:
 
 
 PROVIDER_COLUMN = {"anthropic": "anthropic", "openai": "openai", "openai_compatible": "openai"}
-CELL_STATE = {"suggested": "suggested", "rule_unclear": "suggested", "disputed": "disputed",
+CELL_STATE = {"suggested": "suggested", "rule_unclear": "suggested", "disputed": "disputed", "partially_valid": "partially_valid",
               "insufficient_evidence": "no_supported_value", "stopped": "stopped", "model_error": "failed",
               "validation_failed": "invalid_output", "not_coded_budget": "limit_reached"}
 
@@ -1229,7 +1239,9 @@ def _combined_view(rows: list[dict]) -> dict:
             ctr.setdefault(e.get("id"), e)
     first = min(rows, key=lambda r: r["id"])
     return {"id": None, "display_kind": "two_providers", "provider": None, "model": None, "basis": "model",
-            "value": first["value"] if agreed else "", "status": "suggested" if agreed else "providers_differ",
+            "value": first["value"] if agreed else "",
+            "status": ("partially_valid" if any(r["status"] == "partially_valid" for r in rows) else "suggested")
+            if agreed else "providers_differ",
             "evidence": list(ev.values()), "counter": list(ctr.values()), "rationale": "", "unresolved": "",
             "validation": {}, "stale": int(any(r.get("stale") for r in rows)),
             "stale_reason": "; ".join(r.get("stale_reason") or "" for r in rows if r.get("stale")),

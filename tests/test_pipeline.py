@@ -200,7 +200,11 @@ def main():
         latest[s["variable"]] = s
     g = lambda n: (latest[n]["status"], latest[n]["value"], json.loads(latest[n]["validation_json"] or "{}").get("errors"))
     check("grounded single code accepted", g("SYSTEM_LEVEL")[:2] == ("suggested", "3"), str(g("SYSTEM_LEVEL")))
-    check("multi-select option without its own evidence rejected", g("SYSTEM_INVOLVED")[0] == "validation_failed", str(g("SYSTEM_INVOLVED")))
+    vj = json.loads(latest["SYSTEM_INVOLVED"]["validation_json"] or "{}")
+    check("multi-select option without its own evidence rejected; the supported option is kept (partially valid)",
+          g("SYSTEM_INVOLVED")[:2] == ("partially_valid", "WEA")
+          and [x["code"] for x in vj.get("selections", []) if x["outcome"] == "rejected"] == ["LOCAL"]
+          and "no_supporting_evidence" in vj.get("reason_codes", []), str(g("SYSTEM_INVOLVED")))
     check("invented code rejected", g("FAILURE_TYPE")[0] == "validation_failed" and g("FAILURE_TYPE")[1] == "")
     check("fabricated quote rejected", g("POPULATION_SCOPE")[0] == "validation_failed")
     check("unknown evidence id rejected", g("ALERT_APPROVAL_PROCESS")[0] == "validation_failed")
