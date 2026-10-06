@@ -80,17 +80,17 @@ Run after each deploy that changes research or coding behavior. Set "Cost cap pe
 |---|---|---|---|
 | R1 | Render Shell read-only diagnostics (DEPLOY.md, "Slow or restarting service") on the **current** deployment | shows host CPU count, CPU quota, throttling counters, BLAS thread counts — confirms or rejects the root cause | DONE 2026-10-02 (owner): 32 host CPUs, quota 0.5 CPU, thread pools 32/32/32, 1682 throttled periods — root cause confirmed |
 | R2 | Same diagnostics after deploying the fix | BLAS/OpenMP thread counts = 1 | PASS 2026-10-02 (owner, instance stfgb, `f664344` live 10:50 am): `OMP_NUM_THREADS=1`, openmp 1, openblas 1, openblas 1 |
-| R3 | Cost estimate in Re-analyze dialog (no model call) while watching Render Events | no failed health checks | PARTIAL 2026-10-02: estimate dialog worked ($0.000 additional, spend $1.51 = Claude $1.30 + OpenAI $0.008 + search $0.208; OpenAI attempts 1/50); Events screenshot showed only the 2026-10-01 failures, the newest events after 10:50 am were not in view |
-| R4 | Next paid re-analysis (separate approval) | no health-check failures; if a restart happens anyway, job shows "Interrupted… paused", not restarted | pending |
+| R3 | Cost estimate in Re-analyze dialog (no model call) while watching Render Events | no failed health checks | PASS 2026-10-02 (owner screenshots): estimate dialog worked; Events after the `f664344` and `7194f1a` deploys showed only "Deploy live", no "Instance failed" |
+| R4 | Next paid re-analysis (separate approval) | no health-check failures; if a restart happens anyway, job shows "Interrupted… paused", not restarted | PARTIAL 2026-10-02: single-variable dual run and full OpenAI-only run both completed; the owner did not send Render Events for the run period, so "no Instance failed" is unconfirmed |
 
 ### OpenAI live checks (after merge + deploy approval; small paid usage, OpenAI case budget $1–3)
 
 | # | Check | Expected | Status |
 |---|---|---|---|
 | O1 | Settings with `OPENAI_API_KEY` set | "OpenAI — configured · gpt-6.1-sol"; no key value visible anywhere | PASS (2026-10-01, owner screenshots: dual modes offered in Re-analyze; no key shown) |
-| O2 | Re-analyze B1 with "OpenAI only" on 1–3 variables | free model check passes; schema accepted (no HTTP 400); calls complete | pending |
-| O3 | Run log / Runs_Usage | input, output, **reasoning** tokens and request id per batch; cost at $2/$10 | pending |
-| O4 | Full OpenAI re-analysis of B1 | 0 cut off (`max_output_tokens`); note max reasoning tokens to tune D-028 | pending |
+| O2 | Re-analyze B1 with "OpenAI only" on 1–3 variables | free model check passes; schema accepted (no HTTP 400); calls complete | PASS 2026-10-02 (single-variable dual runs SYSTEM_LEVEL and REDUNDANCY_AND_CHANNEL_BEHAVIOR completed; REDUNDANCY: Claude 1, OpenAI 1 = hand-coded benchmark; that run cost $0.04 total vs $0.231 worst case) |
+| O3 | Run log / Runs_Usage | input, output, **reasoning** tokens and request id per batch; cost at $2/$10 | pending (per-batch token counts not yet read from `model_calls` or the export) |
+| O4 | Full OpenAI re-analysis of B1 | 0 cut off (`max_output_tokens`); note max reasoning tokens to tune D-028 | PARTIAL 2026-10-02 (`2fbd11b` not yet live; ran on `58d8fdc`): OpenAI-only, 16 requests, OpenAI attempts 2→18 (no retries), actual cost **$0.465** vs worst case $4.01 (≈1/9); case budget raised by owner approval to $5.56 (OpenAI $4.03); case spend after: $2.01 (Claude $1.32, OpenAI $0.484, search $0.208). Not yet checked: cut-off count and max reasoning tokens per batch |
 | O5 | Dual independent on B1 | one search (none on re-analysis); both providers stored; disagreements in "disputed" | PARTIAL (2026-10-01, `66f53f8`): single-variable dual re-analysis of SYSTEM_LEVEL completed; Claude and OpenAI results both shown (owner screenshot); app-recorded cost about $0.02. During it the service failed health checks and restarted (K-38). Not yet checked: per-batch tokens/request ids in `model_calls` (owner Shell query not run), why the row shows "Pending human review", full-case dual run |
 | O6 | Accept a specific provider's value; re-analyze | human value kept; "accepted from" recorded | pending |
 | O7 | Recorded OpenAI spend vs OpenAI usage dashboard | app ≥ actual | PARTIAL — owner saw about $0.01 on the OpenAI dashboard and about $1.29 total on the Anthropic console (2026-10-01); not yet compared line by line with the app's ledger |
