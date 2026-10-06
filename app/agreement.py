@@ -49,7 +49,7 @@ LABELS = {
     "validation_failed": "Validation failed",
     "pending": "Pending human review",
 }
-COMPLETED = ("suggested", "rule_unclear", "disputed", "insufficient_evidence", "validation_failed")
+COMPLETED = ("suggested", "rule_unclear", "disputed", "insufficient_evidence", "validation_failed", "partially_valid")
 
 
 def normalize(field: dict, value: str):
@@ -115,8 +115,9 @@ def assess(case_id: int, field: dict, sset: dict | None, review: dict | None) ->
         return out("cross_model_review", "one model saw the other's answer; excluded from independent agreement")
     if a["status"] == "validation_failed" or b["status"] == "validation_failed":
         return out("validation_failed", "a provider's output failed server validation")
-    na = normalize(field, a["value"]) if a["status"] in ("suggested", "rule_unclear", "disputed") else None
-    nb = normalize(field, b["value"]) if b["status"] in ("suggested", "rule_unclear", "disputed") else None
+    vs = ("suggested", "rule_unclear", "disputed", "partially_valid")
+    na = normalize(field, a["value"]) if a["status"] in vs else None
+    nb = normalize(field, b["value"]) if b["status"] in vs else None
     if not (a["value"] or "").strip() and not (b["value"] or "").strip():
         return out("both_insufficient", "neither provider found a supported value")
     if not (a["value"] or "").strip() or not (b["value"] or "").strip():
@@ -142,7 +143,9 @@ def assess(case_id: int, field: dict, sset: dict | None, review: dict | None) ->
         return out("confirmed" if conf else "pending", "Human final already set" if not conf else "",
                    method=review.get("method"), **vinfo)
     problems = []
-    if a["status"] != "suggested" or b["status"] != "suggested":
+    if "partially_valid" in (a["status"], b["status"]):
+        problems.append("a provider's multi-select output was only partially valid (some selections were rejected)")
+    elif a["status"] != "suggested" or b["status"] != "suggested":
         problems.append("a provider marked it disputed or the rule unclear")
     if a.get("counter") or b.get("counter"):
         problems.append("a provider reported contradicting or alternative evidence")

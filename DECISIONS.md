@@ -267,3 +267,22 @@ independent comparison. Cache identity must not depend on role labels (K-40).
    optional (default ticked) pause after research with the exact estimate before any paid request.
 **Deferred:** incremental research (owner, 2026-10-05). When built it must keep old results with their versions, add
 results only for affected variables and providers, and classify old-vs-new comparisons by these two classes.
+
+## D-037 · 2026-10-06 · Multi-select values are validated per selection — Proposed (branch `fix/multiselect-validation`, not merged)
+**Context.** The four-case benchmark found multi-select results with valid per-option evidence rejected as a whole
+(`validation_failed`). Causes (reproduced): (1) the validator required a redundant top-level supporting citation for
+every non-blank value; (2) any error on one option failed the whole result; (3) a multi-select value given as a JSON
+list — which the Claude prompt explicitly allows — was turned into the text "['WEA', 'LOCAL']" and rejected as invalid
+codes.
+**Decision.** For multi-select values (categorical multi; open lists with several values) each selected code is
+validated on its own: kept when it is a codebook code (categorical) and has at least one valid citation marked
+"supports" (evidence id actually supplied, quotation found verbatim). No top-level evidence is required when each kept
+code has its own; one code with top-level evidence and no option entry is accepted as before. Codes that fail are
+rejected and reported; supported codes are kept with the new status `partially_valid` (value = kept codes). A partially
+valid result is shown with its own state, always goes to human review, is never bulk-confirmed, never exported as an
+unreviewed value, and its reply is not cached (D-025). Validation records `outcome` (valid / partially_valid / invalid),
+`reason_codes` and per-selection results in `validation_json`; the raw reply is kept. Structural problems (blank value
+with codes in options, non-list evidence/options, non-text values) are `malformed_output` → `validation_failed`, never
+"insufficient evidence". Single-select and other field types keep their rules. No schema migration (status is text).
+**Limit.** Whether a passage substantively supports a code cannot be checked mechanically; the machine check only
+catches citations not marked "supports". Human review remains the safeguard.

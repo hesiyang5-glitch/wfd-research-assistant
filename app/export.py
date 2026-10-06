@@ -29,6 +29,8 @@ def review_category(f: dict, sugg: dict | None, review: dict | None) -> str:
         return "rule_missing"
     if sugg and (sugg["status"] == "disputed" or (sugg["status"] in VALUE_STATUSES and sugg.get("counter"))):
         return "disputed"
+    if sugg and sugg["status"] == "partially_valid":
+        return "pending"  # supported selections kept, rejected ones listed; needs a human decision
     if sugg and sugg["status"] in VALUE_STATUSES and sugg["value"]:
         return "pending"
     if review and review["action"] == "deferred":
@@ -85,7 +87,7 @@ def case_results(case_id: int) -> dict:
     return {"case": case, "schema_label": schema.get("label"), "schema_id": schema.get("id"), "rows": rows, "sources": srcs}
 
 
-CELL_LABELS = {"not_run": "Not run", "suggested": "Suggested", "disputed": "Disputed",
+CELL_LABELS = {"not_run": "Not run", "suggested": "Suggested", "disputed": "Disputed", "partially_valid": "Partially valid",
                "no_supported_value": "No supported value", "stopped": "Stopped", "failed": "Failed",
                "invalid_output": "Invalid output", "limit_reached": "Limit reached"}
 

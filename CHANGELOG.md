@@ -5,6 +5,18 @@ Completed changes, newest first. Commit hashes refer to `hesiyang5-glitch/wfd-re
 
 
 
+
+## 2026-10-06 — Multi-select validation per selection (branch `fix/multiselect-validation`, NOT merged, NOT deployed)
+- D-037. `app/validator.py`: per-selection validation, no redundant top-level evidence for multi-select, JSON-list
+  values accepted, `partially_valid` outcome, machine-readable `reason_codes`/`selections`/`rejected_citations`,
+  structural problems = `malformed_output`.
+- `app/coding.py`: stores status `partially_valid` (not cached); comparison routes partial results to human review;
+  neutral combined view keeps the partial status. `app/agreement.py`: partial results never bulk-eligible.
+  `app/export.py`: "Partially valid" cell; not exported unreviewed. `web/app.js`: cell tag and rejected-selection note.
+- Intended behaviour change: `test_pipeline` multi-select case (one option without its own evidence) is now
+  `partially_valid` with the supported code kept, instead of `validation_failed`.
+- Tests: new `tests/test_multiselect_validation.py` (24); all 11 suites pass offline.
+
 ## 2026-10-05 — Equal independent providers, provider choice on the first form, matched vs cross-version comparison (merged to `main` 2026-10-05 with owner approval after a backup; live verification pending)
 - D-036 (D-035 retained). Migration `2026-10-05-independent-providers` (additive): `evidence_snapshots` (with passage
   hashes), `analysis_specs`; new columns on runs, suggestions, model_calls, bulk_confirmations. Nothing old is rewritten.
