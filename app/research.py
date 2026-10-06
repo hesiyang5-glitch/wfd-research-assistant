@@ -572,8 +572,21 @@ def stage_coding(ctx: Ctx):
             ctx.save(status="needs_input", message=f"{head} Limits to raise (explicit amounts): {'; '.join(parts)}. "
                                                    f"Raise them, or code manually.")
             raise Budget("awaiting budget approval")
-        names = " + ".join(f"{PROVIDER_LABELS.get(c.provider, c.provider)} ({role})" for c, role in plan)
-        ctx.log("info", f"coding with {names}; search and evidence are shared — nothing is searched again per provider")
+        if (ctx.job.get("kind") == "research" and ctx.settings.get("pause_before_coding")
+                and not ctx.params.get("coding_approved") and not resume):
+            # Stage 2 of the estimate (D-036): research is done, nothing has been sent to a model. The owner sees the
+            # exact estimate for the evidence actually found and decides whether to start paid coding.
+            ctx.state["awaiting"] = "coding_approval"
+            parts = [f"{PROVIDER_LABELS.get(p['provider'], p['provider'])}: {p['calls']} request(s), "
+                     f"{p['calls_uncached']} new, up to ${p['cost_high']:.2f}" for p in est["providers"]]
+            ctx.save(status="needs_input", message=(
+                f"Research finished. Nothing has been sent to a model yet. Exact estimate for the evidence found — "
+                f"{'; '.join(parts)}; combined worst case ${est['cost_high']:.2f} (case has spent ${spent:.2f} of "
+                f"${budget:.2f}). Start coding, or stop here at no model cost."))
+            raise Budget("awaiting coding approval")
+        names = " + ".join(PROVIDER_LABELS.get(c.provider, c.provider) for c, _role in plan)
+        ctx.log("info", f"coding with {names} (independent; same shared evidence; processed one after another); "
+                        f"search and evidence are shared — nothing is searched again per provider")
     else:
         ctx.log("warn", "No language model configured — running local evidence retrieval only (manual coding mode).")
     # The cap always applies: approving raises the case budget to a set amount, it never removes the limit.

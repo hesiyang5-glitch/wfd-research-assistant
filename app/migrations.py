@@ -16,6 +16,7 @@ import sys
 import time
 
 MIGRATION_ID = "2026-10-01-openai-provider"
+MIGRATION_ID_2 = "2026-10-05-independent-providers"  # D-036: equal providers, evidence snapshots, analysis versions
 
 ADD_COLUMNS = {
     "runs": [("provider", "TEXT"), ("role", "TEXT"), ("group_id", "TEXT"), ("coding_mode", "TEXT"),
@@ -25,7 +26,20 @@ ADD_COLUMNS = {
     "usage": [("call_id", "INTEGER"), ("reasoning_tokens", "INTEGER"), ("cached_input_tokens", "INTEGER"),
               ("request_id", "TEXT")],
     "reviews": [("source_provider", "TEXT"), ("method", "TEXT")],
+    # D-036 (2026-10-05). New runs record which shared evidence snapshot and analysis version they interpreted, and
+    # whether the interpretation was independent. The old `role` column is kept untouched for the audit trail.
     "review_history": [("source_provider", "TEXT"), ("method", "TEXT")],
+}
+ADD_COLUMNS_2 = {
+    "runs": [("evidence_snapshot_id", "INTEGER"), ("analysis_spec_id", "INTEGER"), ("interpretation", "TEXT")],
+    "suggestions": [("evidence_snapshot_id", "INTEGER"), ("analysis_spec_id", "INTEGER"), ("interpretation", "TEXT"),
+                    ("cache_source_run_id", "INTEGER"), ("generated_at", "REAL")],
+    "model_calls": [("evidence_snapshot_id", "INTEGER"), ("analysis_spec_id", "INTEGER"), ("interpretation", "TEXT"),
+                    ("cache_source_run_id", "INTEGER")],
+    "bulk_confirmations": [("evidence_snapshot_id", "INTEGER"), ("analysis_spec_id", "INTEGER"),
+                           ("claude_run_id", "INTEGER"), ("openai_run_id", "INTEGER"),
+                           ("claude_cache_status", "TEXT"), ("openai_cache_status", "TEXT"),
+                           ("claude_generated_at", "REAL"), ("openai_generated_at", "REAL")],
 }
 
 NEW_TABLES = """
@@ -48,6 +62,12 @@ CREATE TABLE IF NOT EXISTS bulk_confirmations (
   claude_suggestion_id INTEGER, openai_suggestion_id INTEGER, claude_model TEXT, openai_model TEXT,
   group_id TEXT, codebook_version TEXT, prompt_version TEXT, evidence_difference INTEGER,
   previous_value TEXT, reviewer TEXT, at REAL, method TEXT);
+CREATE TABLE IF NOT EXISTS evidence_snapshots (
+  id INTEGER PRIMARY KEY, case_id INTEGER, fingerprint TEXT, n_sources INTEGER, n_passages INTEGER, sources_json TEXT,
+  codebook_version TEXT, retrieval_json TEXT, created_at REAL, UNIQUE (case_id, fingerprint));
+CREATE TABLE IF NOT EXISTS analysis_specs (
+  id INTEGER PRIMARY KEY, spec_hash TEXT UNIQUE, prompt_version TEXT, rules_sha TEXT, response_schema_version TEXT,
+  batching_json TEXT, codebook_version TEXT, created_at REAL);
 CREATE TABLE IF NOT EXISTS limit_changes (
   id INTEGER PRIMARY KEY, case_id INTEGER, job_id INTEGER, key TEXT, old_value TEXT, new_value TEXT,
   changed_by TEXT, reason TEXT, at REAL);
@@ -69,12 +89,20 @@ def migrate(c: sqlite3.Connection) -> list[str]:
                 c.execute(f"ALTER TABLE {table} ADD COLUMN {name} {typ}")
                 done.append(f"{table}.{name}")
     c.execute("CREATE INDEX IF NOT EXISTS ix_sugg_provider ON suggestions(case_id, variable, provider)")
-    row = c.execute("SELECT status FROM schema_migrations WHERE id=?", (MIGRATION_ID,)).fetchone()
-    if not row:
-        c.execute("INSERT INTO schema_migrations (id, applied_at, status, note) VALUES (?,?,?,?)",
-                  (MIGRATION_ID, time.time(), "applied", f"added {len(done)} column(s)"))
-    elif row[0] != "applied":
-        c.execute("UPDATE schema_migrations SET status='applied', applied_at=? WHERE id=?", (time.time(), MIGRATION_ID))
+    n1 = len(done)
+    for table, cols in ADD_COLUMNS_2.items():
+        have = _cols(c, table)
+        for name, typ in cols:
+            if name not in have:
+                c.execute(f"ALTER TABLE {table} ADD COLUMN {name} {typ}")
+                done.append(f"{table}.{name}")
+    for mid, n in ((MIGRATION_ID, n1), (MIGRATION_ID_2, len(done) - n1)):
+        row = c.execute("SELECT status FROM schema_migrations WHERE id=?", (mid,)).fetchone()
+        if not row:
+            c.execute("INSERT INTO schema_migrations (id, applied_at, status, note) VALUES (?,?,?,?)",
+                      (mid, time.time(), "applied", f"added {n} column(s)"))
+        elif row[0] != "applied":
+            c.execute("UPDATE schema_migrations SET status='applied', applied_at=? WHERE id=?", (time.time(), mid))
     c.commit()
     return done
 

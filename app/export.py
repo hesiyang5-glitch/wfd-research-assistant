@@ -39,10 +39,11 @@ def review_category(f: dict, sugg: dict | None, review: dict | None) -> str:
 
 
 def case_results(case_id: int) -> dict:
-    """Rows for the review table and exports. Each row has the display suggestion (single provider or primary), every
+    """Rows for the review table and exports. Each row has the display suggestion (the one provider's result, or a
+    neutral combined view when both providers have one — never a preferred provider, D-036), every
     provider's suggestion from the latest coding run ('providers'), the provider comparison, and the human review.
     The human-reviewed value is kept separately from all model suggestions."""
-    from .coding import COMPARISON_LABELS, PROVIDER_LABELS, ROLE_NOTES, suggestion_sets
+    from .coding import COMPARISON_LABELS, INTERPRETATION_LABELS, PROVIDER_LABELS, interpretation_of, suggestion_sets
     case = db.q1("SELECT * FROM cases WHERE id=?", (case_id,))
     schema = schema_for_case(case)
     sets = suggestion_sets(case_id)
@@ -57,9 +58,10 @@ def case_results(case_id: int) -> dict:
         r = reviews.get(f["name"])
         changed = bool(s and p and (s["value"] != p["value"] or s["status"] != p["status"]))
         comp = ss.get("comparison")
-        providers = [{**m, "provider_label": PROVIDER_LABELS.get(m.get("provider"), m.get("provider")),
-                      "role_note": ROLE_NOTES.get(m.get("role"), "")}
-                     for m in ss.get("members", []) if m.get("provider")]
+        providers = sorted([{**m, "provider_label": PROVIDER_LABELS.get(m.get("provider"), m.get("provider")),
+                             "interpretation": interpretation_of(m),
+                             "interpretation_label": INTERPRETATION_LABELS.get(interpretation_of(m), "")}
+                            for m in ss.get("members", []) if m.get("provider")], key=lambda m: m["provider"])
         cat = review_category(f, s, r)
         if comp and cat not in ("confirmed", "rule_missing") and comp["status"] not in (
                 "model_agreement", "both_insufficient", "evidence_disagreement"):
@@ -90,6 +92,7 @@ CELL_LABELS = {"not_run": "Not run", "suggested": "Suggested", "disputed": "Disp
 
 def _cells_out(cells: dict | None) -> dict:
     """Per-provider cells for the Review table: Claude and OpenAI never share or overwrite a cell."""
+    from .coding import interpretation_of as interp_of
     out = {}
     for col in ("anthropic", "openai"):
         c = (cells or {}).get(col) or {"state": "not_run", "row": None}
@@ -97,7 +100,9 @@ def _cells_out(cells: dict | None) -> dict:
         out[col] = {"state": c["state"], "label": CELL_LABELS.get(c["state"], c["state"]),
                     "value": (row or {}).get("value") or "", "status": (row or {}).get("status"),
                     "suggestion_id": (row or {}).get("id"), "model": (row or {}).get("model") or (row or {}).get("run_model"),
-                    "role": (row or {}).get("role"), "cache_status": (row or {}).get("cache_status"),
+                    "interpretation": interp_of(row) if row else None, "cache_status": (row or {}).get("cache_status"),
+                    "evidence_snapshot_id": (row or {}).get("evidence_snapshot_id"),
+                    "analysis_spec_id": (row or {}).get("analysis_spec_id"),
                     "stopped_latest": bool(c.get("stopped_latest")),
                     "previous_value": (c.get("previous") or {}).get("value") if c.get("previous") else None,
                     "changed": bool(c.get("previous"))}
@@ -140,9 +145,14 @@ def explanation_cell(row: dict, origin: str) -> str:
         parts.append("[UNREVIEWED SUGGESTION — not confirmed by a human coder]")
     if s and s.get("provider") and origin != "reviewed":
         parts.append(f"[model: {s.get('provider')} {s.get('model') or ''}]".replace(" ]", "]"))
+    if s and s.get("display_kind") == "two_providers" and origin != "reviewed":
+        vb = s.get("values_by_provider") or {}
+        parts.append("[independent providers: " + "; ".join(
+            f"{'Claude' if p == 'anthropic' else 'OpenAI' if p in ('openai', 'openai_compatible') else p}="
+            f"{v or '(blank)'}" for p, v in sorted(vb.items())) + "]")
     if r and r.get("method") == "bulk_independent_agreement":
         parts.append(f"[human-confirmed independent model agreement (bulk confirmation) by {r.get('reviewer') or 'reviewer'}]")
-    elif r and r.get("method") == "bulk_separate_run_agreement":
+    elif r and r.get("method") == "bulk_separate_run_agreement":  # D-035, 2026-10-02 only (history)
         parts.append(f"[human-confirmed model agreement from SEPARATE runs (bulk confirmation) by {r.get('reviewer') or 'reviewer'}]")
     elif r and r.get("source_provider"):
         parts.append(f"[accepted from {r['source_provider']} suggestion]")
@@ -226,7 +236,8 @@ def xlsx(case_id: int, include_unreviewed=False) -> bytes:
             c.number_format = "yyyy-mm-dd"
 
     we = wb.create_sheet("Evidence")
-    we.append(["Variable", "Stance", "Passage", "Source", "Page", "Paragraph", "Quote", "URL", "Source type", "Provider", "Role"])
+    we.append(["Variable", "Stance", "Passage", "Source", "Page", "Paragraph", "Quote", "URL", "Source type", "Provider",
+               "Interpretation"])
     for row in res["rows"]:
         members = row.get("providers") or ([row["suggestion"]] if row["suggestion"] else [])
         for s in members:
@@ -234,25 +245,32 @@ def xlsx(case_id: int, include_unreviewed=False) -> bytes:
                 src = res["sources"].get(ev.get("source_id"), {})
                 we.append([row["name"], ev.get("stance"), ev.get("id"), f"S{ev.get('source_id')}", ev.get("page"), ev.get("para"),
                            ev.get("quote"), src.get("final_url") or src.get("url"), src.get("source_type"),
-                           s.get("provider") or "", s.get("role") or ""])
+                           s.get("provider") or "", s.get("interpretation") or ""])
 
     wp = wb.create_sheet("Provider_Suggestions")
-    wp.append(["Variable", "Provider", "Model", "Role", "Independent?", "Suggested value", "Status", "Rationale", "Unresolved",
-               "Cache", "Comparison", "Human-approved value"])
+    wp.append(["Variable", "Provider", "Model", "Interpretation", "Suggested value", "Status", "Rationale", "Unresolved",
+               "Cache status", "Evidence version", "Analysis version", "Run", "Original run", "Generated at",
+               "Comparison", "Human-approved value"])
     for row in res["rows"]:
         rv = row["review"] if (row["review"] and row["review"]["action"] in ("accepted", "edited", "cleared")) else None
         for s in row.get("providers") or []:
-            wp.append([row["name"], s.get("provider"), s.get("model"), s.get("role"),
-                       "no (saw primary result)" if s.get("role") == "reviewer" else "yes", s.get("value"), s.get("status"),
-                       s.get("rationale"), s.get("unresolved"), s.get("cache_status"),
+            ga = s.get("generated_at") or s.get("created_at")
+            wp.append([row["name"], s.get("provider"), s.get("model"), s.get("interpretation"), s.get("value"),
+                       s.get("status"), s.get("rationale"), s.get("unresolved"), s.get("cache_status") or "",
+                       s.get("evidence_snapshot_id") or "not recorded", s.get("analysis_spec_id") or "not recorded",
+                       s.get("run_id"), s.get("cache_source_run_id") or s.get("run_id"),
+                       dt.datetime.fromtimestamp(ga).isoformat(timespec="seconds") if ga else "",
                        (row.get("comparison") or {}).get("label", ""), (rv or {}).get("value", "") if rv else ""])
 
     wbk = wb.create_sheet("Bulk_Confirmations")
     bcols = ["batch_id", "variable", "value", "claude_suggestion_id", "openai_suggestion_id", "claude_model", "openai_model",
-             "group_id", "codebook_version", "prompt_version", "evidence_difference", "previous_value", "reviewer", "at", "method"]
+             "group_id", "codebook_version", "prompt_version", "evidence_difference", "previous_value", "reviewer", "at", "method",
+             "evidence_snapshot_id", "analysis_spec_id", "claude_run_id", "openai_run_id", "claude_cache_status",
+             "openai_cache_status", "claude_generated_at", "openai_generated_at"]
     wbk.append(bcols)
     for bc in db.q("SELECT * FROM bulk_confirmations WHERE case_id=? ORDER BY id", (case_id,)):
-        bc["at"] = dt.datetime.fromtimestamp(bc["at"]).isoformat(timespec="seconds") if bc.get("at") else ""
+        for k in ("at", "claude_generated_at", "openai_generated_at"):
+            bc[k] = dt.datetime.fromtimestamp(bc[k]).isoformat(timespec="seconds") if bc.get(k) else ""
         wbk.append([bc.get(k) for k in bcols])
 
     wsr = wb.create_sheet("Sources")
@@ -278,10 +296,13 @@ def xlsx(case_id: int, include_unreviewed=False) -> bytes:
                    "yes" if u["estimated"] else "no", u["note"], dt.datetime.fromtimestamp(u["at"]).isoformat(timespec="seconds"),
                    u.get("reasoning_tokens"), u.get("request_id")])
     wu.append([])
-    wu.append(["Run id", "Mode", "Model", "Schema version", "Created", "Provider", "Role", "Coding mode", "Group"])
+    wu.append(["Run id", "Mode", "Model", "Schema version", "Created", "Provider", "Interpretation", "Coding mode", "Group",
+               "Evidence version", "Analysis version"])
+    from .coding import interpretation_of
     for r in db.q("SELECT * FROM runs WHERE case_id=? ORDER BY id", (case_id,)):
         wu.append([r["id"], r["mode"], r["model"], r["schema_version_id"], dt.datetime.fromtimestamp(r["created_at"]).isoformat(timespec="seconds"),
-                   r.get("provider"), r.get("role"), r.get("coding_mode"), r.get("group_id")])
+                   r.get("provider"), interpretation_of(r) if r.get("provider") else "", r.get("coding_mode"),
+                   r.get("group_id"), r.get("evidence_snapshot_id") or "", r.get("analysis_spec_id") or ""])
 
     wm = wb.create_sheet("Field_Mapping")
     wm.append(["Position", "Workbook header", "Codebook variable", "Type", "Multi", "Class", "Codebook reference", "Issues"])

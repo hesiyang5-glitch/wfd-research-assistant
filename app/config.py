@@ -81,6 +81,7 @@ DEFAULT_SETTINGS = {
     "openai_budget_usd": 3.00,                  # cap on OpenAI model spend per CASE (inside the overall budget_usd)
     "max_openai_attempts_per_case": 50,         # every request sent to OpenAI, incl. retries and re-runs
     "max_model_attempts_per_case": 100,         # every request sent to any model provider
+    "pause_before_coding": False,               # first research run: pause after research, before any paid model request
 }
 
 # Limits that an approval may raise — always to an explicit number, never to "unlimited".

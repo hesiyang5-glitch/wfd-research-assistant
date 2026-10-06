@@ -83,6 +83,10 @@ class LLMClient:
         raise NotImplementedError
 
 
+_AVAILABLE_OK: dict = {}
+AVAILABLE_TTL = 600  # a successful free availability check is remembered for 10 minutes
+
+
 class AnthropicClient(LLMClient):
     provider = "anthropic"
 
@@ -92,6 +96,28 @@ class AnthropicClient(LLMClient):
 
     def generation_settings(self) -> dict:
         return {"api": "messages"}
+
+    def check_available(self) -> None:
+        """Free availability check before a case starts (D-036): GET /v1/models/{model} is not a billed request.
+        Raises LLMError(config_error=True) when the key is rejected or the model is unknown; a network problem raises a
+        plain LLMError (cannot verify now). Never includes the key or the raw response in the message.
+        Note: it cannot tell whether the account has credit — that only shows on the first paid request."""
+        if time.time() - _AVAILABLE_OK.get(("anthropic", self.model), 0) < AVAILABLE_TTL:
+            return
+        try:
+            r = httpx.get(f"https://api.anthropic.com/v1/models/{self.model}", timeout=httpx.Timeout(15.0, connect=10.0),
+                          headers={"x-api-key": self.key, "anthropic-version": "2023-06-01"})
+        except httpx.HTTPError as e:
+            raise LLMError(f"Could not reach Anthropic to check availability now ({type(e).__name__}).") from e
+        if r.status_code in (401, 403):
+            raise LLMError("Claude is not available: the server's Anthropic API key was rejected. Check ANTHROPIC_API_KEY "
+                           "in the hosting settings.", config_error=True, attempts=0)
+        if r.status_code == 404:
+            raise LLMError(f"Claude is not available: model '{self.model}' is not available to this API key.",
+                           config_error=True, attempts=0)
+        if r.status_code != 200:
+            raise LLMError(f"Anthropic availability check returned HTTP {r.status_code}; could not verify now.")
+        _AVAILABLE_OK[("anthropic", self.model)] = time.time()
 
     def complete(self, system, user, max_tokens=4000, max_attempts=4):
         # No `temperature`: current Claude models reject it ("temperature is deprecated for this model").
