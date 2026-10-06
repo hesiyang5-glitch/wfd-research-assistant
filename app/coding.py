@@ -1339,10 +1339,17 @@ def derive_fields(case: dict, schema: dict, run_id: int, targets: list[dict], gr
                 b, ob = current_value(case["id"], deps[0])
                 try:
                     days = (dt.date.fromisoformat(b) - dt.date.fromisoformat(a)).days + 1
+                except Exception:
+                    days = None
+                if days is None:
+                    # blank, never -9: the codebook defines no special missing value for this variable (D-039)
+                    put(n, "", "derived", f"Cannot calculate yet: needs {deps[1]} and {deps[0]} as dates.")
+                elif days < 1:
+                    put(n, "", "derived", f"Not calculated: {deps[0]}={b} is earlier than {deps[1]}={a}; check both dates "
+                                          f"(left blank, D-039).")
+                else:
                     put(n, str(days), "derived", f"Calculated per codebook ({f['calculation']}) from {deps[1]}={a} ({oa}) and "
                                                f"{deps[0]}={b} ({ob}). Recalculate after reviewing the dates.")
-                except Exception:
-                    put(n, "", "derived", f"Cannot calculate yet: needs {deps[1]} and {deps[0]} as dates.")
     if "SOURCE_URLS_OR_DOIS" in names:
         urls = [s["final_url"] or s["url"] or f"(uploaded) {s['title']}" for s in independent]
         put("SOURCE_URLS_OR_DOIS", "; ".join(u for u in urls if u), "derived",

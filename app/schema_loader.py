@@ -151,9 +151,13 @@ def _parse_block(section: str, raw_name: str, lines: list[str], line_no: int) ->
             numeric = True
             if re.search(r"-9", vl):
                 missing_codes.append("-9")
+                missing_labels.setdefault("-9", vl.strip())
             continue
-        if re.search(r"use\s+-9", vl, re.I):
+        um = re.search(r"use\s+-9\s*(?:if|when|for)?\s*(.*)$", vl, re.I)
+        if um:
             missing_codes.append("-9")
+            # keep the codebook's own wording (e.g. "unknown or inapplicable") rather than a generic "unknown" (D-039)
+            missing_labels.setdefault("-9", um.group(1).strip().rstrip(".") or vl.strip())
             continue
         bm = BULLET_RE.match(vl)
         opt = (bm.group(1) if bm else vl).strip()
@@ -378,7 +382,28 @@ def build_schema(codebook_vars: list[dict], header: list, data_rows: list, workb
 
     # Check existing workbook data against the codebook (generic conflict detector)
     for f in fields:
+        if f.get("rule_missing"):
+            continue
         if f["type"] != "categorical" or not f["codes"]:
+            # D-039: special missing values and placeholders in non-categorical columns (historical workbook entries are
+            # flagged, never treated as authoritative and never added to the allowed values)
+            col = f["position"] - 1
+            m9 = ph = 0
+            for r in data_rows:
+                val = r[col] if col < len(r) else None
+                if val in (None, ""):
+                    continue
+                s = str(val).strip()
+                if re.fullmatch(r"-9(\.0+)?", s) and "-9" not in f["missing_codes"]:
+                    m9 += 1
+                elif s.upper() in ("N/A", "NA", "-", "–", "—"):
+                    ph += 1
+            if m9:
+                f["issues"].append(f"Workbook data uses -9 in {m9} row(s), but the codebook defines no special missing value "
+                                   f"for this variable.")
+            if ph:
+                f["issues"].append(f"Workbook data uses a placeholder ('N/A' or '-') in {ph} row(s); the codebook defines no "
+                                   f"such value for this variable.")
             continue
         col = f["position"] - 1
         allowed = {c["code"].upper() for c in f["codes"]} | {m.upper() for m in f["missing_codes"]}

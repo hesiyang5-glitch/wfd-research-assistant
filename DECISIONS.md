@@ -316,3 +316,26 @@ change sends new (paid) requests; there is no cache to reuse for the new version
 **Limit.** The evidence status is the model's own judgement under the rules; the server checks its consistency and the
 citations, not whether the inference is sound. Human review remains the safeguard.
 
+## D-039 · 2026-10-06 · Missing values: implement only what codebook v1.3 states; the rest goes to the PI team — Proposed (branch `audit/missingness`, not merged, not deployed)
+**Context.** The benchmark showed disagreement on TRANSMISSION_LATENCY, DELIVERY_COVERAGE, POPULATION_AFFECTED_ESTIMATE,
+HARM_LOSS_INDICATORS, MESSAGE_DISSEMINATION_TIME, END_DATE and INCIDENT_DURATION, and the workbook uses `-9` in many
+variables whose codebook entry does not define it. An audit of all 82 workbook columns against the codebook and the code
+(`docs/missingness/missingness_audit.csv` / `.json`, `tools/missingness_audit.py`) found: `-9` is defined for 7 variables;
+the workbook uses it in 21 others; the codebook has no general missing-data policy (Appendix II's "missing data"
+guidance is not written); and a numeric field without `-9` (e.g. MESSAGE_CHARACTERISTICS_LENGTH) accepted `-9` as the
+number minus nine.
+**Decision (implemented, codebook-stated rules only).** (1) Model suggestions may use `-9` only where the variable's own
+entry defines it — now also enforced for numeric, date, text and open-list variables (reason `missing_code_not_defined`;
+"-9.0" is treated as "-9"). (2) A dash or "N/A" placeholder is blank (codebook: LAT/LONG and CITY_OR_TOWN "leave blank").
+(3) The codebook's own wording for `-9` is kept (e.g. TRANSMISSION_LATENCY "unknown or inapplicable") for schemas loaded
+after this change. (4) Workbook `-9` and placeholders where the codebook defines none are flagged on the Schema page and
+never added to the allowed values. (5) Codebook consistency rules are checked on human-final values and shown as review
+flags (never changing a value): UNCERTAINTY_FLAG = 1 requires UNCERTAINTY_TYPE; blank LAT/LONG requires
+GEOCODE_SPECIFICITY = 0; INCIDENT_DURATION = (END_DATE – EVENT_DATE) + 1; a researcher's `-9` where the codebook defines
+none is kept but flagged. (6) INCIDENT_DURATION is never derived from a missing or reversed date (blank, never `-9`).
+**Not decided (PI-M1 … PI-M11, `docs/missingness/PI_DECISIONS_missingness.md`).** Whether `-9 = Unknown` may be
+suggested from silence in the retrieved passages; separating unknown from not applicable; historical `-9`/placeholders;
+"absence" codes such as PERCEIVED_TIMELINESS 3; END_DATE when undocumented; INCIDENT_DURATION history; UNCERTAINTY_TYPE
+for flag 0; nonuse-case message variables; DELIVERY_COVERAGE format; POPULATION_AFFECTED_ESTIMATE scope;
+HARM_LOSS_INDICATORS type and attribution. Current behaviour stays until the team decides.
+

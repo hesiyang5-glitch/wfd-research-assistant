@@ -58,7 +58,19 @@ REASONS = {
     "percentage_out_of_range": "percentage must be between 0 and 100",
     "not_iso_date": "not an ISO date (YYYY-MM-DD)",
     "rule_missing": "no codebook rule for this field",
+    "missing_code_not_defined": "a special missing value (-9) is not defined for this variable in the codebook",
 }
+# Special missing values seen in the WFD codebook (v1.3 defines only -9, for 7 variables). A value equal to one of these is
+# accepted ONLY when the variable's own codebook entry defines it (D-003, D-039) — never as an ordinary number or text.
+SPECIAL_MISSING = ("-9",)
+BLANK_WORDS = ("null", "none", "n/a", "blank", "unknown", "-", "–", "—", "")
+
+
+def special_missing_form(v: str) -> str | None:
+    """'-9', '-9.0', ' -9 ' -> '-9'; anything else -> None."""
+    s = str(v).strip()
+    m = re.fullmatch(r"(-\d+)(?:\.0+)?", s)
+    return m.group(1) if m and m.group(1) in SPECIAL_MISSING else None
 
 
 def _check(items, passages: dict, who: str) -> tuple[list[dict], list[tuple[str, str]]]:
@@ -150,8 +162,10 @@ def validate(field: dict, item: dict, passages: dict) -> dict:
         oe = o.get("evidence")
         if oe is not None and (not isinstance(oe, list) or not all(isinstance(e, dict) for e in oe)):
             return _malformed(f"evidence for option {o.get('code')} is not a list of citations")
-    if value.lower() in ("null", "none", "n/a", "blank", "unknown", ""):
-        if value and value.lower() in ("n/a", "unknown"):
+    if value.lower() in BLANK_WORDS:
+        if value and value.lower() in ("n/a", "unknown", "-", "–", "—"):
+            # the codebook says "leave blank" where information is unavailable (e.g. LAT/LONG, CITY_OR_TOWN); a dash or
+            # "N/A" placeholder is not a codebook value (D-039)
             warnings.append(f"model wrote '{value}' — treated as blank (not a codebook code)")
         value = ""
     sup_raw = [e for e in ev_raw if e.get("stance", "supports") == "supports"]
@@ -182,6 +196,16 @@ def validate(field: dict, item: dict, passages: dict) -> dict:
 
     missing = set(field.get("missing_codes", []))
     parts = split_values(value) if t in ("categorical", "open_list") else [value]
+    parts = [special_missing_form(p) or p for p in parts]  # '-9.0' (Excel style) is the same special value as '-9'
+    undefined = [p for p in parts if special_missing_form(p) and p not in missing]
+    if undefined and not (t == "categorical" and field.get("multi") and len(parts) > 1):
+        # D-039: -9 is never accepted as an ordinary number, text or open-list entry when this variable's codebook entry
+        # does not define it (previously a numeric field accepted -9 as the number minus nine)
+        return finish(False, "invalid", "", [f"{undefined[0]} is a special missing value that the codebook does not define "
+                                             f"for this variable — leave blank when the value is not established"],
+                      ["missing_code_not_defined"], top_good)
+    if len(parts) == 1:
+        value = parts[0]
     multi_select = (t == "categorical" and field.get("multi")) or (t == "open_list" and len(parts) > 1)
 
     if any(p in missing for p in parts):
@@ -215,7 +239,8 @@ def validate(field: dict, item: dict, passages: dict) -> dict:
             code = allowed.get(p.upper(), p) if t == "categorical" else p
             sel = {"code": code, "outcome": "valid", "reasons": [], "evidence": []}
             if t == "categorical" and p.upper() not in allowed:
-                sel.update(outcome="rejected", reasons=["invalid_code"])
+                sel.update(outcome="rejected", reasons=["invalid_code"] + (["missing_code_not_defined"]
+                                                                          if special_missing_form(p) else []))
                 errs.append(f"code '{p}' is not defined for this variable in the codebook")
             else:
                 if t == "open_list" and p.split("(")[0].strip().upper() not in listed:

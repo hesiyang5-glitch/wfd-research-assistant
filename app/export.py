@@ -52,6 +52,10 @@ def case_results(case_id: int) -> dict:
     reviews = {r["variable"]: r for r in db.q("SELECT * FROM reviews WHERE case_id=?", (case_id,))}
     srcs = {s["id"]: s for s in db.q("SELECT id,title,url,final_url,source_type,excluded,relevance_status FROM sources WHERE case_id=?", (case_id,))}
     from .agreement import assess
+    from .missingness import FINAL_ACTIONS, consistency_flags
+    # D-039: codebook-stated missing-value / consistency rules, checked on human-final values only (never changes them)
+    rule_flags = consistency_flags({v: r["value"] for v, r in reviews.items() if r["action"] in FINAL_ACTIONS},
+                                   {f["name"]: f for f in schema["fields"]})
     rows = []
     for f in schema["fields"]:
         ss = sets.get(f["name"]) or {}
@@ -78,10 +82,11 @@ def case_results(case_id: int) -> dict:
             "name": f["name"], "position": f["position"], "raw_header": f["raw_header"], "type": f["type"], "multi": f.get("multi"),
             "field_class": f.get("field_class"), "section": f.get("section"), "definition": f.get("definition"),
             "codes": f.get("codes", []), "open_options": f.get("open_options", []), "missing_codes": f.get("missing_codes", []),
+            "missing_labels": f.get("missing_labels", {}),
             "codebook_ref": f.get("codebook_ref"), "issues": f.get("issues", []), "rule_missing": f.get("rule_missing"),
             "suggestion": s, "previous": p if changed else None, "review": r, "providers": providers,
             "comparison": comp_out, "category": cat, "cells": _cells_out(ss.get("cells")),
-            "agreement": assess(case_id, f, ss, r),
+            "agreement": assess(case_id, f, ss, r), "rule_flags": rule_flags.get(f["name"], []),
             "system": ss.get("system") if not providers else None,
         })
     return {"case": case, "schema_label": schema.get("label"), "schema_id": schema.get("id"), "rows": rows, "sources": srcs}
@@ -172,6 +177,8 @@ def explanation_cell(row: dict, origin: str) -> str:
                                            else "results differ, but the models also used different analysis inputs") + "]")
     if r and r["action"] in ("edited", "cleared") and r.get("reason"):
         parts.append(f"Reviewer: {r['reason']}")
+    for fl in row.get("rule_flags") or []:
+        parts.append(f"[rule check: {fl}]")
     if s:
         if s.get("rationale"):
             parts.append(s["rationale"])
@@ -241,7 +248,7 @@ def xlsx(case_id: int, include_unreviewed=False) -> bytes:
     wr = wb.create_sheet("Results")
     wr.append(["Variable", "Value", "Source", "Explanation", "Review status", "Value origin", "Suggestion status",
                "Model comparison", "Accepted from provider", "Agreement status", "Confirmation method",
-               "Evidence status", "Validation status"])
+               "Evidence status", "Validation status", "Rule checks"])
     yellow = PatternFill("solid", fgColor="FFF2CC")
     for row in res["rows"]:
         v, origin = export_value(row, include_unreviewed)
@@ -252,7 +259,8 @@ def xlsx(case_id: int, include_unreviewed=False) -> bytes:
                     else "human-approved cross-version agreement (bulk, D-035)"
                     if (row["review"] or {}).get("method") == "bulk_separate_run_agreement"
                     else ((row["review"] or {}).get("action") or "")),
-                   evidence_status_text(row["suggestion"]), (row["suggestion"] or {}).get("validation_state") or ""])
+                   evidence_status_text(row["suggestion"]), (row["suggestion"] or {}).get("validation_state") or "",
+                   "; ".join(row.get("rule_flags") or [])])
         if origin == "UNREVIEWED":
             for c in wr[wr.max_row]:
                 c.fill = yellow

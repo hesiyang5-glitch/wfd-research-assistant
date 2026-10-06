@@ -80,6 +80,8 @@ python3 -m tests.test_independent_providers  # equal providers, first-form provi
 python3 -m tests.test_cross_version   # matched vs cross-version comparison, warning + acknowledgement, version panel (D-035/D-036)
 python3 -m tests.test_evidence_status # five evidence statuses x both providers, validation separate, no upgrade on agreement (D-038)
 python3 -m tests.test_multiselect_validation  # per-selection multi-select validation, partially valid, reason codes (D-037)
+python3 -m tests.test_missingness     # -9 only where defined (all types), placeholders, consistency flags, audit table (D-039)
+python3 -m tools.missingness_audit    # regenerate docs/missingness/missingness_audit.{csv,json}
 ```
 
 Tests need the Texas-flood sample PDFs: set `WFD_TEST_PDFS=/path/to/folder` (they are in the claude.ai

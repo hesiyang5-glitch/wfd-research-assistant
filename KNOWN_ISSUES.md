@@ -43,6 +43,9 @@ Last reviewed: 2026-10-01 (commit `33a0c5e`). Severity: **High** (blocks correct
 | K-45 | First-form worst case is very conservative (e.g. dual ≈ $9 against a $5 cap); the run then pauses before coding for an explicit raise. One measured full OpenAI run cost ≈1/9 of its worst case (K-27). | Low |
 | K-47 | D-038 (merged 2026-10-06): after deployment, every earlier result (incl. pre-October cached Claude replies) is an earlier analysis version with evidence status "not recorded"; re-analysing for evidence statuses sends new paid requests (no reusable cache). Evidence statuses are the model's judgement — the server checks consistency and citations, not the soundness of an inference. Not yet run against a live model. | Medium |
 | K-48 | Pre-existing test hygiene (found 2026-10-06, also on `main`): the browser part of `test_independent_providers` starts a server subprocess (with a fake key and no network guard) that makes the free availability check (`GET /v1/models/...`) toward OpenAI. It was blocked by the sandbox; it is unbilled and the key is fake, but the subprocess should get a guard or a stubbed check. | Low |
+| K-49 | D-039 (branch only): missing-value rules that need a PI decision (PI-M1 … PI-M11 in `docs/missingness/PI_DECISIONS_missingness.md`) — above all whether the assistant may suggest `-9 = Unknown` or an "absence" code (e.g. PERCEIVED_TIMELINESS 3) when its passages are silent; it currently leaves those blank. Historical workbook `-9` in 21 variables is flagged, not recoded. | Medium |
+| K-50 | D-039: the new `-9` wording and the workbook flags come from the schema loader, so they appear only for schemas loaded after the change. The production database keeps its stored schema (prompt still says "-9 = unknown" for TRANSMISSION_LATENCY; codebook: "unknown or inapplicable") until the schema is reloaded on the Schema page — a new schema version, owner's choice. The `-9` validation and consistency flags apply to all schemas. | Low |
+| K-51 | HARM_LOSS_INDICATORS is typed numeric, so text such as "3 fatalities" (the codebook's own example) fails validation; the definition allows qualitative evidence. Part of PI-M11. | Medium |
 | K-46 | D-037 (merged 2026-10-06): results stored as `validation_failed` before the fix are not re-validated automatically; their replies were never cached (D-025), so re-analyzing those variables sends new (paid) requests. Whether a passage substantively supports a code is not machine-checked (human review). | Low |
 
 ## Research quality
@@ -66,7 +69,8 @@ Last reviewed: 2026-10-01 (commit `33a0c5e`). Severity: **High** (blocks correct
 - `ALERTING_AUTHORITY_TYPE` says both single-select and multiple values permitted.
 - `MESSAGE_RECEPTION_DOCUMENTATION` codes start at 2; 13 workbook rows use `1`.
 - `DELIVERY_COVERAGE`: percentage bands vs "add the specific number".
-- `-9` defined for 7 variables but used in many others in the workbook.
+- `-9` defined for 7 variables but used in 21 others in the workbook (full list and PI decisions: D-039,
+  `docs/missingness/`).
 - Excel auto-converted multi-codes into dates (e.g. `2026-01-03` for "1, 3").
 - Workbook column 77 has a blank header; column 76 header has extra text (`Albert | Elise`); `LAT/LONG` vs codebook `LATITUDE / LONGITUDE`.
 - Some hand codes appear inconsistent with the codebook (e.g. B2 Hawaii `ALERTING_AUTHORITY_TYPE` 1 = federal for a state agency). Benchmarks therefore need human judgment.

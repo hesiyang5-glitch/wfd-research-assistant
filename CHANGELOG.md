@@ -6,6 +6,18 @@ Completed changes, newest first. Commit hashes refer to `hesiyang5-glitch/wfd-re
 
 
 
+## 2026-10-06 — Missing-value audit and codebook-stated missingness rules (branch `audit/missingness`; not merged, not deployed)
+- D-039. Audit of all 82 workbook columns: `docs/missingness/missingness_audit.csv` / `.json` (generator
+  `tools/missingness_audit.py`) and the proposed PI decision document `docs/missingness/PI_DECISIONS_missingness.md`
+  (PI-M1 … PI-M11).
+- `app/validator.py`: `-9` rejected wherever the codebook does not define it, for every variable type (previously
+  accepted as a number in numeric fields and as text in text/open-list fields); `-9.0` = `-9`; dash placeholders blank.
+- `app/schema_loader.py`: keeps the codebook's wording for `-9` ("unknown or inapplicable"); flags workbook `-9` and
+  placeholders in non-categorical columns. `app/missingness.py`: codebook consistency flags on human-final values.
+  `app/coding.py`: INCIDENT_DURATION blank for reversed dates. `app/export.py` / `web/app.js`: "Rule checks" column,
+  explanation note, review-panel callout, `-9` wording in the definition panel.
+- Tests: new `tests/test_missingness.py` (58).
+
 ## 2026-10-06 — Provider-neutral evidence status (merged to `main` 2026-10-06 with owner approval)
 - D-038. New `app/evidence_status.py` (five statuses, resolution rules, legacy read-time derivation). Shared prompt
   rules and reply format ask both providers for `evidence_status`, `rule_unclear`, `alternatives`, `missing_evidence`
