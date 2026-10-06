@@ -75,6 +75,7 @@ python3 -m tests.test_bulk_agreement  # bulk confirmation of independent model a
 python3 -m tests.test_resilience      # thread limits, shared evidence index, crash-safe ledger, paused recovery, health under load
 python3 -m tests.test_independent_providers  # equal providers, first-form provider choice, versions, cache identity (D-036)
 python3 -m tests.test_cross_version   # matched vs cross-version comparison, warning + acknowledgement, version panel (D-035/D-036)
+python3 -m tests.test_multiselect_validation  # per-selection multi-select validation, partially valid, reason codes (D-037)
 ```
 
 Tests need the Texas-flood sample PDFs: set `WFD_TEST_PDFS=/path/to/folder` (they are in the claude.ai
