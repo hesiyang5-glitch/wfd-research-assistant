@@ -287,7 +287,7 @@ with codes in options, non-list evidence/options, non-text values) are `malforme
 **Limit.** Whether a passage substantively supports a code cannot be checked mechanically; the machine check only
 catches citations not marked "supports". Human review remains the safeguard.
 
-## D-038 · 2026-10-06 · Provider-neutral evidence status, separate from validation status — Proposed (branch `feature/evidence-status`, not merged, not deployed)
+## D-038 · 2026-10-06 · Provider-neutral evidence status, separate from validation status — Active (merged to `main` 2026-10-06 with owner approval)
 **Context.** Results only had one status mixing "how good is the evidence" with "did the reply pass the server checks".
 A value that rests on an inference looked the same as a directly documented one, and two models agreeing on an
 inferred value could be bulk-confirmed.

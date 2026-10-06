@@ -6,7 +6,7 @@ Completed changes, newest first. Commit hashes refer to `hesiyang5-glitch/wfd-re
 
 
 
-## 2026-10-06 — Provider-neutral evidence status (branch `feature/evidence-status`; not merged, not deployed)
+## 2026-10-06 — Provider-neutral evidence status (merged to `main` 2026-10-06 with owner approval)
 - D-038. New `app/evidence_status.py` (five statuses, resolution rules, legacy read-time derivation). Shared prompt
   rules and reply format ask both providers for `evidence_status`, `rule_unclear`, `alternatives`, `missing_evidence`
   (`PROMPT_VERSION` `wfd-prompt-2026-10-06`); OpenAI strict schema `wfd-batch-v2`; `normalize_structured` still reads v1.
