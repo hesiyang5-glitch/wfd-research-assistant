@@ -71,12 +71,12 @@ class Model:
         for n in names:
             spec = self.policy.get(n)
             if spec is None or not ps:
-                res.append({"variable": n, "value": "", "status": "insufficient_evidence", "evidence": []})
+                res.append({"variable": n, "value": "", "status": "insufficient_evidence", "evidence_status": "INSUFFICIENT", "evidence": []})
                 continue
             spec = spec if isinstance(spec, dict) else {"value": spec}
             pid, text = ps[0]
             q = "this sentence is not in the passage" if spec.get("fake_quote") else text.strip()[:60]
-            res.append({"variable": n, "value": spec["value"], "status": "suggested", "rationale": "r", "unresolved": "",
+            res.append({"variable": n, "value": spec["value"], "status": "suggested", "evidence_status": "SUPPORTED", "rationale": "r", "unresolved": "",
                         "evidence": [{"id": pid, "quote": q, "stance": "supports"}]})
         return {"text": json.dumps({"results": res}), "input_tokens": 900, "output_tokens": 150, "stop_reason": "end_turn"}
 

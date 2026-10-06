@@ -286,3 +286,33 @@ with codes in options, non-list evidence/options, non-text values) are `malforme
 "insufficient evidence". Single-select and other field types keep their rules. No schema migration (status is text).
 **Limit.** Whether a passage substantively supports a code cannot be checked mechanically; the machine check only
 catches citations not marked "supports". Human review remains the safeguard.
+
+## D-038 · 2026-10-06 · Provider-neutral evidence status, separate from validation status — Proposed (branch `feature/evidence-status`, not merged, not deployed)
+**Context.** Results only had one status mixing "how good is the evidence" with "did the reply pass the server checks".
+A value that rests on an inference looked the same as a directly documented one, and two models agreeing on an
+inferred value could be bulk-confirmed.
+**Decision.** Every model suggestion now carries an **evidence status** reported by the model under shared rules for
+both providers: SUPPORTED (evidence directly satisfies the codebook definition), INFERRED (best interpretation, needs an
+inference the passages do not establish), AMBIGUOUS (two or more permitted values remain reasonably supported),
+INSUFFICIENT (no defensible value), CONFLICTING (credible evidence supports incompatible interpretations). Separately,
+a **validation status** (valid / partially_valid / invalid) records the server checks; system/validation errors are never
+an evidence status. Stored per suggestion (additive migration `2026-10-06-evidence-status`: `evidence_status`,
+`validation_status`, `alternatives_json`, `missing_evidence`) together with value, supporting evidence, counter-evidence,
+alternative candidate values (each validated: permitted code + verbatim citation), missing evidence and rationale.
+Rules: (1) INFERRED is never exported as an unreviewed value, never used to derive another field and never
+bulk-confirmed; (2) INSUFFICIENT always stores a blank value (a proposed value is reported, not kept); AMBIGUOUS and
+CONFLICTING keep at most the model's best candidate with status `disputed` (human review); (3) a best candidate may be
+given with INFERRED or AMBIGUOUS; (4) human-final values stay in `reviews` and are untouched; (5) agreement never upgrades
+an evidence status — bulk confirmation requires both providers SUPPORTED, the combined view shows each provider's own
+status; (6) each variable is classified on its own evidence; the prompt says cause uncertainty never makes a documented
+failure phenomenon INSUFFICIENT. An unknown evidence status is malformed output (`validation_failed`); a reply without
+one is stored as "not recorded", flagged and not cached. Consistency warnings (AMBIGUOUS without alternatives,
+CONFLICTING without counter-evidence, a status without a value) are warnings, not validation failures.
+**Versioning.** Prompt version `wfd-prompt-2026-10-06`; OpenAI response schema `wfd-batch-v2` (evidence status enum
+required). Earlier results — including the cached Claude replies from before October — therefore belong to an earlier
+analysis version: they stay visible and comparable as cross-version (D-035/D-036), show evidence status "not recorded",
+keep their earlier bulk eligibility with that disclosed, and are never rewritten. Re-analysing a variable after this
+change sends new (paid) requests; there is no cache to reuse for the new version.
+**Limit.** The evidence status is the model's own judgement under the rules; the server checks its consistency and the
+citations, not whether the inference is sound. Human review remains the safeguard.
+

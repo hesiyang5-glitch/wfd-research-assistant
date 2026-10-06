@@ -17,6 +17,7 @@ import time
 
 MIGRATION_ID = "2026-10-01-openai-provider"
 MIGRATION_ID_2 = "2026-10-05-independent-providers"  # D-036: equal providers, evidence snapshots, analysis versions
+MIGRATION_ID_3 = "2026-10-06-evidence-status"  # D-038: provider-neutral evidence status, separate validation status
 
 ADD_COLUMNS = {
     "runs": [("provider", "TEXT"), ("role", "TEXT"), ("group_id", "TEXT"), ("coding_mode", "TEXT"),
@@ -29,6 +30,11 @@ ADD_COLUMNS = {
     # D-036 (2026-10-05). New runs record which shared evidence snapshot and analysis version they interpreted, and
     # whether the interpretation was independent. The old `role` column is kept untouched for the audit trail.
     "review_history": [("source_provider", "TEXT"), ("method", "TEXT")],
+}
+ADD_COLUMNS_3 = {
+    # NULL on rows stored before 2026-10-06 = "not recorded" (derived/displayed at read time; never rewritten)
+    "suggestions": [("evidence_status", "TEXT"), ("validation_status", "TEXT"), ("alternatives_json", "TEXT"),
+                    ("missing_evidence", "TEXT")],
 }
 ADD_COLUMNS_2 = {
     "evidence_snapshots": [("passages_json", "TEXT")],
@@ -100,7 +106,14 @@ def migrate(c: sqlite3.Connection) -> list[str]:
             if name not in have:
                 c.execute(f"ALTER TABLE {table} ADD COLUMN {name} {typ}")
                 done.append(f"{table}.{name}")
-    for mid, n in ((MIGRATION_ID, n1), (MIGRATION_ID_2, len(done) - n1)):
+    n2 = len(done)
+    for table, cols in ADD_COLUMNS_3.items():
+        have = _cols(c, table)
+        for name, typ in cols:
+            if name not in have:
+                c.execute(f"ALTER TABLE {table} ADD COLUMN {name} {typ}")
+                done.append(f"{table}.{name}")
+    for mid, n in ((MIGRATION_ID, n1), (MIGRATION_ID_2, n2 - n1), (MIGRATION_ID_3, len(done) - n2)):
         row = c.execute("SELECT status FROM schema_migrations WHERE id=?", (mid,)).fetchone()
         if not row:
             c.execute("INSERT INTO schema_migrations (id, applied_at, status, note) VALUES (?,?,?,?)",

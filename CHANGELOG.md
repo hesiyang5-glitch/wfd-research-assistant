@@ -6,6 +6,22 @@ Completed changes, newest first. Commit hashes refer to `hesiyang5-glitch/wfd-re
 
 
 
+## 2026-10-06 — Provider-neutral evidence status (branch `feature/evidence-status`; not merged, not deployed)
+- D-038. New `app/evidence_status.py` (five statuses, resolution rules, legacy read-time derivation). Shared prompt
+  rules and reply format ask both providers for `evidence_status`, `rule_unclear`, `alternatives`, `missing_evidence`
+  (`PROMPT_VERSION` `wfd-prompt-2026-10-06`); OpenAI strict schema `wfd-batch-v2`; `normalize_structured` still reads v1.
+- Migration `2026-10-06-evidence-status` (additive, repeatable): four nullable columns on `suggestions`. Old rows untouched.
+- `app/coding.py`: stores evidence status, validation status, validated alternatives, missing evidence; replies without
+  an evidence status are not cached; the combined view keeps each provider's status; INFERRED/AMBIGUOUS/... never feed
+  derived fields. Typical output estimate 260 → 320 tokens per variable.
+- `app/agreement.py`: bulk-eligible only when both providers are SUPPORTED (legacy "not recorded" results keep earlier
+  eligibility, disclosed). `app/export.py`: Results "Evidence status" / "Validation status"; Provider_Suggestions adds
+  evidence status, validation status, alternative values, missing evidence; INFERRED never exported unreviewed;
+  Case_Row unchanged. `web/app.js`: evidence-status badge in cells; detail panel shows the two statuses separately,
+  alternatives and missing evidence (bilingual).
+- Tests: new `tests/test_evidence_status.py` (59). Existing test stand-ins now answer with `evidence_status`; the pinned
+  Claude system-prompt hash was updated deliberately (`test_providers`). All 12 suites pass offline.
+
 ## 2026-10-06 — Multi-select validation per selection (merged to `main` 2026-10-06 with owner approval)
 - D-037. `app/validator.py`: per-selection validation, no redundant top-level evidence for multi-select, JSON-list
   values accepted, `partially_valid` outcome, machine-readable `reason_codes`/`selections`/`rejected_citations`,

@@ -101,6 +101,9 @@ def _cells_out(cells: dict | None) -> dict:
         row = c.get("row")
         out[col] = {"state": c["state"], "label": CELL_LABELS.get(c["state"], c["state"]),
                     "value": (row or {}).get("value") or "", "status": (row or {}).get("status"),
+                    "evidence_status": (row or {}).get("evidence_status"),
+                    "evidence_recorded": bool((row or {}).get("evidence_recorded")),
+                    "validation_state": (row or {}).get("validation_state"),
                     "suggestion_id": (row or {}).get("id"), "model": (row or {}).get("model") or (row or {}).get("run_model"),
                     "interpretation": interp_of(row) if row else None, "cache_status": (row or {}).get("cache_status"),
                     "evidence_snapshot_id": (row or {}).get("evidence_snapshot_id"),
@@ -119,7 +122,8 @@ def export_value(row: dict, include_unreviewed: bool) -> tuple[str, str]:
     comp = row.get("comparison")
     if comp and comp.get("model_status") != "model_agreement":
         return "", "blank"  # providers disagree or an output is invalid: never exported without a human decision
-    if include_unreviewed and s and s["status"] in VALUE_STATUSES and s["value"]:
+    if include_unreviewed and s and s["status"] in VALUE_STATUSES and s["value"] and not s.get("evidence_review_reason"):
+        # D-038: only SUPPORTED (or results predating evidence statuses) are exported unreviewed; INFERRED is not
         return s["value"], "UNREVIEWED"
     return "", "blank"
 
@@ -175,7 +179,23 @@ def explanation_cell(row: dict, origin: str) -> str:
             parts.append(f"Unresolved: {s['unresolved']}")
         if origin == "blank" and s["status"] not in VALUE_STATUSES:
             parts.append(f"(status: {s['status']})")
+        if origin == "blank" and s.get("evidence_review_reason"):
+            parts.append(f"({s['evidence_review_reason']})")
     return " ".join(parts)
+
+
+def evidence_status_text(s: dict | None) -> str:
+    """Evidence status for exports; 'not recorded' for results stored before evidence statuses existed (D-038)."""
+    if not s or s.get("basis") not in ("model", None) or s.get("status") in ("derived", "admin_generated"):
+        return ""
+    if s.get("display_kind") == "two_providers":
+        return "; ".join(f"{p}: {es or 'not recorded'}" for p, es in sorted((s.get("evidence_statuses") or {}).items()))
+    return s.get("evidence_status") or "not recorded"
+
+
+def _alts_text(s: dict) -> str:
+    return "; ".join(f"{a.get('value')} [" + ", ".join(e.get("id", "") for e in a.get("evidence") or []) + "]"
+                     for a in s.get("alternatives") or [])
 
 
 def tsv(case_id: int, include_unreviewed=False) -> str:
@@ -220,7 +240,8 @@ def xlsx(case_id: int, include_unreviewed=False) -> bytes:
 
     wr = wb.create_sheet("Results")
     wr.append(["Variable", "Value", "Source", "Explanation", "Review status", "Value origin", "Suggestion status",
-               "Model comparison", "Accepted from provider", "Agreement status", "Confirmation method"])
+               "Model comparison", "Accepted from provider", "Agreement status", "Confirmation method",
+               "Evidence status", "Validation status"])
     yellow = PatternFill("solid", fgColor="FFF2CC")
     for row in res["rows"]:
         v, origin = export_value(row, include_unreviewed)
@@ -230,7 +251,8 @@ def xlsx(case_id: int, include_unreviewed=False) -> bytes:
                    ("human-approved model agreement (bulk)" if (row["review"] or {}).get("method") == "bulk_independent_agreement"
                     else "human-approved cross-version agreement (bulk, D-035)"
                     if (row["review"] or {}).get("method") == "bulk_separate_run_agreement"
-                    else ((row["review"] or {}).get("action") or ""))])
+                    else ((row["review"] or {}).get("action") or "")),
+                   evidence_status_text(row["suggestion"]), (row["suggestion"] or {}).get("validation_state") or ""])
         if origin == "UNREVIEWED":
             for c in wr[wr.max_row]:
                 c.fill = yellow
@@ -257,7 +279,8 @@ def xlsx(case_id: int, include_unreviewed=False) -> bytes:
     wp = wb.create_sheet("Provider_Suggestions")
     wp.append(["Variable", "Provider", "Model", "Interpretation", "Suggested value", "Status", "Rationale", "Unresolved",
                "Cache status", "Evidence version", "Analysis version", "Run", "Original run", "Generated at",
-               "Comparison", "Human-approved value"])
+               "Comparison", "Human-approved value", "Evidence status", "Validation status", "Alternative values",
+               "Missing evidence"])
     for row in res["rows"]:
         rv = row["review"] if (row["review"] and row["review"]["action"] in ("accepted", "edited", "cleared")) else None
         for s in row.get("providers") or []:
@@ -267,7 +290,9 @@ def xlsx(case_id: int, include_unreviewed=False) -> bytes:
                        s.get("evidence_snapshot_id") or "not recorded", s.get("analysis_spec_id") or "not recorded",
                        s.get("run_id"), s.get("cache_source_run_id") or s.get("run_id"),
                        dt.datetime.fromtimestamp(ga).isoformat(timespec="seconds") if ga else "",
-                       (row.get("comparison") or {}).get("label", ""), (rv or {}).get("value", "") if rv else ""])
+                       (row.get("comparison") or {}).get("label", ""), (rv or {}).get("value", "") if rv else "",
+                       s.get("evidence_status") or "not recorded", s.get("validation_state") or "",
+                       _alts_text(s), s.get("missing_evidence") or ""])
 
     wbk = wb.create_sheet("Bulk_Confirmations")
     bcols = ["batch_id", "variable", "value", "claude_suggestion_id", "openai_suggestion_id", "claude_model", "openai_model",

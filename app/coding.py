@@ -10,6 +10,7 @@ import re
 import time
 
 from . import db
+from . import evidence_status as es_mod
 from .config import DEFAULT_SETTINGS
 from .llm.clients import LLMError, cost_usd, estimate_tokens, parse_json_block
 from .retrieval import CorpusIndex, load_case_passages, variable_query
@@ -17,8 +18,8 @@ from .validator import validate
 
 MODEL_CLASSES = {"sourced", "judgment"}
 
-# The rules are shared by every provider. SYSTEM_PROMPT (rules + JSON reply format) is byte-for-byte the text used
-# before OpenAI support was added, so Claude results keep their meaning and existing cached Claude replies stay valid.
+# The rules are shared by every provider (D-036). Since 2026-10-06 (D-038) they also ask for a provider-neutral evidence
+# status; this changed the prompt, so replies cached under earlier prompts are no longer reused for new analyses.
 PROMPT_RULES = """You are a careful research coder for the Warning Failure Database (WFD). You suggest codes for a
 public warning failure incident using ONLY the evidence passages supplied in the user message and the codebook rules
 supplied with each variable. Your output is a suggestion for human review, not a final code.
@@ -30,15 +31,28 @@ Rules you must follow:
    with a short VERBATIM quote copied character-for-character from that passage (8-300 characters). Do not paraphrase inside
    "quote". Cite only ids that appear in the evidence list. For multi-select variables, justify EACH selected code separately
    in "options".
-3. If the evidence is insufficient, leave "value" as "" and set status "insufficient_evidence". Blank is the default. Do not
-   use 0, -9 or any other code to mean "not found". A special missing value (such as -9) may be used ONLY if that variable's
-   rules define it AND the sources themselves indicate the information is unknown or not applicable.
+3. Classify every variable with exactly one "evidence_status" — be honest rather than complete; never upgrade one status to
+   another to produce a value:
+   - SUPPORTED: the supplied case evidence directly satisfies the codebook definition for "value", without a material
+     unsupported inference.
+   - INFERRED: "value" is the best-supported interpretation, but assigning it needs an inference the passages do not
+     directly establish. Explain the inference in "rationale".
+   - AMBIGUOUS: two or more permitted values remain reasonably supported and the passages do not distinguish them. List
+     them in "alternatives" (each with its own cited evidence); "value" may hold your best candidate, or "".
+   - INSUFFICIENT: the passages do not establish a defensible value. "value" must be ""; say in "missing_evidence" what
+     evidence would be needed. Blank is the default.
+   - CONFLICTING: credible passages materially support incompatible interpretations. Cite both sides (stance
+     "contradicts" or "alternative"); "value" may be "" or your best candidate.
+   Do not use 0, -9 or any other code to mean "not found". A special missing value (such as -9) may be used ONLY if that
+   variable's rules define it AND the sources themselves indicate the information is unknown or not applicable. Set
+   "rule_unclear" to true only when the codebook rule itself is unclear for this case.
 4. Separate what happened (observed failure) from why it happened (cause). An uncertain cause must not stop you from coding a
    well-documented observed failure. A documented failure does not by itself establish a software, human, or organizational
    cause. Generic phrases such as "technical issue", "system error" or "glitch" do not establish a specific technical cause,
    do not rule out human factors, and do not imply concealment. For variables marked CAUSAL, if sources give competing
-   explanations, set status "disputed", cite the competing passages with stance "alternative", and code only what the
-   evidence actually establishes (often blank).
+   explanations, use CONFLICTING (or AMBIGUOUS), cite the competing passages with stance "alternative", and code only what
+   the evidence actually establishes (often blank). Uncertainty about a cause variable never makes a well-documented
+   failure-phenomenon variable INSUFFICIENT; classify each variable on its own evidence.
 5. Look for and report counter-evidence, later corrections and investigation findings (stance "contradicts" or
    "alternative"). Do not resolve a disagreement in favor of a source merely because it is official. Passages marked as
    duplicates/syndicated copies are not independent corroboration.
@@ -51,9 +65,12 @@ Rules you must follow:
 
 JSON_REPLY_FORMAT = """Reply with a single JSON object: {"results": [ ... one object per variable ... ]}. Each object:
 {"variable": "<exact name>", "value": "<code(s) or text, or empty string>",
- "status": "suggested" | "insufficient_evidence" | "disputed" | "rule_unclear",
+ "evidence_status": "SUPPORTED" | "INFERRED" | "AMBIGUOUS" | "INSUFFICIENT" | "CONFLICTING",
+ "rule_unclear": false,
  "evidence": [{"id": "S1-P3", "quote": "<verbatim>", "stance": "supports" | "contradicts" | "alternative"}],
  "options": [{"code": "<code>", "evidence": [{"id": "...", "quote": "...", "stance": "supports"}]}],
+ "alternatives": [{"value": "<another permitted value>", "evidence": [{"id": "...", "quote": "...", "stance": "supports"}]}],
+ "missing_evidence": "<what evidence would establish or settle the value; empty if none>",
  "rationale": "<1-3 sentences linking evidence to the codebook definition>",
  "unresolved": "<open questions, conflicts, or rule problems; empty if none>"}
 """
@@ -62,17 +79,21 @@ SYSTEM_PROMPT = PROMPT_RULES + JSON_REPLY_FORMAT
 
 STRUCTURED_REPLY_FORMAT = """Reply in the JSON structure defined by the response schema: exactly one entry per variable
 (its "variable" field names it). "value": a permitted code, a list of codes for multi-select variables, or text; use
-"" (or an empty list) when the evidence is insufficient. "status": "suggested" | "insufficient_evidence" | "disputed" |
-"rule_unclear". "evidence": passage id + VERBATIM quote + stance ("supports" | "contradicts" | "alternative").
-"options": for multi-select variables, one entry per selected code with its own supporting evidence (otherwise an empty
-list). "rationale": 1-3 sentences linking evidence to the codebook definition. "unresolved": open questions, conflicts
-or rule problems, or "".
+"" (or an empty list) when there is no defensible value. "evidence_status": SUPPORTED | INFERRED | AMBIGUOUS |
+INSUFFICIENT | CONFLICTING (rule 3). "rule_unclear": true only when the codebook rule itself is unclear.
+"evidence": passage id + VERBATIM quote + stance ("supports" | "contradicts" | "alternative"). "options": for
+multi-select variables, one entry per selected code with its own supporting evidence (otherwise an empty list).
+"alternatives": other permitted values that remain reasonably supported, each with cited evidence (otherwise empty).
+"missing_evidence": what evidence would establish or settle the value, or "". "rationale": 1-3 sentences linking
+evidence to the codebook definition. "unresolved": open questions, conflicts or rule problems, or "".
 """
 
 STRUCTURED_SYSTEM_PROMPT = PROMPT_RULES + STRUCTURED_REPLY_FORMAT
 
 # Bump when the prompt text, prompt assembly or reply handling changes; part of every cache key.
-PROMPT_VERSION = "wfd-prompt-2026-10-01"
+PROMPT_VERSION = "wfd-prompt-2026-10-06"
+EVIDENCE_STATUS_SINCE = "wfd-prompt-2026-10-06"  # results from earlier prompt versions have no evidence status
+EVIDENCE_STATUSES = ("SUPPORTED", "INFERRED", "AMBIGUOUS", "INSUFFICIENT", "CONFLICTING")
 
 
 
@@ -529,7 +550,7 @@ def _estimate_one(case, settings, prep, client, role) -> dict:
         t = estimate_tokens(system + prompt + (json.dumps(schema) if schema else ""))
         mo = provider_max_tokens(client, len(fs), settings)
         in_tok += t
-        out_tok += len(fs) * 260
+        out_tok += len(fs) * 320  # typical reply size; D-038 added alternatives and missing evidence (was 260)
         out_max += mo
         hit = cache_lookup(client, system, prompt, fs, ids, prep["pmap"], schema, prep["codebook"])[0] is not None
         if not hit:
@@ -939,28 +960,25 @@ def run_coding(case: dict, settings: dict, client, job_id: int | None, log, budg
                            basis="none", meta={**meta, **bmeta, "call_id": call_id, "cache_status": cache_status})
                     continue
                 v = validate(f, item, allowed)
-                mstatus = item.get("status", "suggested")
-                if not v["ok"]:
-                    status, value = "validation_failed", ""
+                # D-038: combine the validator result with the model's evidence status. Partially valid replies keep
+                # their supported selections and always go to human review; replies with invalid items or without an
+                # evidence status are not cached (D-025)
+                r = es_mod.resolve(f, item, v, allowed, validate)
+                if r["validation_status"] != "valid" or not r["complete"]:
                     all_valid = False
-                elif v.get("outcome") == "partially_valid":
-                    # supported selections kept, rejected ones reported; always routed to human review; the reply is
-                    # not cached because it contained invalid items (D-025)
-                    status, value = "partially_valid", v["value"]
-                    all_valid = False
-                elif not v["value"]:
-                    status = "disputed" if mstatus == "disputed" else "insufficient_evidence"
-                    value = ""
-                else:
-                    status = "disputed" if mstatus == "disputed" else ("rule_unclear" if mstatus == "rule_unclear" else "suggested")
-                    value = v["value"]
                 unresolved = item.get("unresolved", "") or ""
-                _store(case["id"], run_id, f["name"], value, status, item.get("rationale", ""), v["evidence"], v["counter"],
-                       unresolved, {"errors": v["errors"], "warnings": v["warnings"], "options": v["options"],
-                                    "proposed_value": str(item.get("value", "")), "outcome": v.get("outcome"),
-                                    "reason_codes": v.get("reason_codes", []), "selections": v.get("selections", []),
-                                    "rejected_citations": v.get("rejected_citations", [])}, item, basis="model",
-                       meta={**meta, **bmeta, "call_id": call_id, "cache_status": cache_status})
+                _store(case["id"], run_id, f["name"], r["value"], r["status"], item.get("rationale", ""), v["evidence"],
+                       v["counter"], unresolved,
+                       {"errors": v["errors"] + r["errors"], "warnings": v["warnings"] + r["warnings"],
+                        "options": v["options"], "proposed_value": str(item.get("value", "")),
+                        "outcome": "invalid" if r["validation_status"] == "invalid" else v.get("outcome"),
+                        "reason_codes": sorted(set(v.get("reason_codes", []) + r["reason_codes"])),
+                        "selections": v.get("selections", []), "rejected_citations": v.get("rejected_citations", []),
+                        "evidence_status": r["evidence_status"]}, item, basis="model",
+                       meta={**meta, **bmeta, "call_id": call_id, "cache_status": cache_status,
+                             "evidence_status": r["evidence_status"], "validation_status": r["validation_status"],
+                             "alternatives_json": json.dumps(r["alternatives"]),
+                             "missing_evidence": r["missing_evidence"]})
             if cached is None:
                 if all_valid:
                     # only complete, readable, schema-valid, fully validated replies are cached; the origin keeps the
@@ -1111,6 +1129,13 @@ def _load_row(s: dict) -> dict:
                 s[k[:-5]] = d
     s.pop("raw_json", None)
     s["provider"] = provider_of(s)
+    # D-038: evidence status and validation status are separate; NULL on older rows = "not recorded" (derived here,
+    # never written back)
+    s["alternatives"] = es_mod.alternatives_of(s)
+    s.pop("alternatives_json", None)
+    s["evidence_recorded"] = es_mod.recorded(s)
+    s["validation_state"] = es_mod.validation_status_of(s)
+    s["evidence_review_reason"] = es_mod.review_required(s)
     return s
 
 
@@ -1245,7 +1270,19 @@ def _combined_view(rows: list[dict]) -> dict:
             "evidence": list(ev.values()), "counter": list(ctr.values()), "rationale": "", "unresolved": "",
             "validation": {}, "stale": int(any(r.get("stale") for r in rows)),
             "stale_reason": "; ".join(r.get("stale_reason") or "" for r in rows if r.get("stale")),
-            "values_by_provider": {r["provider"]: r.get("value") or "" for r in rows}}
+            "values_by_provider": {r["provider"]: r.get("value") or "" for r in rows},
+            # D-038: each provider keeps its own evidence status; agreement never upgrades it
+            "evidence_statuses": {r["provider"]: r.get("evidence_status") for r in rows},
+            "evidence_status": (rows[0].get("evidence_status") if len({r.get("evidence_status") for r in rows}) == 1
+                                else "MIXED"),
+            "evidence_recorded": any(r.get("evidence_recorded") for r in rows),
+            "validation_state": "partially_valid" if any(r.get("validation_state") == "partially_valid" for r in rows)
+            else ("invalid" if any(r.get("validation_state") == "invalid" for r in rows) else "valid"),
+            "evidence_review_reason": "; ".join(f"{r['provider']}: {r['evidence_review_reason']}" for r in rows
+                                                if r.get("evidence_review_reason")),
+            "alternatives": [dict(a, provider=r["provider"]) for r in rows for a in (r.get("alternatives") or [])],
+            "missing_evidence": "; ".join(f"{r['provider']}: {r['missing_evidence']}" for r in rows
+                                          if r.get("missing_evidence"))}
 
 
 def current_value(case_id: int, variable: str) -> tuple[str, str]:
@@ -1259,6 +1296,8 @@ def current_value(case_id: int, variable: str) -> tuple[str, str]:
     d, comp = row["display"], row.get("comparison")
     if comp and comp["status"] != "model_agreement":
         return "", "providers disagree"
+    if d.get("evidence_review_reason"):
+        return "", d["evidence_review_reason"]  # D-038: an INFERRED/AMBIGUOUS/... value never feeds a derived field
     if d["status"] in ("suggested", "derived", "admin_generated"):
         return d["value"] or "", "suggestion"
     return "", "suggestion"

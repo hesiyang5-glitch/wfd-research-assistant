@@ -41,6 +41,9 @@ If a request conflicts with an established requirement here, point out the confl
 - Separate the observed failure from its cause. Several possible causes establish none of them; an uncertain
   cause must not erase a documented failure. Preserve conflicting evidence.
 - Model suggestions stay separate from human-approved values. Reanalysis never overwrites reviewed values.
+- Evidence status (SUPPORTED / INFERRED / AMBIGUOUS / INSUFFICIENT / CONFLICTING, D-038) is separate from
+  validation status. Never turn INFERRED into a final value automatically, never force a value for the other three,
+  and never let model agreement upgrade an evidence status.
 - Claude and OpenAI are EQUAL independent providers (no primary/secondary/reviewer; D-036). They interpret the same
   shared evidence snapshot with the same analysis version and never see each other's answers. Agreement is not
   verification. Matched-version and cross-version comparisons are distinguished (D-035 retained): cross-version results
@@ -75,6 +78,7 @@ python3 -m tests.test_bulk_agreement  # bulk confirmation of independent model a
 python3 -m tests.test_resilience      # thread limits, shared evidence index, crash-safe ledger, paused recovery, health under load
 python3 -m tests.test_independent_providers  # equal providers, first-form provider choice, versions, cache identity (D-036)
 python3 -m tests.test_cross_version   # matched vs cross-version comparison, warning + acknowledgement, version panel (D-035/D-036)
+python3 -m tests.test_evidence_status # five evidence statuses x both providers, validation separate, no upgrade on agreement (D-038)
 python3 -m tests.test_multiselect_validation  # per-selection multi-select validation, partially valid, reason codes (D-037)
 ```
 

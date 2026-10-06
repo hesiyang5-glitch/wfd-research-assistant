@@ -90,10 +90,10 @@ class Fake:
         for n in names:
             v = self.policy.get(n)
             if v is None or not ps:
-                res.append({"variable": n, "value": "", "status": "insufficient_evidence", "evidence": []})
+                res.append({"variable": n, "value": "", "status": "insufficient_evidence", "evidence_status": "INSUFFICIENT", "evidence": []})
                 continue
             pid, text = ps[0]
-            res.append({"variable": n, "value": v, "status": "suggested", "rationale": f"{self.provider} rationale",
+            res.append({"variable": n, "value": v, "status": "suggested", "evidence_status": "SUPPORTED", "rationale": f"{self.provider} rationale",
                         "unresolved": "", "evidence": [{"id": pid, "quote": text.strip()[:60], "stance": "supports"}]})
         return {"text": json.dumps({"results": res}), "input_tokens": 1000, "output_tokens": 200, "stop_reason": "end_turn"}
 

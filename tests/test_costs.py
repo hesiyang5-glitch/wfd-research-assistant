@@ -127,7 +127,7 @@ def main():
             if self.mode == "billed_fail":
                 raise clients.LLMError("read timeout", possibly_billed=True)
             names = [l.split("### ")[1].split("  (")[0] for l in user.splitlines() if l.startswith("### ")]
-            body = json.dumps({"results": [{"variable": x, "value": "", "status": "insufficient_evidence", "evidence": []}
+            body = json.dumps({"results": [{"variable": x, "value": "", "status": "insufficient_evidence", "evidence_status": "INSUFFICIENT", "evidence": []}
                                            for x in names]})
             if self.mode == "truncated":
                 return {"text": body[: len(body) // 2], "input_tokens": 1000, "output_tokens": max_tokens, "stop_reason": "max_tokens"}

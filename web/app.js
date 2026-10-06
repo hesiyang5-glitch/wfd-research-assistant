@@ -30,17 +30,39 @@ const COMP_TEXT = { model_agreement: ["模型一致", "Model agreement"], value_
 const compText = (c) => (COMP_TEXT[c] ? L(COMP_TEXT[c][0], COMP_TEXT[c][1]) : c);
 const CELL_TEXT = { not_run: ["未运行", "Not run"], suggested: ["建议", "Suggested"], disputed: ["有争议", "Disputed"], partially_valid: ["部分有效", "Partially valid"], no_supported_value: ["无证据支持的值", "No supported value"], stopped: ["已停止", "Stopped"], failed: ["失败", "Failed"], invalid_output: ["输出无效", "Invalid output"], limit_reached: ["达到上限，未编码", "Limit reached"] };
 const cellText = (st) => (CELL_TEXT[st] ? L(CELL_TEXT[st][0], CELL_TEXT[st][1]) : st);
+// D-038: evidence status (how well the evidence supports the value) is separate from validation status (whether the
+// reply passed the server checks). Older results have no evidence status: shown as "not recorded".
+const ES_TEXT = { SUPPORTED: ["证据直接支持", "Supported"], INFERRED: ["推断", "Inferred"], AMBIGUOUS: ["有歧义", "Ambiguous"], INSUFFICIENT: ["证据不足", "Insufficient"], CONFLICTING: ["证据冲突", "Conflicting"], MIXED: ["各模型不同", "Differs by model"] };
+const ES_HELP = { SUPPORTED: ["引用的证据直接满足编码手册定义", "The cited evidence directly satisfies the codebook definition"], INFERRED: ["最可能的解释，但需要证据未直接确立的推断；不会自动成为最终值", "Best interpretation, but it needs an inference the evidence does not directly establish; never becomes a final value automatically"], AMBIGUOUS: ["不止一个允许值都有合理依据", "More than one permitted value remains reasonably supported"], INSUFFICIENT: ["证据不足以确立可辩护的值", "The evidence does not establish a defensible value"], CONFLICTING: ["可信证据支持互不相容的解释", "Credible evidence supports incompatible interpretations"] };
+const ES_BADGE = { SUPPORTED: "ok", INFERRED: "info", AMBIGUOUS: "warn", INSUFFICIENT: "", CONFLICTING: "bad", MIXED: "warn" };
+const VS_TEXT = { valid: ["通过验证", "Valid"], partially_valid: ["部分通过验证", "Partially valid"], invalid: ["未通过验证", "Invalid"], not_applicable: ["不适用", "Not applicable"] };
+const esText = (es) => (es ? (ES_TEXT[es] ? L(ES_TEXT[es][0], ES_TEXT[es][1]) : es) : L("未记录", "not recorded"));
+const vsText = (vs) => (VS_TEXT[vs] ? L(VS_TEXT[vs][0], VS_TEXT[vs][1]) : (vs || L("未记录", "not recorded")));
+function esBadge(es, recorded) {
+  if (!es && !recorded) return "";
+  return ` <span class="badge ${ES_BADGE[es] || "warn"} es-badge" data-es="${esc(es || "missing")}" title="${esc(ES_HELP[es] ? L(ES_HELP[es][0], ES_HELP[es][1]) : L("回复未给出证据状态", "The reply gave no evidence status"))}">${esc(esText(es))}</span>`;
+}
+function statusLines(m) {
+  // evidence status and validation status, always shown as two separate facts
+  const alts = (m.alternatives || []);
+  return `<div class="small es-lines"><b>${L("证据状态", "Evidence status")}:</b> ${esc(esText(m.evidence_status))}${m.evidence_status && ES_HELP[m.evidence_status] ? ` <span class="muted">— ${esc(L(ES_HELP[m.evidence_status][0], ES_HELP[m.evidence_status][1]))}</span>` : (!m.evidence_recorded ? ` <span class="muted">${L("（此结果早于证据状态功能）", "(result predates evidence statuses)")}</span>` : "")}
+    · <b>${L("验证状态", "Validation status")}:</b> ${esc(vsText(m.validation_state))}</div>
+    ${alts.length ? `<div class="small"><b>${L("其他候选值", "Alternative values")}:</b> ${alts.map((a) => `<span class="mono">${esc(a.value)}</span>${a.provider ? ` (${esc(PROV[a.provider] || a.provider)})` : ""} [${(a.evidence || []).map((e) => esc(e.id)).join(", ")}]`).join("; ")}</div>` : ""}
+    ${m.missing_evidence ? `<div class="small"><b>${L("缺少的证据", "Missing evidence")}:</b> ${esc(m.missing_evidence)}</div>` : ""}
+    ${m.evidence_review_reason ? `<div class="small muted">${L("不会作为未复核值导出或用于推导字段", "Not exported as an unreviewed value or used for derived fields")}: ${esc(m.evidence_review_reason)}</div>` : ""}`;
+}
 function cellHtml(cell, row) {
   // One provider's cell. Each state has its own look so "not run", "no supported value", "stopped", "failed" and
   // "invalid output" can never be mistaken for one another or for a real value.
   const c = cell || { state: "not_run" };
   const stopNote = c.stopped_latest ? `<div><span class="cell-tag st-stopped">⏸ ${esc(L("最近一次已停止", "latest run stopped"))}</span></div>` : "";
   const roleNote = c.interpretation === "cross_model_review" ? ` <span class="badge warn" title="${esc(interpText("cross_model_review"))}">${L("跨模型复核", "cross-model")}</span>` : "";
+  const esTag = ["suggested", "disputed", "partially_valid", "no_supported_value"].includes(c.state) ? esBadge(c.evidence_status, c.evidence_recorded) : "";
   if (["suggested", "disputed", "partially_valid"].includes(c.state) && c.value) {
-    return `<div class="cell-val st-${c.state}"><span class="mono">${esc(c.value.slice(0, 48))}</span>${c.state === "disputed" ? ` <span class="cell-tag st-disputed">${esc(cellText("disputed"))}</span>` : ""}${c.state === "partially_valid" ? ` <span class="cell-tag st-invalid_output" title="${esc(L("部分选项未通过验证，已被拒绝；保留的是有证据支持的选项", "Some selections failed validation and were rejected; the supported selections are kept"))}">${esc(cellText("partially_valid"))}</span>` : ""}${c.changed ? ` <span class="badge warn" title="${esc(L("上次", "previous") + ": " + (c.previous_value || "∅"))}">Δ</span>` : ""}${roleNote}</div>${stopNote}`;
+    return `<div class="cell-val st-${c.state}"><span class="mono">${esc(c.value.slice(0, 48))}</span>${esTag}${c.state === "disputed" ? ` <span class="cell-tag st-disputed">${esc(cellText("disputed"))}</span>` : ""}${c.state === "partially_valid" ? ` <span class="cell-tag st-invalid_output" title="${esc(L("部分选项未通过验证，已被拒绝；保留的是有证据支持的选项", "Some selections failed validation and were rejected; the supported selections are kept"))}">${esc(cellText("partially_valid"))}</span>` : ""}${c.changed ? ` <span class="badge warn" title="${esc(L("上次", "previous") + ": " + (c.previous_value || "∅"))}">Δ</span>` : ""}${roleNote}</div>${stopNote}`;
   }
   const icon = { not_run: "—", no_supported_value: "∅", stopped: "⏸", failed: "✕", invalid_output: "⚠", limit_reached: "⛔", disputed: "≠" }[c.state] || "";
-  return `<span class="cell-tag st-${esc(c.state)}">${icon} ${esc(cellText(c.state))}</span>${roleNote}${stopNote}`;
+  return `<span class="cell-tag st-${esc(c.state)}">${icon} ${esc(cellText(c.state))}</span>${esTag}${roleNote}${stopNote}`;
 }
 const availModes = () => (STATUS.modes || []).filter((m) => m.available);
 function providerCostRows(e) {
@@ -631,6 +653,7 @@ function drawDetail(c) {
       ${cellHtml((r.cells || {})[m.provider === "openai_compatible" ? "openai" : m.provider], r)}${m.cache_status && m.cache_status !== "new" ? `<span class="badge info">${L("缓存", "cache")}</span>` : ""}<span class="spacer"></span>
       <button class="small" data-accept-sid="${m.id}" ${m.value && !["model_error", "validation_failed"].includes(m.status) ? "" : "disabled"}>${L("接受此建议", "Accept this")}</button></div>
       <div class="val" style="margin:4px 0">${esc(m.value) || `<span class="muted">(blank)</span>`}${m.value && r.codes.length ? ` <span class="small">${esc(codeLabel(r, m.value))}</span>` : ""}</div>
+      ${statusLines(m)}
       ${m.rationale ? `<div class="small"><b>${t("rationale")}:</b> ${esc(m.rationale)}</div>` : ""}
       ${m.unresolved ? `<div class="small"><b>${t("unresolved")}:</b> ${esc(m.unresolved)}</div>` : ""}
       ${((m.validation || {}).selections || []).some((x) => x.outcome === "rejected") ? `<div class="callout warn small"><b>${L("被拒绝的选项", "Rejected selections")}:</b> ${m.validation.selections.filter((x) => x.outcome === "rejected").map((x) => `<span class="mono">${esc(x.code)}</span> (${esc((x.reasons || []).join(", "))})`).join("; ")}<br>${L("保留的选项", "Kept")}: <span class="mono">${esc(m.value || "—")}</span></div>` : ""}
@@ -639,6 +662,7 @@ function drawDetail(c) {
     ${s.status ? `<div class="row"><span class="badge">${esc(s.status)}</span><span class="small muted">${t("basis")}: ${esc(s.basis || "")}${s.provider ? ` · ${esc(PROV[s.provider] || s.provider)} ${esc(s.model || "")}` : ""}</span></div>
       <div class="val" style="font-size:14px;margin:6px 0">${esc(s.value) || `<span class="muted">(blank)</span>`}</div>
       ${s.value && r.codes.length ? `<div class="small">${esc(codeLabel(r, s.value))}</div>` : ""}
+      ${s.basis === "model" ? (s.display_kind === "two_providers" ? `<div class="small es-lines"><b>${L("证据状态", "Evidence status")}:</b> ${Object.entries(s.evidence_statuses || {}).map(([p, es]) => `${esc(PROV[p] || p)}: ${esc(esText(es))}`).join(" · ")} <span class="muted">${L("（模型一致不会提升证据状态）", "(agreement never upgrades an evidence status)")}</span> · <b>${L("验证状态", "Validation status")}:</b> ${esc(vsText(s.validation_state))}</div>${s.evidence_review_reason ? `<div class="small muted">${esc(s.evidence_review_reason)}</div>` : ""}` : statusLines(s)) : ""}
       ${s.stale ? `<div class="callout bad small">${t("stale")}: ${esc(s.stale_reason)} <button class="small" id="recodeOne">${t("recode")}</button></div>` : ""}
       ${r.previous ? `<div class="diff">${t("prev_run")}: <b class="mono">${esc(r.previous.value || "(blank)")}</b> (${esc(r.previous.status)}) → <b class="mono">${esc(s.value || "(blank)")}</b> (${esc(s.status)})</div>` : ""}
       ${s.rationale ? `<p><b>${t("rationale")}:</b> ${esc(s.rationale)}</p>` : ""}

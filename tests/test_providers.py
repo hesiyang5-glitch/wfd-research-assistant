@@ -61,9 +61,9 @@ def answer_for(var: str, prompt: str, policy: dict) -> dict:
         ev = [{"id": pid, "quote": quote, "stance": "supports"}]
         codes = [c.strip() for c in policy[var].split(",") if c.strip()]
         opts = [{"code": c, "evidence": ev} for c in codes] if len(codes) > 1 else []  # multi-select: evidence per code
-        return {"variable": var, "value": policy[var], "status": "suggested", "evidence": ev, "options": opts,
+        return {"variable": var, "value": policy[var], "status": "suggested", "evidence_status": "SUPPORTED", "evidence": ev, "options": opts,
                 "rationale": "test rationale", "unresolved": ""}
-    return {"variable": var, "value": "", "status": "insufficient_evidence", "evidence": [], "options": [],
+    return {"variable": var, "value": "", "status": "insufficient_evidence", "evidence_status": "INSUFFICIENT", "evidence": [], "options": [],
             "rationale": "", "unresolved": ""}
 
 
@@ -122,6 +122,7 @@ class OAMock:
                 if res[k]["variable"] == "FAILURE_TYPE":
                     res[k]["value"] = "99"
                     res[k]["status"] = "suggested"
+                    res[k]["evidence_status"] = "SUPPORTED"
                     ps = passages_in(body["input"]) or [("S1-P1", "no passage in this batch")]
                     res[k]["evidence"] = [{"id": ps[0][0], "quote": ps[0][1][:60], "stance": "supports"}]
             text = json.dumps({"results": res})
@@ -288,8 +289,8 @@ def main():
     except SchemaViolation:
         check("2 schema-noncompliant reply rejected by the normalizer", True)
     kmap = {v["properties"]["variable"]["enum"][0]: k for k, v in bs["properties"]["results"]["properties"].items()}
-    good = {"results": {kmap["SYSTEM_LEVEL"]: {"variable": "SYSTEM_LEVEL", "value": "", "status": "insufficient_evidence", "evidence": [], "options": [], "rationale": "", "unresolved": ""},
-                        kmap["SYSTEM_INVOLVED"]: {"variable": "SYSTEM_INVOLVED", "value": ["WEA", "EAS"], "status": "suggested", "evidence": [], "options": [], "rationale": "", "unresolved": ""}}}
+    good = {"results": {kmap["SYSTEM_LEVEL"]: {"variable": "SYSTEM_LEVEL", "value": "", "status": "insufficient_evidence", "evidence_status": "INSUFFICIENT", "evidence": [], "options": [], "rationale": "", "unresolved": ""},
+                        kmap["SYSTEM_INVOLVED"]: {"variable": "SYSTEM_INVOLVED", "value": ["WEA", "EAS"], "status": "suggested", "evidence_status": "SUPPORTED", "evidence": [], "options": [], "rationale": "", "unresolved": ""}}}
     out = {o["variable"]: o for o in normalize_structured(good, fs)}
     check("2 normalizer: array value → 'WEA, EAS' string, blank stays blank", out["SYSTEM_INVOLVED"]["value"] == "WEA, EAS" and out["SYSTEM_LEVEL"]["value"] == "")
     swapped = json.loads(json.dumps(good))
@@ -499,8 +500,11 @@ def main():
           k(o_cli, role="primary") == k(o_cli, role="independent") == base)
     rv_prompt = prompt + coding.review_block(fs0, {f["name"]: {"value": "3", "status": "suggested"} for f in fs0}, "Claude")
     check("15 cross-model context (other model's answers in the prompt) → new key", k(o_cli, prompt=rv_prompt) != base)
-    check("Claude's system prompt text is unchanged (existing results keep their meaning)",
-          __import__("hashlib").sha256(coding.SYSTEM_PROMPT.encode()).hexdigest() == "412c9af33b58b92e19703ae229425272d5d170ecd18f490b11267ebf03f1e86f")
+    # pinned: any prompt change must be deliberate (it creates a new analysis version). Changed in D-038
+    # (evidence statuses); before that it was 412c9af33b58b92e19703ae229425272d5d170ecd18f490b11267ebf03f1e86f
+    check("Claude's system prompt text is pinned (changes only deliberately, with a new prompt version)",
+          __import__("hashlib").sha256(coding.SYSTEM_PROMPT.encode()).hexdigest() == "64a04116c132078f27113d24971ebb2a0161581700d50ced0acbed53af98e4af"
+          and coding.PROMPT_VERSION == "wfd-prompt-2026-10-06")
     # legacy Claude cache (pre-OpenAI key format) still reused, read-only
     cL, stL = new_case("case legacy cache")
     prepL = coding.prepare(case_row(cL), stL, ["SYSTEM_LEVEL"])

@@ -18,6 +18,9 @@ Eligible only when ALL hold (D-036, replaces the D-035 separate-runs rule of 202
  5. The field is model-coded and of type categorical, numeric, date, or open list with ONLY codebook-listed options.
     Free text, administrative, generated and derived fields are never eligible.
  6. No review exists for the variable (accepted, edited, cleared or deferred).
+ 7. (D-038) Both providers reported evidence status SUPPORTED. INFERRED, AMBIGUOUS, CONFLICTING, INSUFFICIENT or a
+    missing status are never confirmed in bulk — agreement does not upgrade an evidence status. Results stored before
+    evidence statuses existed (status "not recorded") keep their earlier eligibility, with that disclosed.
 Two blank answers are 'Both insufficient', never an agreed value.
 """
 from __future__ import annotations
@@ -28,6 +31,7 @@ import time
 import uuid
 
 from . import db
+from . import evidence_status as es_mod
 from .validator import _num, split_values
 
 METHOD = "bulk_independent_agreement"
@@ -130,7 +134,8 @@ def assess(case_id: int, field: dict, sset: dict | None, review: dict | None) ->
     cross = kind == "cross_version"
     diffs = version_differences(a, b, ra, rb) if cross else []
     vinfo = {"comparison_class": "cross_version" if cross else "matched_version", "differences": diffs,
-             "claude": _prov_info(a, ra), "openai": _prov_info(b, rb)}
+             "claude": _prov_info(a, ra), "openai": _prov_info(b, rb),
+             "evidence_statuses": {"claude": es_mod.evidence_status_of(a), "openai": es_mod.evidence_status_of(b)}}
     if na != nb:
         if cross:  # never attributed to Claude vs OpenAI alone (D-035/D-036)
             return out("cross_version_disagreement", "Results differ, but the models also used different analysis "
@@ -149,6 +154,16 @@ def assess(case_id: int, field: dict, sset: dict | None, review: dict | None) ->
         problems.append("a provider marked it disputed or the rule unclear")
     if a.get("counter") or b.get("counter"):
         problems.append("a provider reported contradicting or alternative evidence")
+    not_recorded = []
+    for who, r in (("Claude", a), ("OpenAI", b)):
+        es = es_mod.evidence_status_of(r)
+        if es_mod.recorded(r):
+            if es is None:
+                problems.append(f"{who} gave no evidence status")
+            elif es != "SUPPORTED":
+                problems.append(f"{who} marked the evidence {es} — agreement does not upgrade it to SUPPORTED")
+        else:
+            not_recorded.append(who)
     if a.get("stale") or b.get("stale"):
         problems.append("cites a source that was excluded later")
     if not a.get("evidence") or not b.get("evidence"):
@@ -177,7 +192,9 @@ def assess(case_id: int, field: dict, sset: dict | None, review: dict | None) ->
     diff = not (src_a & src_b)
     cached = [p for p, r in (("claude", a), ("openai", b)) if is_cached(r)]
     notes = (["Same suggested value, different analysis versions (" + ", ".join(diffs) + ")"] if cross else []) + \
-            (["One or more results reused from validated cache"] if cached else [])
+            (["One or more results reused from validated cache"] if cached else []) + \
+            ([f"Evidence status not recorded for {' and '.join(not_recorded)} (result predates evidence statuses)"]
+             if not_recorded else [])
     status = "eligible_cross_version" if cross else ("eligible_evidence_difference" if diff else "eligible")
     return out(status, "; ".join(notes), evidence_difference=diff, reused_from_cache=bool(cached),
                cached_providers=cached, value=a["value"],
@@ -197,7 +214,8 @@ def _prov_info(row: dict, run: dict | None) -> dict:
             "generated_at": row.get("generated_at") or row.get("created_at"),
             "cache_status": row.get("cache_status") or "new",
             "evidence_snapshot_id": row.get("evidence_snapshot_id"), "analysis_spec_id": row.get("analysis_spec_id"),
-            "codebook_version": run.get("schema_version_id"), "prompt_version": run.get("prompt_version")}
+            "codebook_version": run.get("schema_version_id"), "prompt_version": run.get("prompt_version"),
+            "evidence_status": es_mod.evidence_status_of(row), "validation_status": es_mod.validation_status_of(row)}
 
 
 def case_assessments(case_id: int) -> dict:

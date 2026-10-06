@@ -15,8 +15,9 @@ import hashlib
 import json
 import re
 
-RESPONSE_SCHEMA_VERSION = "wfd-batch-v1"
-STATUSES = ["suggested", "insufficient_evidence", "disputed", "rule_unclear"]
+RESPONSE_SCHEMA_VERSION = "wfd-batch-v2"  # v2 (D-038): evidence_status, rule_unclear, alternatives, missing_evidence
+EVIDENCE_STATUSES = ["SUPPORTED", "INFERRED", "AMBIGUOUS", "INSUFFICIENT", "CONFLICTING"]
+STATUSES = ["suggested", "insufficient_evidence", "disputed", "rule_unclear"]  # v1 replies (read only)
 STANCES = ["supports", "contradicts", "alternative"]
 
 
@@ -62,15 +63,22 @@ def build_batch_schema(fields: list[dict], passage_ids: list[str]) -> dict:
         props[k] = {
             "type": "object", "additionalProperties": False,
             "description": f"Coding of variable {f['name']}",
-            "required": ["variable", "value", "status", "evidence", "options", "rationale", "unresolved"],
+            "required": ["variable", "value", "evidence_status", "rule_unclear", "evidence", "options",
+                         "alternatives", "missing_evidence", "rationale", "unresolved"],
             "properties": {
                 "variable": {"type": "string", "enum": [f["name"]]},
                 "value": _value_schema(f),
-                "status": {"type": "string", "enum": STATUSES},
+                "evidence_status": {"type": "string", "enum": EVIDENCE_STATUSES},
+                "rule_unclear": {"type": "boolean"},
                 "evidence": {"type": "array", "items": ev_ref},
                 "options": {"type": "array", "items": {
                     "type": "object", "additionalProperties": False, "required": ["code", "evidence"],
                     "properties": {"code": opt_code, "evidence": {"type": "array", "items": ev_ref}}}},
+                "alternatives": {"type": "array", "items": {
+                    "type": "object", "additionalProperties": False, "required": ["value", "evidence"],
+                    "properties": {"value": opt_code if (f["type"] == "categorical" and codes) else {"type": "string"},
+                                   "evidence": {"type": "array", "items": ev_ref}}}},
+                "missing_evidence": {"type": "string"},
                 "rationale": {"type": "string"},
                 "unresolved": {"type": "string"},
             },
@@ -108,7 +116,10 @@ def normalize_structured(data, fields: list[dict]) -> list[dict]:
             raise SchemaViolation(f"reply does not match the response schema (no entry for {f['name']})")
         if item.get("variable") != f["name"]:
             raise SchemaViolation(f"reply entry for {f['name']} names a different variable")
-        if item.get("status") not in STATUSES:
+        es = item.get("evidence_status")
+        if es is not None and es not in EVIDENCE_STATUSES:
+            raise SchemaViolation(f"invalid evidence_status for {f['name']}")
+        if es is None and item.get("status") not in STATUSES:  # a v1-shaped reply must at least carry a v1 status
             raise SchemaViolation(f"invalid status for {f['name']}")
         v = item.get("value")
         if isinstance(v, list):
@@ -120,7 +131,18 @@ def normalize_structured(data, fields: list[dict]) -> list[dict]:
         for ev in (item.get("evidence") or []):
             if not isinstance(ev, dict) or ev.get("stance") not in STANCES:
                 raise SchemaViolation(f"invalid evidence entry for {f['name']}")
-        out.append({"variable": f["name"], "value": v, "status": item["status"], "evidence": item.get("evidence") or [],
-                    "options": item.get("options") or [], "rationale": item.get("rationale") or "",
-                    "unresolved": item.get("unresolved") or ""})
+        alts = []
+        for a in (item.get("alternatives") or []):
+            if isinstance(a, dict) and isinstance(a.get("value"), list):
+                a = {**a, "value": ", ".join(str(x) for x in a["value"])}
+            alts.append(a)
+        row = {"variable": f["name"], "value": v, "evidence": item.get("evidence") or [],
+               "options": item.get("options") or [], "alternatives": alts,
+               "missing_evidence": item.get("missing_evidence") or "", "rule_unclear": item.get("rule_unclear") is True,
+               "rationale": item.get("rationale") or "", "unresolved": item.get("unresolved") or ""}
+        if es is not None:
+            row["evidence_status"] = es
+        if item.get("status") in STATUSES:
+            row["status"] = item["status"]
+        out.append(row)
     return out

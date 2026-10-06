@@ -67,7 +67,7 @@ class Model:
         for n in names:
             spec = self.policy.get(n)
             if spec is None or not ps:
-                res.append({"variable": n, "value": "", "status": "insufficient_evidence", "evidence": []})
+                res.append({"variable": n, "value": "", "status": "insufficient_evidence", "evidence_status": "INSUFFICIENT", "evidence": []})
                 continue
             spec = spec if isinstance(spec, dict) else {"value": spec}
             pid, text = by_src[srcs[min(spec.get("src", 0), len(srcs) - 1)]][0]
@@ -76,7 +76,7 @@ class Model:
             if spec.get("counter"):
                 ev.append({"id": pid, "quote": text.strip()[:40], "stance": "alternative"})
             codes = [c.strip() for c in spec["value"].split(",")] if spec.get("multi") else []
-            res.append({"variable": n, "value": spec["value"], "status": "suggested", "evidence": ev,
+            res.append({"variable": n, "value": spec["value"], "status": "suggested", "evidence_status": "SUPPORTED", "evidence": ev,
                         "options": [{"code": c, "evidence": ev[:1]} for c in codes] if len(codes) > 1 else [],
                         "rationale": f"{self.provider} rationale", "unresolved": ""})
         return {"text": json.dumps({"results": res}), "input_tokens": 1000, "output_tokens": 200, "stop_reason": "end_turn",

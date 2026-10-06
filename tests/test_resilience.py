@@ -132,7 +132,7 @@ def main():
             seen["rows"] = db.q("SELECT status, cost_usd, http_attempts FROM model_calls WHERE case_id=? ORDER BY id DESC",
                                 (cid,))
             names = [l.split("### ")[1].split("  (")[0] for l in user.splitlines() if l.startswith("### ")]
-            body = json.dumps({"results": [{"variable": x, "value": "", "status": "insufficient_evidence", "evidence": []}
+            body = json.dumps({"results": [{"variable": x, "value": "", "status": "insufficient_evidence", "evidence_status": "INSUFFICIENT", "evidence": []}
                                            for x in names]})
             return {"text": body, "input_tokens": 1000, "output_tokens": 300, "stop_reason": "end_turn"}
 

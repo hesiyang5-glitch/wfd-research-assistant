@@ -171,25 +171,25 @@ def main():
             ok_q = q if ok_id == real["id"] else next(p for p in db.q("SELECT text FROM passages WHERE id=?", (ok_id,)))["text"][:60]
             res = []
             for name in [l.split("### ")[1].split("  (")[0] for l in user.splitlines() if l.startswith("### ")]:
-                item = {"variable": name, "value": "", "status": "insufficient_evidence", "evidence": [], "rationale": "not found"}
+                item = {"variable": name, "value": "", "status": "insufficient_evidence", "evidence_status": "INSUFFICIENT", "evidence": [], "rationale": "not found"}
                 if name == "SYSTEM_LEVEL":
-                    item.update(value="3", status="suggested", evidence=[{"id": ok_id, "quote": ok_q, "stance": "supports"}], rationale="county")
+                    item.update(value="3", status="suggested", evidence_status="SUPPORTED", evidence=[{"id": ok_id, "quote": ok_q, "stance": "supports"}], rationale="county")
                 if name == "SYSTEM_INVOLVED":
-                    item.update(value="WEA, LOCAL", status="suggested", evidence=[{"id": ok_id, "quote": ok_q, "stance": "supports"}],
+                    item.update(value="WEA, LOCAL", status="suggested", evidence_status="SUPPORTED", evidence=[{"id": ok_id, "quote": ok_q, "stance": "supports"}],
                                 options=[{"code": "WEA", "evidence": [{"id": ok_id, "quote": ok_q}]}])  # LOCAL lacks own evidence
                 if name == "FAILURE_TYPE":
-                    item.update(value="9", status="suggested", evidence=[{"id": ok_id, "quote": ok_q, "stance": "supports"}])
+                    item.update(value="9", status="suggested", evidence_status="SUPPORTED", evidence=[{"id": ok_id, "quote": ok_q, "stance": "supports"}])
                 if name == "POPULATION_SCOPE":
-                    item.update(value="3", status="suggested", evidence=[{"id": ok_id, "quote": "Officials confirmed that 4,000 sirens were activated", "stance": "supports"}])
+                    item.update(value="3", status="suggested", evidence_status="SUPPORTED", evidence=[{"id": ok_id, "quote": "Officials confirmed that 4,000 sirens were activated", "stance": "supports"}])
                 if name == "ALERT_APPROVAL_PROCESS":
-                    item.update(value="2", status="suggested", evidence=[{"id": "S999-P1", "quote": "invented passage id here", "stance": "supports"}])
+                    item.update(value="2", status="suggested", evidence_status="SUPPORTED", evidence=[{"id": "S999-P1", "quote": "invented passage id here", "stance": "supports"}])
                 if name == "INTERAGENCY_COORDINATION":
-                    item.update(value="-9", status="suggested", evidence=[{"id": ok_id, "quote": ok_q, "stance": "supports"}])
+                    item.update(value="-9", status="suggested", evidence_status="SUPPORTED", evidence=[{"id": ok_id, "quote": ok_q, "stance": "supports"}])
                 if name == "TRAINING_AND_PROCEDURAL_CONTEXT":
-                    item.update(value="", status="disputed", evidence=[{"id": ok_id, "quote": ok_q, "stance": "alternative"}],
+                    item.update(value="", status="disputed", evidence_status="CONFLICTING", evidence=[{"id": ok_id, "quote": ok_q, "stance": "alternative"}],
                                 unresolved="software vs operator explanations conflict")
                 if name == "TRANSMISSION_LATENCY":
-                    item.update(value="-9", status="suggested", evidence=[{"id": ok_id, "quote": ok_q, "stance": "supports"}])
+                    item.update(value="-9", status="suggested", evidence_status="SUPPORTED", evidence=[{"id": ok_id, "quote": ok_q, "stance": "supports"}])
                 res.append(item)
             return {"text": json.dumps({"results": res}), "input_tokens": 1000, "output_tokens": 500}
 

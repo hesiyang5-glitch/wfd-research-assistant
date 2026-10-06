@@ -139,11 +139,11 @@ def main():
             res = []
             for n in names:
                 if n == "SYSTEM_INVOLVED":  # the benchmark shape: list value, per-option evidence, empty top-level
-                    res.append({"variable": n, "value": ["WEA", "LOCAL"], "status": "suggested", "evidence": [],
+                    res.append({"variable": n, "value": ["WEA", "LOCAL"], "status": "suggested", "evidence_status": "SUPPORTED", "evidence": [],
                                 "options": [opt("WEA", sup(pid, WEA_Q)), opt("LOCAL", sup(pid, LOCAL_Q))],
                                 "rationale": "both channels named", "unresolved": ""})
                 else:
-                    res.append({"variable": n, "value": "", "status": "insufficient_evidence", "evidence": []})
+                    res.append({"variable": n, "value": "", "status": "insufficient_evidence", "evidence_status": "INSUFFICIENT", "evidence": []})
             return {"text": json.dumps({"results": res}), "input_tokens": 900, "output_tokens": 150, "stop_reason": "end_turn"}
 
     class OpenAILike:
@@ -160,13 +160,13 @@ def main():
             out = {}
             for i, n in enumerate(names):
                 if n == "SYSTEM_INVOLVED":  # WEA supported, SIREN with a fabricated quote
-                    out[prop_key(i, n)] = {"variable": n, "value": ["WEA", "SIREN"], "status": "suggested", "evidence": [],
+                    out[prop_key(i, n)] = {"variable": n, "value": ["WEA", "SIREN"], "status": "suggested", "evidence_status": "SUPPORTED", "evidence": [],
                                            "options": [opt("WEA", sup(pid, WEA_Q)),
                                                        opt("SIREN", sup(pid, "sirens wailed across the valley"))],
                                            "rationale": "r", "unresolved": ""}
                 else:
                     out[prop_key(i, n)] = {"variable": n, "value": [] if F[n].get("multi") and F[n]["type"] == "categorical" else "",
-                                           "status": "insufficient_evidence", "evidence": [], "options": [],
+                                           "status": "insufficient_evidence", "evidence_status": "INSUFFICIENT", "evidence": [], "options": [],
                                            "rationale": "", "unresolved": ""}
             return {"text": json.dumps({"results": out}), "input_tokens": 900, "output_tokens": 150, "stop_reason": "completed"}
 
@@ -203,7 +203,7 @@ def main():
     check("18 Human final unchanged by re-analysis", db.q1("SELECT value, action FROM reviews WHERE case_id=? AND "
                                                          "variable='SYSTEM_LEVEL'", (cid,)) == {"value": "3", "action": "edited"})
     res = normalize_structured({"results": {prop_key(0, "SYSTEM_INVOLVED"): {
-        "variable": "SYSTEM_INVOLVED", "value": ["WEA", "LOCAL"], "status": "suggested", "evidence": [],
+        "variable": "SYSTEM_INVOLVED", "value": ["WEA", "LOCAL"], "status": "suggested", "evidence_status": "SUPPORTED", "evidence": [],
         "options": [opt("WEA", sup("S1-P1", WEA_Q)), opt("LOCAL", sup("S1-P1", LOCAL_Q))], "rationale": "", "unresolved": ""}}},
         [f_si])
     check("19 OpenAI normalization + validator: per-option evidence without top-level → valid",
