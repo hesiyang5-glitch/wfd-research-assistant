@@ -164,11 +164,13 @@ citations, and leaves every final decision to a human reviewer.
 | Claude (Anthropic) workflow unchanged; default mode stays Claude-only | TESTED offline (prompt byte-identical; all earlier suites pass) |
 | OpenAI via official SDK + Responses API + strict Structured Outputs; model from `OPENAI_MODEL` (default `gpt-6.1-sol`); key only from `OPENAI_API_KEY` | TESTED offline (mocked transport); **live UNVERIFIED** |
 | Same evidence, codebook and validator for both providers; normalized result structure | TESTED offline |
-| Modes: Claude only, OpenAI only, dual independent, either-primary-with-review; no automatic second provider | TESTED offline |
+| Modes: Claude only, OpenAI only, Claude + OpenAI independent comparison — chosen on the first form and in Re-analyze; no automatic second provider; no primary/secondary/reviewer hierarchy (D-036, branch) | TESTED offline (incl. browser) |
+| Research once per case, shared by providers; results reference the same evidence snapshot and analysis version (D-036, branch) | TESTED offline |
+| Free availability check and one-request budget minimum before a case starts; pause after research before paid coding (D-036, branch) | TESTED offline; live checks **UNVERIFIED** |
 | Search once per case regardless of providers | TESTED offline |
-| Independent coders never see each other's output; reviewer labelled not independent | TESTED offline |
+| Providers never see each other's output; cross-model review refused for new runs, historical rows labelled `cross_model_review` (D-036, branch) | TESTED offline |
 | Comparison statuses; disagreement routed to human review; agreement not treated as verification | TESTED offline |
-| Provider-specific cache keys; invalid/incomplete replies never cached | TESTED offline |
+| Provider-specific cache keys based on model-visible input, not role (K-40, D-036 branch); invalid/incomplete replies never cached | TESTED offline |
 | Unknown model / bad key / no quota → configuration error, no retries | TESTED offline |
 | Usage per provider incl. reasoning tokens and request ids | TESTED offline; real token figures **UNVERIFIED** |
 | Anthropic-only, OpenAI-only and manual fallbacks | TESTED offline |

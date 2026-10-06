@@ -3,6 +3,32 @@
 Completed changes, newest first. Commit hashes refer to `hesiyang5-glitch/wfd-research-assistant`.
 
 
+
+
+## 2026-10-05 — Equal independent providers, provider choice on the first form, matched vs cross-version comparison (merged to `main` 2026-10-05 with owner approval after a backup; live verification pending)
+- D-036 (D-035 retained). Migration `2026-10-05-independent-providers` (additive): `evidence_snapshots` (with passage
+  hashes), `analysis_specs`; new columns on runs, suggestions, model_calls, bulk_confirmations. Nothing old is rewritten.
+- Neutral providers: new runs `independent`; cross-model review refused for new runs (history labelled
+  `cross_model_review`); no Claude-preferred default; neutral wording; export "Interpretation" columns.
+- Two comparison classes: matched version (ticked by default) and cross-version (eligible under D-035, not ticked,
+  warning + acknowledgement required; codebook-version differences never bulk-confirmed); version-difference panel;
+  full audit of class, differences, warning, acknowledgement, versions, selection.
+- K-40 fixed: cache keyed by model-visible input, not role; earlier entries still found (read-only); not weakened by D-035.
+- First form: Coding provider choice, estimate per mode, confirmation, free availability check, one-request minimum,
+  optional pause after research. Re-analyze uses the same mode list.
+- Tests: new `test_independent_providers.py` (66) and `test_cross_version.py` (27), both with browser checks and a
+  network guard; `test_providers` 141, `test_bulk_agreement` 67. All 10 suites pass offline.
+
+## 2026-10-02 — Session handoff (documentation only)
+Completed and tested (offline suites; live where stated):
+- D-033 incident fix: deployed `f664344`; on Render thread pools = 1 and no failed health checks after deploy (owner).
+- D-035 separate-run bulk confirmation: offline 64/64 bulk tests + all suites pass; merged `2fbd11b`.
+Completed but not fully tested:
+- `2fbd11b` live: deploy pushed, owner did not yet confirm "Deploy live" or try the dialog; Excel sync test (accept/edit/bulk/export, edit kept after re-analysis) not yet done live.
+- Full OpenAI-only run completed live ($0.465); per-batch reasoning tokens / cut-offs not yet inspected; Render Events during the run not seen.
+Unresolved: K-40 (cache does not cross single/dual modes), K-41, K-06/K-26 cost reconciliation, K-04 coding accuracy.
+Deferred/planned: K-40 fix; lower OpenAI reasoning reserve from measured data (K-27); "Re-analyze selected" (K-42); Anthropic key rotation before 2026-10-31 (K-22).
+
 ## 2026-10-02 — Bulk confirmation for agreement from separate runs (merged to `main` 2026-10-02 with owner approval; live check pending)
 - `app/agreement.py`: new status `eligible_separate_runs` (D-035); core checks kept, prompt/evidence differences become
   warnings; confirmations use method `bulk_separate_run_agreement` with warnings in the reason and audit row.

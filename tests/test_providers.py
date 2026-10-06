@@ -487,7 +487,7 @@ def main():
                                          kw.get("ids", ids0), kw.get("pmap", prep["pmap"]), kw.get("schema", sch0 if c.supports_schema else None) if hasattr(c, "supports_schema") else None,
                                          kw.get("codebook", prep["codebook"]), kw.get("role", "primary"))
     base = k(o_cli)
-    check("14 Claude and OpenAI never share a cache key", k(a_cli) != base and base.startswith("llm2:"))
+    check("14 Claude and OpenAI never share a cache key", k(a_cli) != base and base.startswith("llm3:"))
     check("15 model change → new key", k(oa_client(model="gpt-6-astra")) != base)
     check("15 codebook version change → new key", k(o_cli, codebook="99:other codebook") != base)
     pm2 = {**prep["pmap"], ids0[0]: {**prep["pmap"][ids0[0]], "text": prep["pmap"][ids0[0]]["text"] + " (edited)"}}
@@ -495,7 +495,10 @@ def main():
     check("15 response schema change → new key", k(o_cli, schema=build_batch_schema(fs0, ids0[:-1] or ["X"])) != base)
     check("15 generation settings change (reasoning effort) → new key", k(oa_client(effort="high")) != base)
     check("15 variable-set change → new key", k(o_cli, fs=fs0[:-1] or fs0[:1]) != base if len(fs0) > 1 else True)
-    check("15 reviewer role (saw another model's output) → new key", k(o_cli, role="reviewer") != base)
+    check("15 run role label alone does NOT change the key (D-036, K-40)",
+          k(o_cli, role="primary") == k(o_cli, role="independent") == base)
+    rv_prompt = prompt + coding.review_block(fs0, {f["name"]: {"value": "3", "status": "suggested"} for f in fs0}, "Claude")
+    check("15 cross-model context (other model's answers in the prompt) → new key", k(o_cli, prompt=rv_prompt) != base)
     check("Claude's system prompt text is unchanged (existing results keep their meaning)",
           __import__("hashlib").sha256(coding.SYSTEM_PROMPT.encode()).hexdigest() == "412c9af33b58b92e19703ae229425272d5d170ecd18f490b11267ebf03f1e86f")
     # legacy Claude cache (pre-OpenAI key format) still reused, read-only
@@ -624,22 +627,36 @@ def main():
           and db.q1("SELECT COUNT(*) n FROM usage WHERE job_id=? AND kind='model'", (jid2,))["n"] == 0)
     check("search not repeated on re-analysis", db.q1("SELECT COUNT(*) n FROM search_queries WHERE job_id=?", (jid2,))["n"] == 0)
 
-    # reviewer mode
+    # cross-model review: outside the current scope (D-036) — refused for new runs; historical data stays readable
     c15, st15 = new_case("case reviewer", {"budget_usd": 10, "openai_budget_usd": 10})
     OA.policy, AN.policy, OA.requests, AN.requests = {"SYSTEM_LEVEL": "3"}, {"SYSTEM_LEVEL": "4"}, [], []
+    try:
+        server.api_recode(H2(), str(c15), {"variables": VARS, "mode": "anthropic_primary_openai_review"})
+        check("22 server refuses a new cross-model review run", False)
+    except server.ApiError:
+        check("22 server refuses a new cross-model review run", True)
     jid3 = jobs.enqueue(c15, "recode", {"variables": VARS, "mode": "anthropic_primary_openai_review"})
     research.run_research(db.q1("SELECT * FROM jobs WHERE id=?", (jid3,)))
+    j3 = db.q1("SELECT status, message FROM jobs WHERE id=?", (jid3,))
+    check("22 a queued cross-model job pauses before any request", j3["status"] == "needs_input" and not OA.requests
+          and not AN.requests and "outside the current scope" in j3["message"], str(j3))
+    coding.ALLOW_CROSS_MODEL_REVIEW = True  # only to create historical-style data for the audit checks below
+    jid3 = jobs.enqueue(c15, "recode", {"variables": VARS, "mode": "anthropic_primary_openai_review"})
+    research.run_research(db.q1("SELECT * FROM jobs WHERE id=?", (jid3,)))
+    coding.ALLOW_CROSS_MODEL_REVIEW = False
     rprompt = OA.requests[0]["input"]
-    check("22 reviewer prompt contains the primary model's suggestions", "PRIOR SUGGESTIONS FROM ANOTHER CODER (Claude (Anthropic)" in rprompt
+    check("22 historical cross-model prompt contains the other model's suggestions", "PRIOR SUGGESTIONS FROM ANOTHER CODER (Claude (Anthropic)" in rprompt
           and '"value": "4"' in rprompt)
     rr = db.q1("SELECT * FROM runs WHERE case_id=? AND role='reviewer'", (c15,))
-    check("22 reviewer run labelled not independent", rr and rr["independent"] == 0 and rr["provider"] == "openai" and "NOT an independent" in rr["notes"])
+    check("22 cross-model run labelled cross_model_review, not independent", rr and rr["independent"] == 0
+          and rr["provider"] == "openai" and rr["interpretation"] == "cross_model_review" and "not independent" in rr["notes"])
     row = next(r for r in export.case_results(c15)["rows"] if r["name"] == "SYSTEM_LEVEL")
-    check("22 comparison marked as reviewer-based (not independent)", row["comparison"]["kind"] == "reviewer"
-          and "not an independent" in row["comparison"]["note_reviewer"] and row["suggestion"]["provider"] == "anthropic")
+    check("22 comparison marked as cross-model review; no provider is the default suggestion",
+          row["comparison"]["kind"] == "cross_model_review" and row["suggestion"]["provider"] is None
+          and row["agreement"]["status"] == "cross_model_review" and not row["agreement"]["eligible"], str(row["comparison"]))
     xl = openpyxl.load_workbook(io.BytesIO(export.xlsx(c15)))
     vals = [[c.value for c in r] for r in xl["Provider_Suggestions"].iter_rows(min_row=2)]
-    check("22 export labels the reviewer as 'no (saw primary result)'", any(v[1] == "openai" and v[4] == "no (saw primary result)" for v in vals))
+    check("22 export labels it 'cross_model_review'", any(v[1] == "openai" and v[3] == "cross_model_review" for v in vals))
     os.environ.pop("WFD_TEST_FIXTURE", None)
 
     # =========================================================================================================
@@ -771,7 +788,7 @@ def main():
     rows = {r["name"]: r for r in export.case_results(c21)["rows"]}
     check("after Resume no Claude cell is 'stopped' and comparison is independent",
           all(r["cells"]["anthropic"]["state"] != "stopped" for r in rows.values() if r["name"] in VARS2)
-          and rows["SYSTEM_LEVEL"]["comparison"]["kind"] == "independent")
+          and rows["SYSTEM_LEVEL"]["comparison"]["kind"] == "matched_version")
     try:
         server.api_resume_provider(HH(), str(j21), "anthropic")
         check("nothing left to resume → clear message", False)
@@ -816,8 +833,11 @@ def main():
     rows = {r["name"]: r for r in export.case_results(c25)["rows"]}
     check("a later OpenAI-only run does NOT overwrite the Claude column", rows["SYSTEM_LEVEL"]["cells"]["anthropic"]["value"] == "3"
           and rows["SYSTEM_LEVEL"]["cells"]["openai"]["value"] == "4")
-    check("results from different runs are compared and labelled 'separate runs'",
-          rows["SYSTEM_LEVEL"]["comparison"]["kind"] == "separate_runs" and rows["SYSTEM_LEVEL"]["comparison"]["model_status"] == "value_disagreement")
+    cl = rows["SYSTEM_LEVEL"]["providers"]
+    check("results from different jobs on the SAME evidence and analysis version are compared (D-036), keeping "
+          "their own runs", rows["SYSTEM_LEVEL"]["comparison"]["kind"] == "matched_version"
+          and rows["SYSTEM_LEVEL"]["comparison"]["model_status"] == "value_disagreement"
+          and len({p["run_id"] for p in cl}) == 2)
     check("Human final unchanged by both runs", rows["FAILURE_TYPE"]["review"]["value"] == "6")
     OA.script = ["invalid_code"]
     jI = jobs.enqueue(c25, "recode", {"variables": ["FAILURE_TYPE"], "mode": "openai_only"})  # new batch → not a cache hit

@@ -204,7 +204,7 @@ Settings page (database) → each case's own settings. Existing cases keep the b
 defaults were saved with $3, new cases keep using $3 until that value is changed on the Settings page.
 **Not chosen.** Raising the OpenAI sub-budget or attempt caps (not requested; dual worst case fits under $5).
 
-## D-035 · 2026-10-02 · Agreement from separate runs can be bulk-confirmed, with a warning — Active (merged to `main` 2026-10-02 with owner approval)
+## D-035 · 2026-10-02 · Agreement from separate runs can be bulk-confirmed, with a warning — Active, RETAINED (owner 2026-10-05); refined by D-036 into matched-version vs cross-version classes
 **Context.** Owner (2026-10-02): the Marshall Fire case has Claude results from an earlier run and OpenAI results from a
 later OpenAI-only run; equal values were shown as "Agreement from separate runs — not eligible". Owner asked that
 separate runs not block bulk confirmation. This **changes the owner choice recorded in D-032** ("only the same
@@ -220,3 +220,50 @@ warnings, not blocks. Confirmations are written with `method = bulk_separate_run
 ("human-approved model agreement, separate runs (bulk)") say so. Same-run rules are unchanged.
 **Risk.** Two models may have seen different evidence or prompts; agreement is weaker evidence than in a
 dual-independent run. Mitigated by the unticked default, the warning and the distinct audit method.
+
+## D-036 · 2026-10-05 · Equal independent providers; provider choice on the first form; matched vs cross-version comparison; cache by model-visible input — Active (merged to `main` 2026-10-05 with owner approval)
+**D-035 is retained. Cross-version results may be compared and may remain eligible for human bulk confirmation with explicit disclosure. Matched-version and cross-version comparisons must be visually and methodologically distinguished.** (owner, verbatim)
+**Owner requirements (2026-10-05).** No primary/secondary/reviewer hierarchy: Claude and OpenAI are equal, independent
+providers; the human researcher is the only final decision-maker. Research belongs to the case (searched, fetched,
+deduplicated, indexed once); providers only interpret it. First form offers Claude only / OpenAI only / Claude + OpenAI —
+independent comparison. Cache identity must not depend on role labels (K-40).
+**Decision.**
+1. *Versions.* `evidence_snapshots` = fingerprint of every eligible passage (id + text), eligible sources (content hash,
+   excluded state), codebook, retrieval settings; it also stores each passage's text hash so differences can be listed.
+   `analysis_specs` = prompt version, hash of the shared coding rules, response-schema version, batching, codebook
+   (provider wire formatting excluded). New runs/suggestions/model calls record both, plus `interpretation`,
+   `generated_at` and, for cache reuse, `cache_source_run_id`.
+2. *Roles.* All new runs are `independent`; cross-model review (one model sees the other's answer) is refused for new
+   runs; historical rows read as `cross_model_review` (derived at read time, never rewritten) and never count as
+   independent agreement.
+3. *No preferred provider.* Two results → neutral combined view (agreed value or blank), never one provider's row.
+4. *Two comparison classes.*
+   - **Matched version** — both independent, same evidence snapshot (includes codebook) and same analysis version.
+     Owner choice: separate runs or validated-cache reuse with identical versions are matched (run dates and cache status
+     are shown, never called "same run"). Label "Independent agreement — matched analysis version"; eligible and ticked
+     by default; still one explicit human confirmation.
+   - **Cross-version** — both independent and valid, but evidence, codebook, prompt or analysis version differ or were not
+     recorded. Labels "Cross-version agreement — review version differences" / "Cross-version disagreement — model and
+     input differences may both contribute"; wording "Same suggested value, different analysis versions" / "Results
+     differ, but the models also used different analysis inputs". Agreement is eligible (D-035) but NOT ticked; ticking
+     shows the owner's warning text and Confirm stays disabled until "I have reviewed the version differences and
+     supporting evidence" is ticked; the server refuses without that acknowledgement. Owner choice: a codebook-version
+     difference is shown and compared but never bulk-confirmed (the same code may mean different things) — confirm
+     individually. Cross-version confirmations keep method `bulk_separate_run_agreement`.
+   - Disagreements, invalid, insufficient, stopped, failed or blank results are never eligible.
+   - Version-difference panel: both providers' evidence/codebook/prompt/analysis versions, model, original run, generation
+     time, cache status, which dimensions differ, sources and passages added/removed/changed.
+   - Audit (`bulk_confirmations`): class, differences, warning shown, acknowledgement, both result ids, original runs,
+     models, versions (JSON per provider), cache status, the selected variables, user, time.
+5. *Cache identity (K-40)* — independent of comparison eligibility and NOT weakened by D-035: key `llm3:` = provider,
+   model, exact system+user text (all evidence and variable specs), variable list, evidence fingerprint, codebook, prompt
+   version, response-schema version, generation settings; no role. Read-only fallback to `llm2:` keys stored under role
+   primary/independent (they hashed the identical prompt text) and to pre-2026-10-01 Claude keys. Different evidence or
+   prompt input is never answered from cache; both results are kept and compared under the cross-version rules.
+6. *First form.* Radio cards (keyboard accessible), default Claude only when available, disabled options with a plain
+   reason, preliminary estimate per mode (one shared search line; unselected provider $0; combined; caps; worst case
+   labelled; note when it exceeds a cap), confirmation dialog, free availability check (not billed; cannot detect missing
+   credit), refusal when caps cannot cover one worst-case request per provider, mode saved in case settings and job params,
+   optional (default ticked) pause after research with the exact estimate before any paid request.
+**Deferred:** incremental research (owner, 2026-10-05). When built it must keep old results with their versions, add
+results only for affected variables and providers, and classify old-vs-new comparisons by these two classes.

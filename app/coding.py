@@ -205,22 +205,39 @@ def source_meta(case_id: int) -> dict:
 
 
 # ----------------------------------------------------------------------------- providers, modes, limits
-# Operating modes. Each entry: (provider, role). "single" = the original behavior: one provider chosen by the
-# `model_provider` setting ("auto" = Claude when its key exists, else OpenAI). A second provider never starts by itself.
+# Coding modes (D-036). Claude and OpenAI are EQUAL, independent providers: the mode only decides which independent
+# interpretations of the same shared evidence are requested. Neither is primary, secondary or a reviewer.
+# Each entry: (provider, role). New runs always use role "independent". "single" is the legacy default (one provider
+# chosen by `model_provider`, "auto" = whichever key is configured); kept so existing cases keep working.
 MODES = {
     "single": None,
-    "anthropic_only": [("anthropic", "primary")],
-    "openai_only": [("openai", "primary")],
+    "anthropic_only": [("anthropic", "independent")],
+    "openai_only": [("openai", "independent")],
     "dual_independent": [("anthropic", "independent"), ("openai", "independent")],
-    "anthropic_primary_openai_review": [("anthropic", "primary"), ("openai", "reviewer")],
-    "openai_primary_anthropic_review": [("openai", "primary"), ("anthropic", "reviewer")],
+    # Cross-model review (one model sees the other's answer) is OUTSIDE the current scope (D-036): refused for new runs.
+    # The entries stay only so historical data and its tests remain readable; ALLOW_CROSS_MODEL_REVIEW gates them.
+    "anthropic_primary_openai_review": [("anthropic", "independent"), ("openai", "reviewer")],
+    "openai_primary_anthropic_review": [("openai", "independent"), ("anthropic", "reviewer")],
 }
+PUBLIC_MODES = ("anthropic_only", "openai_only", "dual_independent")
+CROSS_MODEL_MODES = ("anthropic_primary_openai_review", "openai_primary_anthropic_review")
+ALLOW_CROSS_MODEL_REVIEW = False  # tests may enable it to create historical-style data; never enabled in the app
 PROVIDER_LABELS = {"anthropic": "Claude (Anthropic)", "openai": "OpenAI", "openai_compatible": "OpenAI-compatible server"}
-ROLE_NOTES = {
-    "primary": "primary coder",
-    "independent": "independent coder (did not see the other model's result)",
-    "reviewer": "REVIEWER — saw the primary model's suggestions before answering; NOT an independent coder",
+ROLE_NOTES = {  # legacy role labels, kept only to describe historical rows
+    "primary": "independent provider (recorded as 'primary' before 2026-10-05)",
+    "independent": "independent provider (did not see the other model's result)",
+    "reviewer": "CROSS-MODEL REVIEW — saw another model's suggestions before answering; not independent (audit only)",
 }
+INTERPRETATION_LABELS = {"independent": "Independent provider result",
+                         "cross_model_review": "Cross-model review (audit only — saw another model's answer)"}
+
+
+def interpretation_of(row: dict) -> str:
+    """Neutral interpretation of a stored result. Historical rows are derived from their role at READ time; nothing
+    old is rewritten: role 'reviewer' = cross_model_review, anything else from a model = independent."""
+    if row.get("interpretation"):
+        return row["interpretation"]
+    return "cross_model_review" if row.get("role") == "reviewer" else "independent"
 
 
 def provider_of(row: dict) -> str | None:
@@ -240,6 +257,9 @@ def resolve_plan(settings: dict, mode: str | None = None) -> tuple[list, str, st
     mode = mode or settings.get("coding_mode") or "single"
     if mode not in MODES:
         return [], mode, f"unknown coding mode '{mode}'"
+    if mode in CROSS_MODEL_MODES and not ALLOW_CROSS_MODEL_REVIEW:
+        return [], mode, ("Cross-model review (one model sees the other's answer) is outside the current scope. Choose "
+                          "Claude only, OpenAI only, or Claude + OpenAI — independent comparison. Nothing was sent.")
     if settings.get("model_provider") == "none":
         return [], mode, None
     if mode == "single":
@@ -247,7 +267,7 @@ def resolve_plan(settings: dict, mode: str | None = None) -> tuple[list, str, st
         if c is not None and getattr(c, "provider", "") == "openai" and hasattr(c, "reasoning_effort"):
             c.reasoning_effort = str(settings.get("openai_reasoning_effort", c.reasoning_effort))
             c.timeout_s = float(settings.get("openai_timeout_seconds", c.timeout_s))
-        return ([(c, "primary")] if c else []), mode, None
+        return ([(c, "independent")] if c else []), mode, None
     plan = []
     for prov, role in MODES[mode]:
         c = cl.make_client(prov, settings.get("model_name", "claude-sonnet-5-5"), settings)
@@ -283,19 +303,51 @@ def evidence_hash(ids: list[str], pmap: dict) -> str:
     return h.hexdigest()[:24]
 
 
-def cache_key(client, system: str, prompt: str, fields: list[dict], ids: list[str], pmap: dict, schema: dict | None,
-              codebook: str, role: str) -> str:
-    """Provider-specific cache key. Any change of provider, model, prompt version/text, codebook version, variable set,
-    evidence, response schema or generation settings gives a different key. The output-token limit is not part of the key:
-    only complete, valid replies are ever cached, and a complete reply does not depend on the limit."""
+def _key_components(client, system, prompt, fields, ids, pmap, schema, codebook) -> dict:
     from .llm.structured import RESPONSE_SCHEMA_VERSION, schema_hash
     gen = client.generation_settings() if hasattr(client, "generation_settings") else {}
-    comp = {"v": 2, "provider": getattr(client, "provider", "?"), "model": client.model, "prompt_version": PROMPT_VERSION,
+    return {"provider": getattr(client, "provider", "?"), "model": client.model, "prompt_version": PROMPT_VERSION,
             "codebook": codebook, "variables": [f["name"] for f in fields], "evidence": evidence_hash(ids, pmap),
             "response_schema": f"{RESPONSE_SCHEMA_VERSION}:{schema_hash(schema)}" if schema else "json-text",
-            "settings": gen, "role": role,
-            "prompt_sha": hashlib.sha256((system + "\0" + prompt).encode()).hexdigest()}
+            "settings": gen, "prompt_sha": hashlib.sha256((system + "\0" + prompt).encode()).hexdigest()}
+
+
+def cache_key(client, system: str, prompt: str, fields: list[dict], ids: list[str], pmap: dict, schema: dict | None,
+              codebook: str, role: str | None = None) -> str:
+    """Cache identity = the ACTUAL model-visible input plus generation configuration (D-036, fixes K-40): provider,
+    model, the exact system + user text (which contains every variable spec, every evidence passage and the case
+    header), variable list, evidence fingerprint, codebook version, prompt version, response-schema version and
+    generation settings. The run's role is NOT part of it: an independent request is the same request whichever mode
+    asked for it. A cross-model review differs automatically because the other model's answers are in its prompt text.
+    The output-token limit is not part of the key: only complete, valid replies are cached. `role` is ignored."""
+    comp = {"v": 3, **_key_components(client, system, prompt, fields, ids, pmap, schema, codebook)}
+    return "llm3:" + hashlib.sha256(json.dumps(comp, sort_keys=True).encode()).hexdigest()
+
+
+def _legacy_v2_key(client, system, prompt, fields, ids, pmap, schema, codebook, role) -> str:
+    """Key format used 2026-10-01..05. It included the run role, but ALSO the hash of the exact prompt text, so a
+    v2 entry stored under role primary/independent is a reply to an identical model-visible input. Read-only."""
+    comp = {"v": 2, **_key_components(client, system, prompt, fields, ids, pmap, schema, codebook), "role": role}
     return "llm2:" + hashlib.sha256(json.dumps(comp, sort_keys=True).encode()).hexdigest()
+
+
+def cache_lookup(client, system, prompt, fields, ids, pmap, schema, codebook) -> tuple:
+    """(cached reply or None, cache status, new key). Looks up the role-free key, then — read-only — replies stored
+    before this change under the old key formats for an identical input (never cross-model-review entries: their
+    prompt text differs, so they could never match anyway)."""
+    key = cache_key(client, system, prompt, fields, ids, pmap, schema, codebook)
+    hit = db.cache_get(key)
+    if hit is not None:
+        return hit, "hit", key
+    for old_role in ("independent", "primary"):
+        hit = db.cache_get(_legacy_v2_key(client, system, prompt, fields, ids, pmap, schema, codebook, old_role))
+        if hit is not None:
+            return hit, "legacy_v2_hit", key
+    if getattr(client, "provider", "") == "anthropic" and system == SYSTEM_PROMPT:
+        hit = db.cache_get(legacy_cache_key(client, prompt))
+        if hit is not None:
+            return hit, "legacy_hit", key
+    return None, "new", key
 
 
 def legacy_cache_key(client, prompt: str) -> str:
@@ -388,9 +440,67 @@ def prepare(case: dict, settings: dict, variables: list[str] | None = None) -> d
     targets = [f for f in schema["fields"] if variables is None or f["name"] in variables]
     model_fields = [f for f in targets if f.get("field_class") in MODEL_CLASSES and not f.get("rule_missing")]
     batches, pmap, index, per_var = build_batches(case["id"], model_fields, settings)
+    codebook = f"{schema.get('id')}:{schema.get('label')}"
+    smeta = source_meta(case["id"])
     return {"schema": schema, "targets": targets, "model_fields": model_fields, "batches": batches, "pmap": pmap,
-            "index": index, "per_var": per_var, "smeta": source_meta(case["id"]),
-            "codebook": f"{schema.get('id')}:{schema.get('label')}"}
+            "index": index, "per_var": per_var, "smeta": smeta, "codebook": codebook,
+            "evidence_snapshot_id": evidence_snapshot(case["id"], pmap, smeta, codebook, settings, index),
+            "analysis_spec_id": analysis_spec(codebook, settings)}
+
+
+def evidence_snapshot(case_id: int, pmap: dict, smeta: dict, codebook: str, settings: dict, index) -> int:
+    """The case's shared evidence version (D-036): every eligible passage (id + text), the eligible sources (with
+    content hash and excluded state), the codebook and the retrieval configuration. Identical evidence -> the same
+    snapshot id; any added, excluded, restored or changed source -> a new snapshot. Old snapshots are never deleted.
+    Belongs to the CASE, not to a provider: every provider in a job (and later jobs on unchanged evidence) share it."""
+    srcs = sorted({p["source_id"] for p in pmap.values()})
+    retrieval = {"passages_per_variable": int(settings.get("passages_per_variable", 8)),
+                 "max_passages_per_call": int(settings.get("max_passages_per_call", 40)),
+                 "max_vars_per_call": MAX_VARS_PER_CALL, "semantic_method": getattr(index, "semantic_method", None)}
+    h = hashlib.sha256()
+    for pid in sorted(pmap):
+        h.update(pid.encode()); h.update(b"\0"); h.update(pmap[pid]["text"].encode()); h.update(b"\1")
+    for sid in srcs:
+        s = smeta.get(sid) or {}
+        h.update(f"{sid}:{s.get('content_hash')}:{s.get('excluded')}".encode())
+    h.update(codebook.encode()); h.update(json.dumps(retrieval, sort_keys=True).encode())
+    fp = h.hexdigest()[:32]
+    row = db.q1("SELECT id FROM evidence_snapshots WHERE case_id=? AND fingerprint=?", (case_id, fp))
+    if row:
+        return row["id"]
+    try:
+        phash = {pid: hashlib.sha256(pmap[pid]["text"].encode()).hexdigest()[:16] for pid in sorted(pmap)}
+        return db.insert("evidence_snapshots", {"case_id": case_id, "fingerprint": fp, "n_sources": len(srcs),
+                                                "n_passages": len(pmap), "sources_json": json.dumps(srcs),
+                                                "passages_json": json.dumps(phash),
+                                                "codebook_version": codebook, "retrieval_json": json.dumps(retrieval),
+                                                "created_at": time.time()})
+    except Exception:  # concurrent insert of the same snapshot
+        return db.q1("SELECT id FROM evidence_snapshots WHERE case_id=? AND fingerprint=?", (case_id, fp))["id"]
+
+
+def analysis_spec(codebook: str, settings: dict) -> int:
+    """The analysis version shared by every provider (D-036): prompt version, the hash of the shared coding rules,
+    the response-schema version, batching and the codebook. Provider-specific wire formatting (JSON-in-text for
+    Claude, strict structured outputs for OpenAI) is not part of it — same rules, same evidence, same variables."""
+    from .llm.structured import RESPONSE_SCHEMA_VERSION
+    batching = {"passages_per_variable": int(settings.get("passages_per_variable", 8)),
+                "max_passages_per_call": int(settings.get("max_passages_per_call", 40)),
+                "max_vars_per_call": MAX_VARS_PER_CALL}
+    rules_sha = hashlib.sha256(PROMPT_RULES.encode()).hexdigest()[:24]
+    comp = {"prompt_version": PROMPT_VERSION, "rules_sha": rules_sha, "response_schema": RESPONSE_SCHEMA_VERSION,
+            "batching": batching, "codebook": codebook}
+    sh = hashlib.sha256(json.dumps(comp, sort_keys=True).encode()).hexdigest()[:32]
+    row = db.q1("SELECT id FROM analysis_specs WHERE spec_hash=?", (sh,))
+    if row:
+        return row["id"]
+    try:
+        return db.insert("analysis_specs", {"spec_hash": sh, "prompt_version": PROMPT_VERSION, "rules_sha": rules_sha,
+                                            "response_schema_version": RESPONSE_SCHEMA_VERSION,
+                                            "batching_json": json.dumps(batching), "codebook_version": codebook,
+                                            "created_at": time.time()})
+    except Exception:
+        return db.q1("SELECT id FROM analysis_specs WHERE spec_hash=?", (sh,))["id"]
 
 
 class _Spec:
@@ -421,10 +531,7 @@ def _estimate_one(case, settings, prep, client, role) -> dict:
         in_tok += t
         out_tok += len(fs) * 260
         out_max += mo
-        key = cache_key(client, system, prompt, fs, ids, prep["pmap"], schema, prep["codebook"], role) \
-            if role != "reviewer" else None
-        hit = key and (db.cache_get(key) is not None or
-                       (client.provider == "anthropic" and db.cache_get(legacy_cache_key(client, prompt)) is not None))
+        hit = cache_lookup(client, system, prompt, fs, ids, prep["pmap"], schema, prep["codebook"])[0] is not None
         if not hit:
             uncached += 1
             c = cost_usd(client.model, int(t * 1.25), mo)
@@ -459,6 +566,96 @@ def estimate(case: dict, settings: dict, variables: list[str] | None = None, pla
             "n_passages_sent": len({i for _, ids in prep["batches"] for i in ids}),
             "semantic_method": prep["index"].semantic_method,
             "price_notes": [p["price_note"] for p in per if p["price_note"]]}
+
+
+def mode_providers(mode: str, settings: dict) -> list[str]:
+    """Providers a mode asks for. 'single' (legacy) = the provider model_provider resolves to."""
+    if mode in MODES and MODES[mode]:
+        return [p for p, _ in MODES[mode]]
+    from .llm.clients import get_client
+    c = get_client(settings.get("model_provider", "auto"), settings.get("model_name", "claude-sonnet-5-5"), settings)
+    return [c.provider] if c else []
+
+
+def _provider_model(prov: str, settings: dict) -> str:
+    from .llm.clients import openai_model
+    return openai_model() if prov in ("openai", "openai_compatible") else settings.get("model_name", "claude-sonnet-5-5")
+
+
+def _per_call_input_tokens(settings: dict) -> int:
+    return int(settings["max_passages_per_call"]) * 230 + 12 * 220 + 900
+
+
+def one_request_worst_cost(prov: str, settings: dict) -> float | None:
+    """Worst case of ONE coding request of 5 variables with a full evidence batch (the smallest valid request)."""
+    model = _provider_model(prov, settings)
+    out = provider_max_tokens(_Spec(prov, model), 5, settings) if prov == "openai" else OUT_BASE_TOKENS + 5 * OUT_TOKENS_PER_VAR
+    return cost_usd(model, int(_per_call_input_tokens(settings) * 1.25), out)
+
+
+def minimum_request_check(mode: str, settings: dict, spent: float = 0.0, spent_openai: float = 0.0) -> str | None:
+    """Refuse a mode whose hard limits cannot cover even one worst-case request per selected provider (D-036).
+    Returns a plain-language reason, or None when it fits."""
+    provs = mode_providers(mode, settings)
+    costs = {p: one_request_worst_cost(p, settings) for p in provs}
+    if any(v is None for v in costs.values()):
+        return None  # unknown price: the run pauses for a price before any paid request (existing rule)
+    left = float(settings.get("budget_usd", 0)) - spent
+    if sum(costs.values()) > left:
+        return (f"The case budget (${left:.2f} left) cannot cover even one request per selected provider "
+                f"(worst case ${sum(costs.values()):.2f}).")
+    if "openai" in costs:
+        ol = min(float(settings.get("openai_budget_usd", 0)) - spent_openai, left)
+        if costs["openai"] > ol:
+            return f"The OpenAI budget (${ol:.2f} left) cannot cover even one OpenAI request (worst case ${costs['openai']:.2f})."
+    return None
+
+
+def preliminary_estimate(settings: dict, mode: str) -> dict:
+    """Stage-1 estimate before any source exists (shared service; D-036). Search: one shared line, counted once.
+    Providers: a preliminary range per SELECTED provider (unselected providers are reported as not selected, $0)."""
+    from .config import load_pricing
+    from .llm.clients import price_note
+    from .search.providers import get_provider
+    s = settings
+    n = sum(1 for f in active_schema()["fields"] if f.get("field_class") in MODEL_CLASSES and not f.get("rule_missing"))
+    calls_lo, calls_hi = max(1, n // 12), max(2, -(-n // 5) + 4)
+    per_call_in = _per_call_input_tokens(s)
+    selected = mode_providers(mode, s)
+    per = []
+    for prov in ("anthropic", "openai"):
+        model = _provider_model(prov, s)
+        if prov not in selected:
+            per.append({"provider": prov, "model": model, "selected": False, "calls": 0, "cost_low": 0.0, "cost_high": 0.0,
+                        "price_note": ""})
+            continue
+        sp = _Spec(prov, model)
+        out_hi = sum(provider_max_tokens(sp, 5, s) for _ in range(calls_hi)) if prov == "openai" else \
+            calls_hi * OUT_BASE_TOKENS + OUT_TOKENS_PER_VAR * n
+        per.append({"provider": prov, "model": model, "selected": True, "calls_low": calls_lo, "calls_high": calls_hi,
+                    "cost_low": cost_usd(model, int(calls_lo * per_call_in // 2), n * 150),
+                    "cost_high": cost_usd(model, int(calls_hi * per_call_in * 1.25), out_hi),
+                    "price_note": price_note(model),
+                    "limit_usd": float(s["openai_budget_usd"]) if prov == "openai" else None,
+                    "attempt_limit": int(s["max_openai_attempts_per_case"]) if prov == "openai" else None})
+    sel = [p for p in per if p["selected"]]
+    lo = None if any(p["cost_low"] is None for p in sel) else round(sum(p["cost_low"] for p in sel), 4)
+    hi = None if any(p["cost_high"] is None for p in sel) else round(sum(p["cost_high"] for p in sel), 4)
+    prov = get_provider(s["search_provider"])
+    unit = (load_pricing().get("search", {}).get(prov.name, {}) if prov else {}).get("usd_per_1000_queries")
+    search_max = round(int(s["max_queries"]) * unit / 1000, 4) if unit is not None else None
+    combined_hi = None if hi is None else round(hi + (search_max or 0.0), 4)
+    return {"n_fields": n, "mode": mode, "selected": selected, "providers": per,
+            "model": " + ".join(p["model"] for p in sel),
+            "cost_low": lo, "cost_high": hi, "search_cost_max": search_max, "search_queries_max": int(s["max_queries"]),
+            "search_unit_price": unit, "search_provider": prov.name if prov else None,
+            "combined_high": combined_hi, "budget_usd": float(s["budget_usd"]), "openai_budget_usd": float(s["openai_budget_usd"]),
+            "max_model_attempts_per_case": int(s["max_model_attempts_per_case"]),
+            "max_openai_attempts_per_case": int(s["max_openai_attempts_per_case"]),
+            "minimum_check": minimum_request_check(mode, s) if selected else None,
+            "kind": "preliminary range; the high end is the worst-case reserve used by the budget check",
+            "note": "Actual cost depends on the sources and evidence found and on each model's output. After research, "
+                    "an exact estimate is calculated before any paid model request."}
 
 
 def limit_needs(case_id: int, settings: dict, est: dict) -> dict:
@@ -504,7 +701,7 @@ def _record_call(row: dict) -> int:
 
 
 def run_coding(case: dict, settings: dict, client, job_id: int | None, log, budget_left: float | None,
-               variables: list[str] | None = None, cancelled=lambda: False, *, role: str = "primary",
+               variables: list[str] | None = None, cancelled=lambda: False, *, role: str = "independent",
                group_id: str | None = None, mode: str | None = None, prepared: dict | None = None,
                primary_rows: dict | None = None, derive: bool = True, store_system_rows: bool = True,
                budget_cap: float | None = None, stop_check=lambda: None) -> dict:
@@ -516,20 +713,26 @@ def run_coding(case: dict, settings: dict, client, job_id: int | None, log, budg
     schema = prep["schema"]
     group_id = group_id or uuid.uuid4().hex[:12]
     provider = getattr(client, "provider", None) if client else None
+    interp = ("cross_model_review" if role == "reviewer" else "independent") if client else None
+    vmeta = {"evidence_snapshot_id": prep.get("evidence_snapshot_id"), "analysis_spec_id": prep.get("analysis_spec_id")}
     run_id = db.insert("runs", {"case_id": case["id"], "job_id": job_id, "mode": "model" if client else "manual",
                                 "model": getattr(client, "model", None), "schema_version_id": schema["id"],
                                 "variables_json": json.dumps(variables), "created_at": time.time(),
                                 "notes": ROLE_NOTES.get(role, "") if client else "", "provider": provider, "role": role,
                                 "group_id": group_id, "coding_mode": mode or "single",
                                 "independent": 0 if role == "reviewer" else 1,
-                                "prompt_version": PROMPT_VERSION if client else None})
+                                "prompt_version": PROMPT_VERSION if client else None,
+                                "interpretation": interp,
+                                "evidence_snapshot_id": prep.get("evidence_snapshot_id"),
+                                "analysis_spec_id": prep.get("analysis_spec_id")})
     targets, model_fields = prep["targets"], prep["model_fields"]
     batches, pmap, index, per_var, smeta = prep["batches"], prep["pmap"], prep["index"], prep["per_var"], prep["smeta"]
     if budget_cap is None and budget_left is not None:
         budget_cap = case_spent(case["id"]) + budget_left
     limits = CaseLimits(case["id"], settings, budget_cap)
-    sysmeta = {"group_id": group_id, "role": "system"}
-    meta = {"provider": provider, "model": getattr(client, "model", None), "role": role, "group_id": group_id}
+    sysmeta = {"group_id": group_id, "role": "system", **vmeta}
+    meta = {"provider": provider, "model": getattr(client, "model", None), "role": role, "group_id": group_id,
+            "interpretation": interp, "generated_at": time.time(), **vmeta}
     report = {"run_id": run_id, "provider": provider, "model": getattr(client, "model", None), "role": role,
               "group_id": group_id, "calls": 0, "failed_calls": 0, "cache_hits": 0, "not_coded_budget": [],
               "stopped": False, "stopped_variables": [], "config_error": None,
@@ -572,7 +775,8 @@ def run_coding(case: dict, settings: dict, client, job_id: int | None, log, budg
                 _record_call({**{"case_id": case["id"], "job_id": job_id, "run_id": run_id, "group_id": group_id,
                                  "provider": provider, "model": client.model, "role": role, "batch_no": bi + 1,
                                  "n_batches": len(batches), "variables_json": json.dumps([f["name"] for f in fs]),
-                                 "evidence_ids_json": json.dumps(ids)}, "status": "stopped", "http_attempts": 0,
+                                 "evidence_ids_json": json.dumps(ids), "interpretation": interp, **vmeta},
+                              "status": "stopped", "http_attempts": 0,
                               "cost_usd": 0.0, "error": stop_reason[:200]})
                 for f in fs:
                     report["stopped_variables"].append(f["name"])
@@ -595,18 +799,18 @@ def run_coding(case: dict, settings: dict, client, job_id: int | None, log, budg
             if budget_cap is not None and worst_cost is None:
                 raise RuntimeError(f"no price configured for model {client.model}; cannot enforce the budget")
             worst_cost = worst_cost or 0
-            key = cache_key(client, system, prompt, fs, ids, pmap, rschema, prep["codebook"], role)
+            cached, cache_status, key = cache_lookup(client, system, prompt, fs, ids, pmap, rschema, prep["codebook"])
+            origin = (cached or {}).get("_origin") or {}
+            if cached is not None:
+                cached = {k: v for k, v in cached.items() if k != "_origin"}
+            bmeta = {"cache_source_run_id": origin.get("run_id"),
+                     "generated_at": origin.get("at") if cached is not None else time.time()}
             call = {"case_id": case["id"], "job_id": job_id, "run_id": run_id, "group_id": group_id, "provider": provider,
+                    "interpretation": interp, "cache_source_run_id": origin.get("run_id"), **vmeta,
                     "model": client.model, "role": role, "batch_no": bi + 1, "n_batches": len(batches),
                     "variables_json": json.dumps([f["name"] for f in fs]), "evidence_ids_json": json.dumps(ids),
                     "evidence_hash": evidence_hash(ids, pmap), "max_output_tokens": max_out, "cache_key": key,
                     "settings_json": json.dumps(client.generation_settings() if hasattr(client, "generation_settings") else {})}
-            cached, cache_status = db.cache_get(key), "new"
-            if cached is not None:
-                cache_status = "hit"
-            elif provider == "anthropic" and system == SYSTEM_PROMPT and role != "reviewer":
-                cached = db.cache_get(legacy_cache_key(client, prompt))
-                cache_status = "legacy_hit" if cached is not None else "new"
             call_id = None
             try:
                 if cached is not None:
@@ -732,7 +936,7 @@ def run_coding(case: dict, settings: dict, client, job_id: int | None, log, budg
                 if item is None:
                     all_valid = False
                     _store(case["id"], run_id, f["name"], "", "model_error", "Model reply omitted this variable.",
-                           basis="none", meta={**meta, "call_id": call_id, "cache_status": cache_status})
+                           basis="none", meta={**meta, **bmeta, "call_id": call_id, "cache_status": cache_status})
                     continue
                 v = validate(f, item, allowed)
                 mstatus = item.get("status", "suggested")
@@ -749,10 +953,13 @@ def run_coding(case: dict, settings: dict, client, job_id: int | None, log, budg
                 _store(case["id"], run_id, f["name"], value, status, item.get("rationale", ""), v["evidence"], v["counter"],
                        unresolved, {"errors": v["errors"], "warnings": v["warnings"], "options": v["options"],
                                     "proposed_value": str(item.get("value", ""))}, item, basis="model",
-                       meta={**meta, "call_id": call_id, "cache_status": cache_status})
+                       meta={**meta, **bmeta, "call_id": call_id, "cache_status": cache_status})
             if cached is None:
                 if all_valid:
-                    db.cache_put(key, resp)  # only complete, readable, schema-valid, fully validated replies are cached
+                    # only complete, readable, schema-valid, fully validated replies are cached; the origin keeps the
+                    # provenance (original run and time) for every later reuse
+                    db.cache_put(key, {**resp, "_origin": {"run_id": run_id, "call_id": call_id, "at": time.time(),
+                                                           "provider": provider, "model": client.model}})
                     db.update("model_calls", call_id, {"status": "complete"})
                 else:
                     db.update("model_calls", call_id, {"status": "complete_with_invalid_items"})
@@ -779,10 +986,10 @@ def provider_stop_reason(job_id: int | None, provider: str) -> str | None:
 
 
 def group_primary_rows(case_id: int, group_id: str) -> dict:
-    """Latest primary-role suggestions of a coding group (what a reviewer sees)."""
+    """Latest independent suggestions of a coding group — input of the LEGACY cross-model review path only (D-036)."""
     out = {}
     for s in db.q("SELECT s.*, r.model AS run_model FROM suggestions s LEFT JOIN runs r ON r.id=s.run_id "
-                  "WHERE s.case_id=? AND s.group_id=? AND s.role='primary' ORDER BY s.id", (case_id, group_id)):
+                  "WHERE s.case_id=? AND s.group_id=? AND s.role IN ('primary','independent') ORDER BY s.id", (case_id, group_id)):
         out[s["variable"]] = {"value": s["value"], "status": s["status"], "rationale": s["rationale"],
                               "evidence": json.loads(s["evidence_json"] or "[]"),
                               "counter": json.loads(s["counter_json"] or "[]")}
@@ -794,7 +1001,8 @@ def run_coding_plan(case: dict, settings: dict, plan: list, job_id: int | None, 
                     variables: list[str] | None = None, cancelled=lambda: False, mode: str = "single",
                     group_id: str | None = None, on_status=None, derive: bool = True) -> dict:
     """Run every provider in the plan on ONE shared evidence preparation (search/fetch already happened once).
-    Independent coders receive identical prompts and never see each other's results; a reviewer sees the primary's."""
+    Every provider receives the identical prompt and never sees another provider's result (D-036). Providers run one
+    after another to keep the server responsive; the order carries no meaning."""
     import uuid
     prep = prepare(case, settings, variables)
     resumed = group_id is not None
@@ -818,7 +1026,7 @@ def run_coding_plan(case: dict, settings: dict, plan: list, job_id: int | None, 
         status(prov, "stopped" if rep["stopped"] else ("failed" if rep["config_error"] else "done"),
                stopped_variables=rep["stopped_variables"], calls=rep["calls"], failed_calls=rep["failed_calls"],
                cache_hits=rep["cache_hits"], spent_usd=rep["spent_usd"], config_error=rep["config_error"])
-        if role == "primary":
+        if role != "reviewer":  # only used by the legacy cross-model review path (disabled, D-036)
             primary_rows = {"_label": f"{PROVIDER_LABELS.get(client.provider, client.provider)} {client.model}"}
             for s in db.q("SELECT * FROM suggestions WHERE run_id=?", (rep["run_id"],)):
                 primary_rows[s["variable"]] = {"value": s["value"], "status": s["status"], "rationale": s["rationale"],
@@ -934,13 +1142,12 @@ def suggestion_sets(case_id: int) -> dict:
                           "stopped_latest": latest["status"] == "stopped" and shown is not latest,
                           "stopped_row": latest if latest["status"] == "stopped" else None, "previous": prev}
         usable = [c["row"] for c in cells.values() if c["row"] is not None and c["state"] != "stopped"]
-        pick = [r for r in usable if r.get("role") != "reviewer"] or usable
         display, previous = None, None
-        if pick:
-            gid = max(pick, key=lambda r: r["id"]).get("group_id")
-            same = [r for r in pick if r.get("group_id") == gid]
-            display = next((r for r in same if PROVIDER_COLUMN.get(r["provider"]) == "anthropic"), same[0])
+        if len(usable) == 1:  # one provider has a result: that result (no provider is preferred, D-036)
+            display = usable[0]
             previous = cells[PROVIDER_COLUMN[display["provider"]]]["previous"]
+        elif len(usable) >= 2:  # both providers: a neutral combined view, never one provider's row
+            display = _combined_view(usable)
         elif prov_rows:
             display = prov_rows[-1]
         elif sys_rows:
@@ -952,20 +1159,81 @@ def suggestion_sets(case_id: int) -> dict:
         if a["row"] is not None and b["row"] is not None and "stopped" not in (a["state"], b["state"]):
             ra, rb = a["row"], b["row"]
             comparison = compare_pair(ra, rb)
-            if ra.get("group_id") and ra.get("group_id") == rb.get("group_id"):
-                if "reviewer" in (ra.get("role"), rb.get("role")):
-                    comparison.update({"kind": "reviewer",
-                                       "note_reviewer": "The reviewer saw the primary model's result; not an independent coder."})
-                else:
-                    comparison["kind"] = "independent"
-            else:
-                comparison.update({"kind": "separate_runs",
-                                   "note_runs": "Results come from different runs; the evidence may have differed."})
+            comparison["kind"] = comparison_kind(ra, rb)
+            va, vb = _vals(ra), _vals(rb)
+            comparison["same_value"] = bool(va) and va == vb
+            if comparison["kind"] == "cross_model_review":
+                comparison["note_kind"] = "Cross-model review (audit only): one model saw the other's answer."
+            elif comparison["kind"] == "cross_version":
+                comparison["note_kind"] = (
+                    "Same suggested value, different analysis versions." if comparison["same_value"]
+                    else "Results differ, but the models also used different analysis inputs.")
             comparison["providers"] = [ra["provider"], rb["provider"]]
+            comparison["reused_from_cache"] = any(is_cached(r) for r in (ra, rb))
         members = [c["row"] for c in cells.values() if c["row"] is not None]
         out[var] = {"display": display, "members": members, "comparison": comparison, "previous": previous,
                     "cells": cells, "system": sys_rows[-1] if sys_rows else None}
     return out
+
+
+def is_cached(row: dict) -> bool:
+    return (row.get("cache_status") or "") not in ("", "new", "none")
+
+
+def comparison_kind(ra: dict, rb: dict) -> str:
+    """Comparison class of two providers' results (D-035 retained, D-036):
+    - 'matched_version': both independent, same evidence snapshot (which includes the codebook) and same analysis
+      version. Results from different jobs or from the validated cache qualify — their run dates and cache status are
+      shown, never relabelled 'same run' (owner choice 2026-10-05: separate runs with identical versions are matched).
+    - 'cross_version': both independent, but evidence, codebook, prompt/analysis version differ or were not recorded.
+      Still compared and (D-035) eligible for bulk confirmation with explicit disclosure and acknowledgement.
+    - 'cross_model_review': one model saw the other's answer; never independent agreement."""
+    if "cross_model_review" in (interpretation_of(ra), interpretation_of(rb)):
+        return "cross_model_review"
+    sa, sb = ra.get("evidence_snapshot_id"), rb.get("evidence_snapshot_id")
+    pa, pb = ra.get("analysis_spec_id"), rb.get("analysis_spec_id")
+    if sa and sa == sb and pa and pa == pb:
+        return "matched_version"
+    return "cross_version"
+
+
+def version_differences(ra: dict, rb: dict, runa: dict | None = None, runb: dict | None = None) -> list[str]:
+    """Which version dimensions differ between two results (empty for a matched-version pair)."""
+    out = []
+    sa, sb = ra.get("evidence_snapshot_id"), rb.get("evidence_snapshot_id")
+    pa, pb = ra.get("analysis_spec_id"), rb.get("analysis_spec_id")
+    if not (sa and sb and pa and pb):
+        out.append("version not recorded")
+    if sa and sb and sa != sb:
+        out.append("evidence version")
+    if (runa or {}).get("schema_version_id") != (runb or {}).get("schema_version_id") and runa and runb:
+        out.append("codebook version")
+    if pa and pb and pa != pb:
+        out.append("analysis version")
+    pva, pvb = (runa or {}).get("prompt_version"), (runb or {}).get("prompt_version")
+    if runa and runb and pva != pvb:
+        out.append("prompt version")
+    return out
+
+
+def _combined_view(rows: list[dict]) -> dict:
+    """Neutral view of two providers' results for one variable: the agreed value when their values are equal,
+    otherwise blank. Evidence is the union of both. It is not any provider's row and is never stored."""
+    vals = {_vals(r) for r in rows}
+    agreed = len(vals) == 1 and next(iter(vals)) and all(r["status"] in VALUE_OK for r in rows)
+    ev, ctr = {}, {}
+    for r in rows:
+        for e in r.get("evidence") or []:
+            ev.setdefault(e.get("id"), e)
+        for e in r.get("counter") or []:
+            ctr.setdefault(e.get("id"), e)
+    first = min(rows, key=lambda r: r["id"])
+    return {"id": None, "display_kind": "two_providers", "provider": None, "model": None, "basis": "model",
+            "value": first["value"] if agreed else "", "status": "suggested" if agreed else "providers_differ",
+            "evidence": list(ev.values()), "counter": list(ctr.values()), "rationale": "", "unresolved": "",
+            "validation": {}, "stale": int(any(r.get("stale") for r in rows)),
+            "stale_reason": "; ".join(r.get("stale_reason") or "" for r in rows if r.get("stale")),
+            "values_by_provider": {r["provider"]: r.get("value") or "" for r in rows}}
 
 
 def current_value(case_id: int, variable: str) -> tuple[str, str]:

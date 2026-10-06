@@ -95,32 +95,67 @@ def provider_status() -> dict:
     return ps()
 
 
+PROVIDER_PLAIN = {"anthropic": "Claude", "openai": "OpenAI"}
+
+
 def available_modes(settings: dict) -> list[dict]:
-    """Modes and whether they can run with the keys configured on the server. OpenAI modes are only offered when
-    OPENAI_API_KEY is set; nothing starts a second provider unless a mode is chosen explicitly."""
-    from .coding import MODES
+    """The ONE list of coding-provider choices, shared by the first research form, Re-analyze and Settings (D-036):
+    Claude only, OpenAI only, Claude + OpenAI — independent comparison. Equal providers; no primary or reviewer.
+    A mode is unavailable when a provider it needs has no key configured (the reason is plain text, never a key)."""
+    from .coding import MODES, PUBLIC_MODES
     ps = provider_status()
     ok = {"anthropic": ps["anthropic"]["configured"], "openai": ps["openai"]["configured"]}
     out = []
-    for m, spec in MODES.items():
-        if spec is None:
-            out.append({"mode": m, "available": True, "providers": [], "default": True})
-            continue
-        need = [p for p, _ in spec]
-        out.append({"mode": m, "available": all(ok[p] for p in need), "providers": need,
-                    "roles": [r for _, r in spec], "missing": [p for p in need if not ok[p]]})
+    for m in PUBLIC_MODES:
+        need = [p for p, _ in MODES[m]]
+        missing = [p for p in need if not ok[p]]
+        out.append({"mode": m, "available": not missing, "providers": need, "missing": missing,
+                    "reason": "" if not missing else
+                    "; ".join(f"{PROVIDER_PLAIN[p]} is not configured on the server "
+                              f"({'ANTHROPIC_API_KEY' if p == 'anthropic' else 'OPENAI_API_KEY'} is not set)"
+                              for p in missing)})
     return out
 
 
 def check_mode(mode: str | None, settings: dict) -> str | None:
+    from .coding import CROSS_MODEL_MODES
     if mode in (None, ""):
         return None
+    if mode == "single":  # legacy default of existing cases: one provider chosen by model_provider
+        return mode
+    if mode in CROSS_MODEL_MODES:
+        raise ApiError(400, "cross-model review (one model sees the other's answer) is outside the current scope; "
+                            "choose Claude only, OpenAI only, or Claude + OpenAI — independent comparison")
     m = next((x for x in available_modes(settings) if x["mode"] == mode), None)
     if not m:
         raise ApiError(400, f"unknown coding mode '{mode}'")
     if not m["available"]:
-        raise ApiError(400, f"coding mode '{mode}' needs {', '.join(m['missing'])} — the key is not configured on the server")
+        raise ApiError(400, f"coding mode '{mode}' cannot run: {m['reason']}")
     return mode
+
+
+def provider_checks(mode: str, settings: dict) -> dict:
+    """Free availability checks for the providers a mode needs (no paid request). Returns per-provider
+    {ok, verified, reason}. A provider whose key is rejected or whose model is unknown is not ok; a provider that
+    cannot be reached right now is ok but unverified (it is checked again before the first paid request)."""
+    from .coding import MODES
+    from .llm.clients import LLMError, make_client
+    out = {}
+    for prov, _ in MODES.get(mode) or []:
+        c = make_client(prov, settings.get("model_name", "claude-sonnet-5-5"), settings)
+        if c is None:
+            out[prov] = {"ok": False, "verified": False, "reason": f"{PROVIDER_PLAIN[prov]} is not configured on the server"}
+            continue
+        check = getattr(c, "check_available", None) or getattr(c, "preflight", None)
+        try:
+            if check:
+                check()
+            out[prov] = {"ok": True, "verified": bool(check), "reason": ""}
+        except LLMError as e:
+            msg = str(e)[:300]
+            out[prov] = {"ok": not e.config_error, "verified": False,
+                         "reason": msg if e.config_error else f"{msg} It will be checked again before any paid request."}
+    return out
 
 
 def check_limit_value(k: str, v):
@@ -149,6 +184,8 @@ def api_put_settings(h, body, **_):
             continue
         if k == "coding_mode":
             v = check_mode(v, {**DEFAULT_SETTINGS, **cur}) or "single"
+        elif k == "pause_before_coding":
+            v = bool(v)
         elif k == "openai_reasoning_effort" and v not in REASONING_EFFORTS:
             raise ApiError(400, f"openai_reasoning_effort must be one of {', '.join(REASONING_EFFORTS)}")
         elif k in ("openai_reasoning_reserve_tokens", "openai_max_output_tokens"):
@@ -252,12 +289,38 @@ def api_cases(h, **_):
     return rows
 
 
+@route("POST", "/api/providers/check")
+def api_providers_check(h, body, **_):
+    """Free, non-billable availability check for the providers of one mode (used before a case starts)."""
+    s = global_settings()
+    mode = check_mode(body.get("mode"), s)
+    return {"mode": mode, "providers": provider_checks(mode, s) if mode and mode != "single" else {}}
+
+
 @route("POST", "/api/cases")
 def api_new_case(h, body, **_):
     if not body.get("name", "").strip():
         raise ApiError(400, "incident name is required")
     act = db.q1("SELECT id FROM schema_versions WHERE active=1")
     overrides = {k: v for k, v in (body.get("settings") or {}).items() if k in DEFAULT_SETTINGS}
+    for k in list(overrides):
+        overrides[k] = check_limit_value(k, overrides[k])
+    # Coding provider chosen on the first form (D-036). Validated BEFORE anything is created or searched: the mode must
+    # exist, its keys must be configured, the free availability check must pass, and the hard limits must cover at
+    # least one worst-case request per selected provider. Without "mode" (older clients) the global default applies.
+    mode = check_mode(body.get("mode"), {**global_settings(), **overrides})
+    if mode and mode != "single":
+        overrides["coding_mode"] = mode
+        checks = provider_checks(mode, {**global_settings(), **overrides})
+        bad = [v["reason"] for v in checks.values() if not v["ok"]]
+        if bad:
+            raise ApiError(400, "; ".join(bad) + ". Nothing was created or searched.")
+        from .coding import minimum_request_check
+        short = minimum_request_check(mode, {**global_settings(), **overrides}, spent=0.0, spent_openai=0.0)
+        if short:
+            raise ApiError(400, short + " Raise the limit or choose another mode. Nothing was created or searched.")
+    if "pause_before_coding" in body:
+        overrides["pause_before_coding"] = bool(body["pause_before_coding"])
     cid = db.insert("cases", {"name": body["name"].strip(), "location": body.get("location", "").strip(),
                               "date_text": body.get("date_text", "").strip(), "date_start": body.get("date_start", ""),
                               "date_end": body.get("date_end", ""), "details": body.get("details", ""),
@@ -265,8 +328,8 @@ def api_new_case(h, body, **_):
                               "schema_version_id": act["id"] if act else None, "status": "new", "identity_json": "{}",
                               "settings_json": json.dumps({**global_settings(), **overrides}), "created_at": time.time(),
                               "updated_at": time.time()})
-    jid = jobs.enqueue(cid, "research") if body.get("start", True) else None
-    return {"id": cid, "job_id": jid}
+    jid = jobs.enqueue(cid, "research", {"mode": mode} if mode else None) if body.get("start", True) else None
+    return {"id": cid, "job_id": jid, "mode": mode}
 
 
 @route("GET", "/api/cases/{cid}")
@@ -377,7 +440,8 @@ def api_resume_provider(h, jid, prov, **_):
     todo = sorted(v for v, stt in latest.items() if stt == "stopped")
     if not todo:
         raise ApiError(400, f"{PROVIDER_NAMES[prov]} has no stopped variables in this run")
-    params = {"resume": {"provider": prov, "role": pr.get("role") or "primary", "group_id": gid, "variables": todo,
+    params = {"resume": {"provider": prov, "role": "reviewer" if pr.get("role") == "reviewer" else "independent",
+                         "group_id": gid, "variables": todo,
                          "mode": st.get("coding_mode") or "single", "from_job": int(jid)}}
     new_id = jobs.enqueue(j["case_id"], "recode", params, behind_active=True)
     db.insert("job_log", {"job_id": int(jid), "at": time.time(), "stage": "coding", "level": "info",
@@ -422,6 +486,8 @@ def api_resume(h, jid, body, **_):
         upd["identity_confirmed"] = True
     if body.get("identity_confirmed"):
         upd["identity_confirmed"] = True
+    if body.get("coding_approved") or body.get("approve_over_budget"):
+        upd["coding_approved"] = True  # the owner saw the post-research estimate and chose to start paid coding
     def set_case_limit(key: str, new_value, why: str):
         c = db.q1("SELECT * FROM cases WHERE id=?", (j["case_id"],))
         st = json.loads(c["settings_json"])
@@ -506,35 +572,22 @@ def api_estimate(h, cid, query=None, **_):
 
 @route("GET", "/api/estimate_preview")
 def api_estimate_preview(h, query, **_):
-    """Rough pre-run range before any sources exist. The high end uses the same worst case as the per-call budget check."""
-    from .coding import MODEL_CLASSES, MODES, OUT_BASE_TOKENS, OUT_TOKENS_PER_VAR, active_schema, provider_max_tokens, _Spec
-    from .llm.clients import cost_usd, openai_model, price_note
-    from .search.providers import get_provider
+    """Stage-1 (before research) estimate for the first form, per coding mode (D-036). It cannot know the sources yet,
+    so the provider lines are a PRELIMINARY RANGE whose high end is the WORST-CASE RESERVE used by the budget check.
+    One shared search line, counted once whatever the mode. Optional query overrides: budget_usd, openai_budget_usd,
+    max_queries (the values typed in the form; they are validated, never trusted as cost totals)."""
+    from .coding import preliminary_estimate
     s = global_settings()
+    query = query or {}
+    for k in ("budget_usd", "openai_budget_usd", "max_queries"):
+        v = (query.get(k) or [None])[0]
+        if v not in (None, ""):
+            try:
+                s[k] = check_limit_value(k, float(v)) if k != "max_queries" else max(1, int(float(v)))
+            except (TypeError, ValueError):
+                raise ApiError(400, f"{k} must be a number")
     mode = check_mode((query.get("mode") or [None])[0], s) or s.get("coding_mode") or "single"
-    n = sum(1 for f in active_schema()["fields"] if f.get("field_class") in MODEL_CLASSES and not f.get("rule_missing"))
-    calls_lo, calls_hi = max(1, n // 12), max(2, -(-n // 5) + 4)
-    per_call_in = (s["max_passages_per_call"] * 230) + 12 * 220 + 900
-    spec = MODES.get(mode) or [("openai" if (s["model_provider"] == "openai") else "anthropic", "primary")]
-    per = []
-    for prov, role in spec:
-        model = openai_model() if prov == "openai" else s["model_name"]
-        sp = _Spec(prov, model)
-        out_hi = sum(provider_max_tokens(sp, 5, s) for _ in range(calls_hi)) if prov == "openai" else \
-            calls_hi * OUT_BASE_TOKENS + OUT_TOKENS_PER_VAR * n
-        extra_in = 1.4 if role == "reviewer" else 1.0
-        per.append({"provider": prov, "model": model, "role": role,
-                    "cost_low": cost_usd(model, int(calls_lo * per_call_in // 2 * extra_in), n * 150),
-                    "cost_high": cost_usd(model, int(calls_hi * per_call_in * 1.25 * extra_in), out_hi),
-                    "price_note": price_note(model)})
-    lo = None if any(p["cost_low"] is None for p in per) else round(sum(p["cost_low"] for p in per), 4)
-    hi = None if any(p["cost_high"] is None for p in per) else round(sum(p["cost_high"] for p in per), 4)
-    prov = get_provider(s["search_provider"])
-    unit = (load_pricing().get("search", {}).get(prov.name, {}) if prov else {}).get("usd_per_1000_queries")
-    search_max = round(s["max_queries"] * unit / 1000, 2) if unit is not None else None
-    return {"n_fields": n, "model": " + ".join(p["model"] for p in per), "mode": mode, "providers": per,
-            "cost_low": lo, "cost_high": hi, "budget_usd": s["budget_usd"], "openai_budget_usd": s["openai_budget_usd"],
-            "search_queries_max": s["max_queries"], "search_unit_price": unit, "search_cost_max": search_max}
+    return preliminary_estimate(s, mode)
 
 
 # ----------------------------------------------------------------------------- sources
@@ -676,7 +729,10 @@ def api_review(h, cid, body, **_):
     else:
         raise ApiError(400, "unknown action")
     who = getattr(h, "user", None)
-    sp = provider_of(dict(sugg)) if (sugg and action_name == "accepted") else None
+    if sugg and action_name == "accepted" and sugg.get("display_kind") == "two_providers":
+        sp = "anthropic+openai"  # both providers independently gave this value; the human accepted it
+    else:
+        sp = provider_of(dict(sugg)) if (sugg and action_name == "accepted") else None
     db.ex("INSERT OR REPLACE INTO reviews (case_id,variable,value,action,reason,suggestion_id,updated_at,reviewer,source_provider) "
           "VALUES (?,?,?,?,?,?,?,?,?)",
           (cid, var, value, action_name, reason, sugg["id"] if sugg else None, time.time(), who, sp))
@@ -696,13 +752,69 @@ def api_bulk_agreements(h, cid, **_):
 @route("POST", "/api/cases/{cid}/bulk_confirm")
 def api_bulk_confirm(h, cid, body, **_):
     """Write Human final for the variables the reviewer left checked — only those still eligible at this moment."""
-    from .agreement import bulk_confirm
+    from .agreement import AcknowledgementRequired, bulk_confirm
     variables = body.get("variables")
     if not isinstance(variables, list) or not variables:
         raise ApiError(400, "choose at least one variable to confirm")
     if not body.get("confirmed"):
         raise ApiError(400, "explicit confirmation is required")
-    return bulk_confirm(int(cid), [str(v) for v in variables], getattr(h, "user", None))
+    try:
+        return bulk_confirm(int(cid), [str(v) for v in variables], getattr(h, "user", None),
+                            acknowledged_cross_version=bool(body.get("acknowledged_cross_version")))
+    except AcknowledgementRequired as e:
+        raise ApiError(400, str(e))
+
+
+@route("GET", "/api/cases/{cid}/version_diff")
+def api_version_diff(h, cid, query, **_):
+    """Version-difference panel (D-035 retained, D-036): for one variable, the Claude and OpenAI results' evidence,
+    codebook, prompt/analysis and model versions, run dates, cache status, which dimensions differ, and the sources
+    and passages added / removed / changed between the two evidence versions. Read-only."""
+    from .coding import suggestion_sets, version_differences
+    var = (query.get("variable") or [None])[0]
+    cells = ((suggestion_sets(int(cid)).get(var) or {}).get("cells") or {})
+    rows = {k: (cells.get(k) or {}).get("row") for k in ("anthropic", "openai")}
+    if not all(rows.values()):
+        raise ApiError(400, "both providers need a result for this variable")
+
+    def run(r):
+        return db.q1("SELECT * FROM runs WHERE id=?", (r.get("run_id"),)) or {}
+
+    def snap(sid):
+        return db.q1("SELECT * FROM evidence_snapshots WHERE id=?", (sid,)) if sid else None
+
+    def spec(pid):
+        return db.q1("SELECT * FROM analysis_specs WHERE id=?", (pid,)) if pid else None
+    side = {}
+    for k, r in rows.items():
+        ru = run(r)
+        side[k] = {"provider": k, "model": r.get("model") or ru.get("model"), "run_id": ru.get("id"),
+                   "original_run_id": r.get("cache_source_run_id") or ru.get("id"),
+                   "generated_at": r.get("generated_at") or r.get("created_at"), "cache_status": r.get("cache_status") or "new",
+                   "evidence_snapshot_id": r.get("evidence_snapshot_id"), "analysis_spec_id": r.get("analysis_spec_id"),
+                   "codebook_version": ru.get("schema_version_id"), "prompt_version": ru.get("prompt_version"),
+                   "value": r.get("value"), "status": r.get("status")}
+    a, b = rows["anthropic"], rows["openai"]
+    out = {"variable": var, "claude": side["anthropic"], "openai": side["openai"],
+           "differences": version_differences(a, b, run(a), run(b))}
+    sa, sb = snap(a.get("evidence_snapshot_id")), snap(b.get("evidence_snapshot_id"))
+    if sa and sb and sa["id"] != sb["id"]:
+        s1, s2 = set(json.loads(sa["sources_json"] or "[]")), set(json.loads(sb["sources_json"] or "[]"))
+        out["sources"] = {"only_in_claude_version": sorted(s1 - s2), "only_in_openai_version": sorted(s2 - s1)}
+        if sa.get("passages_json") and sb.get("passages_json"):
+            p1, p2 = json.loads(sa["passages_json"]), json.loads(sb["passages_json"])
+            out["passages"] = {"only_in_claude_version": sorted(set(p1) - set(p2)),
+                               "only_in_openai_version": sorted(set(p2) - set(p1)),
+                               "changed_text": sorted(x for x in set(p1) & set(p2) if p1[x] != p2[x])}
+        else:
+            out["passages"] = None  # one snapshot predates the passage list
+    elif not (sa and sb):
+        out["sources"] = None  # at least one result predates evidence versioning ("version not recorded")
+    qa, qb = spec(a.get("analysis_spec_id")), spec(b.get("analysis_spec_id"))
+    if qa and qb and qa["id"] != qb["id"]:
+        out["analysis"] = {k: [qa.get(k), qb.get(k)] for k in ("prompt_version", "rules_sha", "response_schema_version",
+                                                               "batching_json", "codebook_version") if qa.get(k) != qb.get(k)}
+    return out
 
 
 @route("GET", "/api/cases/{cid}/history")

@@ -43,6 +43,7 @@ PX = re.compile(r"^\[(S\d+-P\d+)\] \(source[^\n]*\)\n([^\n]+)", re.M)
 class Model:
     """Scripted stand-in. policy[var] = value, or dict(value=..., fake_quote=True, counter=True, src=1)."""
     supports_schema = False
+    CALLS: list = []  # every request any stand-in received (to prove cache reuse)
 
     def __init__(self, provider, model, policy, fail=False):
         self.provider, self.model, self.policy, self.fail, self.n = provider, model, policy, fail, 0
@@ -53,6 +54,7 @@ class Model:
     def complete(self, system, user, max_tokens=4000):
         from app.llm.clients import LLMError
         self.n += 1
+        Model.CALLS.append(self.provider)
         if self.fail:
             raise LLMError("HTTP 500 from provider (test)", possibly_billed=True, attempts=1)
         names = [l.split("### ")[1].split("  (")[0] for l in user.splitlines() if l.startswith("### ")]
@@ -172,53 +174,76 @@ def main():
     db.update("jobs", jid, {"status": "done"})
     check("stopped provider → Claude only (not eligible)", ag(cS)["SYSTEM_LEVEL"]["status"] == "claude_only")
     cD, stD = new_case("bulk D")
-    run(cD, stD, [(claude(), "primary"), (openai(), "reviewer")], VARS, "anthropic_primary_openai_review")
-    check("review mode (second model saw the first) → Agreement but not independent",
-          ag(cD)["SYSTEM_LEVEL"]["status"] == "not_independent" and not ag(cD)["SYSTEM_LEVEL"]["eligible"])
+    coding.ALLOW_CROSS_MODEL_REVIEW = True  # historical-style data only; refused for new runs (D-036)
+    run(cD, stD, [(claude(), "independent"), (openai(), "reviewer")], VARS, "anthropic_primary_openai_review")
+    coding.ALLOW_CROSS_MODEL_REVIEW = False
+    check("cross-model review (second model saw the first) → excluded from independent agreement",
+          ag(cD)["SYSTEM_LEVEL"]["status"] == "cross_model_review" and not ag(cD)["SYSTEM_LEVEL"]["eligible"])
+    # D-036: separate jobs on the SAME evidence snapshot and analysis version are comparable (D-035 replaced)
     cE, stE = new_case("bulk E")
-    run(cE, stE, [(claude(), "primary")], VARS, "anthropic_only")
-    run(cE, stE, [(openai(), "primary")], VARS, "openai_only")
+    run(cE, stE, [(claude(), "independent")], VARS, "anthropic_only")
+    run(cE, stE, [(openai(), "independent")], VARS, "openai_only")
     aE = ag(cE)
-    check("agreement from two separate runs → eligible WITH warning (D-035)",
-          aE["SYSTEM_LEVEL"]["status"] == "eligible_separate_runs" and aE["SYSTEM_LEVEL"]["eligible"]
-          and "separate runs" in aE["SYSTEM_LEVEL"]["reason"], str(aE["SYSTEM_LEVEL"]))
-    check("separate runs: core checks still block (counter-evidence)", not aE["ALERTING_AUTHORITY_TYPE"]["eligible"]
+    check("Claude-only job, then OpenAI-only job, same evidence and analysis version → eligible (no warning)",
+          aE["SYSTEM_LEVEL"]["status"] == "eligible" and aE["SYSTEM_LEVEL"]["eligible"]
+          and "matched analysis version" in aE["SYSTEM_LEVEL"]["label"], str(aE["SYSTEM_LEVEL"]))
+    check("their provenance is kept (two different runs, not relabelled 'same run')",
+          aE["SYSTEM_LEVEL"]["claude"]["run_id"] != aE["SYSTEM_LEVEL"]["openai"]["run_id"])
+    check("core checks still block (counter-evidence)", not aE["ALERTING_AUTHORITY_TYPE"]["eligible"]
           and aE["ALERTING_AUTHORITY_TYPE"]["status"] == "pending", str(aE["ALERTING_AUTHORITY_TYPE"]))
-    check("separate runs: core checks still block (invalid quote / validation)", not aE["ALERT_APPROVAL_PROCESS"]["eligible"])
-    check("separate runs: disagreement still a disagreement", aE["FAILURE_TYPE"]["status"] == "value_disagreement")
-    check("separate runs: free text never eligible", not aE["SUMMARY"]["eligible"])
-    check("separate runs: open list value not in the codebook never eligible", not aE["TRANSMISSION_PATHWAY"]["eligible"])
-    check("separate runs: both blank stays 'Both insufficient'", aE["POPULATION_SCOPE"]["status"] == "both_insufficient")
-    # a legacy-style Claude run without a recorded prompt version still qualifies, with a warning
-    rid_c = db.q1("SELECT run_id FROM suggestions WHERE case_id=? AND variable='SYSTEM_LEVEL' AND provider='anthropic'", (cE,))["run_id"]
-    db.update("runs", rid_c, {"prompt_version": None})
+    check("core checks still block (invalid quote / validation)", not aE["ALERT_APPROVAL_PROCESS"]["eligible"])
+    check("disagreement still a disagreement", aE["FAILURE_TYPE"]["status"] == "value_disagreement")
+    check("free text never eligible", not aE["SUMMARY"]["eligible"])
+    check("open list value not in the codebook never eligible", not aE["TRANSMISSION_PATHWAY"]["eligible"])
+    check("both blank stays 'Both insufficient'", aE["POPULATION_SCOPE"]["status"] == "both_insufficient")
+    # a later dual run on unchanged evidence reuses BOTH providers' validated replies from cache (K-40 fixed)
+    n_req = len(Model.CALLS)
+    n_uncacheable = db.q1("SELECT COUNT(*) n FROM model_calls WHERE case_id=? AND status='complete_with_invalid_items'",
+                          (cE,))["n"]  # replies with an invalid item are never cached (D-025) and must be re-sent
+    run(cE, stE, [(claude(), "independent"), (openai(), "independent")], VARS, "dual_independent")
+    aE3 = ag(cE)["SYSTEM_LEVEL"]
+    check("dual run after single-provider runs: only never-cached (invalid) batches are sent again; every complete, "
+          "valid reply is reused from cache", len(Model.CALLS) - n_req == n_uncacheable and n_uncacheable >= 1,
+          f"{len(Model.CALLS) - n_req} new vs {n_uncacheable} uncacheable")
+    cs = {r["provider"]: r["cache_status"] for r in db.q("SELECT provider, cache_status FROM suggestions WHERE case_id=? "
+                                                          "AND variable='SYSTEM_LEVEL' ORDER BY id DESC LIMIT 2", (cE,))}
+    check("SYSTEM_LEVEL: both providers' results in the dual run came from cache", set(cs.values()) == {"hit"}, str(cs))
+    check("cached results are eligible and labelled 'reused from validated cache', with original runs kept",
+          aE3["eligible"] and aE3["reused_from_cache"] and "validated cache" in aE3["reason"]
+          and aE3["claude"]["original_run_id"] != aE3["claude"]["run_id"], str(aE3))
+    # results without recorded versions (before D-036) are not comparable
+    rid_c = db.q1("SELECT run_id FROM suggestions WHERE case_id=? AND variable='SYSTEM_LEVEL' AND provider='anthropic' "
+                  "ORDER BY id DESC", (cE,))["run_id"]
+    db.ex("UPDATE suggestions SET evidence_snapshot_id=NULL, analysis_spec_id=NULL WHERE run_id=?", (rid_c,))
     aE2 = ag(cE)["SYSTEM_LEVEL"]
-    check("separate runs: missing prompt version is a warning, not a block",
-          aE2["eligible"] and "prompt version" in aE2["reason"], str(aE2))
+    check("result without a recorded evidence/analysis version → cross-version agreement, still eligible (D-035)",
+          aE2["status"] == "eligible_cross_version" and aE2["eligible"] and "version not recorded" in aE2["differences"],
+          str(aE2))
+    db.ex("UPDATE suggestions SET evidence_snapshot_id=(SELECT evidence_snapshot_id FROM runs WHERE id=?), "
+          "analysis_spec_id=(SELECT analysis_spec_id FROM runs WHERE id=?) WHERE run_id=?", (rid_c, rid_c, rid_c))
     sv = db.q1("SELECT schema_version_id FROM runs WHERE id=?", (rid_c,))["schema_version_id"]
     db.update("runs", rid_c, {"schema_version_id": (sv or 0) + 999})
-    check("separate runs: different codebook version blocks", not ag(cE)["SYSTEM_LEVEL"]["eligible"])
+    check("different codebook version blocks", not ag(cE)["SYSTEM_LEVEL"]["eligible"])
     db.update("runs", rid_c, {"schema_version_id": sv})
-    summE = server.api_bulk_agreements(H(), str(cE))
-    itE = [x for x in summE["eligible"] if x["variable"] == "SYSTEM_LEVEL"]
-    check("dialog marks the separate-run item and lists its warnings",
-          itE and itE[0]["separate_runs"] and itE[0]["warnings"], str(itE))
     rE = server.api_bulk_confirm(H(), str(cE), {"variables": ["SYSTEM_LEVEL"], "confirmed": True})
     rvE = db.q1("SELECT * FROM reviews WHERE case_id=? AND variable='SYSTEM_LEVEL'", (cE,))
     auE = db.q1("SELECT * FROM bulk_confirmations WHERE case_id=? AND variable='SYSTEM_LEVEL'", (cE,))
-    check("confirming a separate-run agreement writes Human final with its own method and warning in the reason",
-          rE["confirmed"] and rvE["method"] == "bulk_separate_run_agreement" and "SEPARATE runs" in rvE["reason"], str(rvE))
-    check("audit row records the separate runs and both prompt versions",
-          auE["method"] == "bulk_separate_run_agreement" and auE["group_id"].startswith("separate runs")
-          and "not recorded" in (auE["prompt_version"] or ""), str(auE))
+    check("confirmation writes Human final; the reason names the analysis version and the cache reuse",
+          rE["confirmed"] and rvE["method"] == "bulk_independent_agreement" and "matched analysis version" in rvE["reason"]
+          and "validated cache" in rvE["reason"], str(rvE))
+    check("audit row keeps original runs, cache status, generation times, evidence and analysis versions",
+          auE["evidence_snapshot_id"] and auE["analysis_spec_id"] and auE["claude_run_id"] and auE["openai_run_id"]
+          and auE["claude_cache_status"] != "new" and auE["claude_generated_at"] and auE["openai_generated_at"], str(auE))
     check("after confirmation the status is 'human confirmed'", ag(cE)["SYSTEM_LEVEL"]["status"] == "confirmed")
+    # evidence changed between the two providers' runs → not comparable
+    cH, stH = new_case("bulk H")
+    run(cH, stH, [(claude(), "independent")], VARS, "anthropic_only")
+    research.ingest_manual(cH, "text", {"title": "Later county update", "text": SRC1 + " Additional detail was released later."})
+    run(cH, stH, [(openai(), "independent")], VARS, "openai_only")
+    check("Claude and OpenAI interpreted different evidence versions → cross-version agreement, eligible with disclosure",
+          ag(cH)["SYSTEM_LEVEL"]["status"] == "eligible_cross_version" and ag(cH)["SYSTEM_LEVEL"]["eligible"]
+          and "evidence version" in ag(cH)["SYSTEM_LEVEL"]["differences"], str(ag(cH)["SYSTEM_LEVEL"]))
     import openpyxl
-    xlE = openpyxl.load_workbook(io.BytesIO(export.xlsx(cE)))
-    rhE = [c.value for c in xlE["Results"][1]]
-    resE = {r[0].value: [c.value for c in r] for r in xlE["Results"].iter_rows(min_row=2)}
-    check("export labels the separate-run confirmation",
-          resE["SYSTEM_LEVEL"][rhE.index("Confirmation method")] == "human-approved model agreement, separate runs (bulk)"
-          and "SEPARATE runs" in resE["SYSTEM_LEVEL"][rhE.index("Explanation")])
 
     print("\n[3] Dialog data, explicit confirmation, unchecking, protection of existing Human final")
     server.api_review(H(), str(cA), {"variable": "EVENT_DATE", "action": "edit", "value": "2025-07-05", "reason": "AAR timeline"})
@@ -309,9 +334,9 @@ def main():
     cF, stF = new_case("bulk F (browser)")
     run(cF, stF, [(claude(), "independent"), (openai(), "independent")], ["SYSTEM_LEVEL", "SYSTEM_INVOLVED", "ALERT_ORIGINATOR_PLATFORM", "FAILURE_TYPE"], "dual_independent")
     n_el = len(server.api_bulk_agreements(H(), str(cF))["eligible"])
-    cG, stG = new_case("bulk G (browser, separate runs)")
-    run(cG, stG, [(claude(), "primary")], ["SYSTEM_LEVEL"], "anthropic_only")
-    run(cG, stG, [(openai(), "primary")], ["SYSTEM_LEVEL"], "openai_only")
+    cG, stG = new_case("bulk G (browser, two jobs on the same evidence)")
+    run(cG, stG, [(claude(), "independent")], ["SYSTEM_LEVEL"], "anthropic_only")
+    run(cG, stG, [(openai(), "independent")], ["SYSTEM_LEVEL"], "openai_only")
     sep_ok = False
     env = {**os.environ, "WFD_PORT": "8851"}
     srv = subprocess.Popen([sys.executable, "-m", "app.server"], cwd=str(ROOT), env=env, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
@@ -355,13 +380,12 @@ def main():
             g_checked = pg.locator(".bulkChk").first.is_checked()
             g_ok_disabled = pg.locator("#bulkOk").is_disabled()
             g_dlg = pg.inner_text(".modal")
-            pg.screenshot(path=str(TMP / "bulk_separate_dialog.png"))
-            pg.locator(".bulkChk").first.check()
+            pg.screenshot(path=str(TMP / "bulk_two_jobs_dialog.png"))
             pg.click("#bulkOk")
             pg.wait_for_timeout(1500)
-            g_written = db.q1("SELECT COUNT(*) n FROM reviews WHERE case_id=? AND method='bulk_separate_run_agreement'", (cG,))["n"]
-            sep_ok = (not g_checked and g_ok_disabled and "Separate runs" in g_dlg and g_written == 1)
-            print(f"  separate-run item: checked-by-default={g_checked} confirm-disabled={g_ok_disabled} written={g_written}")
+            g_written = db.q1("SELECT COUNT(*) n FROM reviews WHERE case_id=? AND method='bulk_independent_agreement'", (cG,))["n"]
+            sep_ok = (g_checked and not g_ok_disabled and "Separate runs" not in g_dlg and g_written == 1)
+            print(f"  two-job item: checked-by-default={g_checked} confirm-disabled={g_ok_disabled} written={g_written}")
             ok = (f"Confirm {n_el} model agreement" in btn and n_rows == n_el and "does not independently prove" in dlg
                   and "gpt-6.1-sol" in dlg and "claude-sonnet-5-5" in dlg and k == str(n_el - 1) and written == n_el - 1 and not errors)
             print(f"  eligible={n_el} rows={n_rows} after-uncheck={k} written={written} errors={errors}")
@@ -370,7 +394,8 @@ def main():
         srv.terminate()
         srv.communicate(timeout=10)
     check("browser: button shows the count; dialog lists models and warning; unchecked item not written", ok)
-    check("browser: separate-run item is unticked by default with a warning; ticking and confirming writes it", sep_ok)
+    check("browser: agreement from two jobs on the same evidence/analysis version is ticked like any eligible item "
+          "(no separate-runs warning) and confirming writes it", sep_ok)
     print("  screenshots in", TMP)
     print(f"\n{len(PASS)} passed, {len(FAIL)} failed")
     if FAIL:
