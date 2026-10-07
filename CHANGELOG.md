@@ -6,7 +6,7 @@ Completed changes, newest first. Commit hashes refer to `hesiyang5-glitch/wfd-re
 
 
 
-## 2026-10-06 — Interface terminology standardized (branch `ui/terminology-labels`; not merged, not deployed)
+## 2026-10-06 — Interface terminology standardized (merged to `main` 2026-10-06 with owner approval)
 - **This change modifies interface labels and explanatory copy only. It does not change provider behavior, model
   requests, evidence handling, caching, pricing, database structure, or coding results.**
 - Three levels are named consistently: provider (Anthropic / OpenAI), API (Anthropic API / OpenAI API) and model
