@@ -13,7 +13,7 @@ Chinese labels follow the same pattern (e.g. "Claude 编码 — Anthropic API").
 | Services | Services (one flat list) | Services → External services / AI coding providers / Internal processing |
 | Services | Web search — tavily | Web search — Tavily Search API |
 | Services | Claude (Anthropic) — configured | Claude coding — Anthropic API · Model: `claude-…` · Status: configured |
-| Services | OpenAI — configured · gpt-6.1-sol | OpenAI coding — OpenAI API · Model: `gpt-…` · Status: configured |
+| Services | OpenAI — configured · gpt-6.1-sol | GPT coding — OpenAI API · Model: `gpt-…` · Status: configured (owner choice 2026-10-06: coding lines name the model family) |
 | Services | OCR (scanned PDFs) — tesseract | Scanned-document text recognition — Tesseract OCR |
 | Services | Semantic retrieval — LSA approximation (not neural) + BM25 keywords | Evidence retrieval — LSA + BM25 (LSA approximation, not neural embeddings) |
 | Services | — | API / OCR / LSA / BM25 expanded (tooltips + one line) |
@@ -26,7 +26,7 @@ Chinese labels follow the same pattern (e.g. "Claude 编码 — Anthropic API").
 | Card help (OpenAI only) | … then OpenAI interprets the evidence. | One shared research process, followed by coding with OpenAI. |
 | Card help (dual) | Both providers will independently analyze the same evidence. To protect server responsiveness, their requests may be processed sequentially. | Both providers independently analyze the same available evidence. Requests may be processed sequentially to protect server responsiveness. |
 | Cost estimate | Shared web search (runs once) | Shared web research — Tavily Search API (runs once) |
-| Cost estimate | Claude (Anthropic) · claude-… / OpenAI · gpt-… | Claude coding — Anthropic API · `claude-…` / OpenAI coding — OpenAI API · `gpt-…` |
+| Cost estimate | Claude (Anthropic) · claude-… / OpenAI · gpt-… | Claude coding — Anthropic API · `claude-…` / GPT coding — OpenAI API · `gpt-…` |
 | Cost estimate | $low – **$high** | Expected cost $low · Maximum estimated cost **$high** (tooltip explains both) |
 | Cost estimate | Claude (Anthropic) — $0.00 — not selected | Claude coding — Anthropic API — Not selected — $0.00 |
 | Cost estimate | Combined (worst case) … models $a – $b | Combined — maximum estimated cost … models: expected $a · maximum $b |
@@ -38,7 +38,7 @@ Chinese labels follow the same pattern (e.g. "Claude 编码 — Anthropic API").
 | Re-analyze | effort medium | OpenAI reasoning effort: medium (tooltip) |
 | Re-analyze | 9 call(s) (9 new) · $low – $high | 9 request(s) · Cached requests 0 · New paid requests 9 · Expected cost … · Maximum estimated cost … |
 | Re-analyze (dual) | (dual card help) | Both providers independently analyze the same available evidence. Neither provider is labeled as primary or secondary. Requests may be processed sequentially to protect server responsiveness. |
-| Re-analyze | Spent: Claude / OpenAI / search | Spent: Claude coding / OpenAI coding / web search |
+| Re-analyze | Spent: Claude / OpenAI / search | Spent: Claude coding / GPT coding / web search |
 | Re-analyze | OpenAI budget · Model attempts (this case) | OpenAI coding budget · Model requests (this case) |
 | Re-analyze limits | Combined budget ($) / OpenAI budget ($) / OpenAI attempts / All model attempts | Research budget limit ($) / OpenAI coding budget per case ($) / OpenAI request limit per case / Model-request limit per case |
 | Progress | Mode / Coding provider | Coding-provider selection |

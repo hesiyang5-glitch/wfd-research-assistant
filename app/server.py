@@ -96,7 +96,7 @@ def provider_status() -> dict:
 
 
 # user-facing names in reasons/messages only (label-only change 2026-10-06; provider ids and behaviour unchanged)
-PROVIDER_PLAIN = {"anthropic": "Claude coding (Anthropic API)", "openai": "OpenAI coding (OpenAI API)"}
+PROVIDER_PLAIN = {"anthropic": "Claude coding (Anthropic API)", "openai": "GPT coding (OpenAI API)"}
 
 
 def available_modes(settings: dict) -> list[dict]:

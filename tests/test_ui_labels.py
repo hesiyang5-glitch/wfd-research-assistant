@@ -222,7 +222,7 @@ def main():
     check("1 Services: Web search — Tavily Search API", "Web search — Tavily Search API" in s, s[:300])
     check("1b Services: Claude coding — Anthropic API, with model and status",
           "Claude coding — Anthropic API" in s and f"Model: {claude_model}" in s and "Status: configured" in s)
-    check("1c Services: OpenAI coding — OpenAI API, with model", "OpenAI coding — OpenAI API" in s and f"Model: {openai_model}" in s)
+    check("1c Services: GPT coding — OpenAI API, with model", "GPT coding — OpenAI API" in s and f"Model: {openai_model}" in s)
     check("1d Services: internal processing (Tesseract OCR, LSA + BM25) and abbreviations expanded",
           "Scanned-document text recognition — Tesseract OCR" in s and "Evidence retrieval — LSA + BM25" in s
           and "API = Application Programming Interface" in s and "BM25 = Best Matching 25 ranking algorithm" in s
@@ -230,6 +230,8 @@ def main():
     check("1e Services: groups External services / AI coding providers / Internal processing; no 'Language model'",
           all(x in s for x in ("External services", "AI coding providers", "Internal processing")) and "Language model" not in s)
     check("1f Services (中文): Claude 编码 — Anthropic API", "Claude 编码 — Anthropic API" in T["zh_services"])
+    check("1g OpenAI coding line names the model family (GPT) and the OpenAI API; no 'OpenAI coding' label left",
+          "GPT 编码 — OpenAI API" in T["zh_services"] and "OpenAI coding —" not in json.dumps(T, ensure_ascii=False))
     st_txt = en("en_settings")
     labels = ["Search service", "Configured model provider", "Configured model", "Maximum search rounds",
               "Maximum search queries", "Pages per search query", "Results per search query", "Maximum pages to retrieve",
@@ -259,7 +261,7 @@ def main():
     e1, e2 = en("en_est_anthropic_only"), en("en_est_dual_independent")
     check("4 Cost estimate: standardized names",
           "Shared web research — Tavily Search API" in e2 and f"Claude coding — Anthropic API · {claude_model}" in e2
-          and f"OpenAI coding — OpenAI API · {openai_model}" in e2 and "Expected cost" in e2 and "Maximum estimated cost" in e2, e2)
+          and f"GPT coding — OpenAI API · {openai_model}" in e2 and "Expected cost" in e2 and "Maximum estimated cost" in e2, e2)
     check("4b Cost estimate: unselected provider shows 'Not selected — $0.00'", "Not selected — $0.00" in e1, e1)
     check("12 Cost estimate: the numbers shown are exactly the backend's numbers (same money formatting)",
           T.get("money_anthropic_only") is True and T.get("money_dual_independent") is True)
@@ -267,7 +269,7 @@ def main():
         r = en(k)
         check(f"5 Re-analyze ({'whole case' if k.endswith('dual_independent') else 'one variable'}): labels, models, "
               f"neutral sentence, cached/new requests",
-              "Claude coding — Anthropic API" in r and "OpenAI coding — OpenAI API" in r and f"Claude model: {claude_model}" in r
+              "Claude coding — Anthropic API" in r and "GPT coding — OpenAI API" in r and f"Claude model: {claude_model}" in r
               and f"OpenAI model: {openai_model}" in r and NEUTRAL in r and "Cached requests" in r and "New paid requests" in r, r[:400])
     opts = dict(T["en_recode_options"])
     check("5b Re-analyze: options show the standardized names; submitted values unchanged",

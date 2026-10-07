@@ -6,6 +6,13 @@ Completed changes, newest first. Commit hashes refer to `hesiyang5-glitch/wfd-re
 
 
 
+## 2026-10-06 — "GPT coding — OpenAI API" label (branch `ui/gpt-coding-label`; not merged, not deployed)
+- Owner choice: the coding lines name the model family on both sides — "Claude coding — Anthropic API" and
+  "GPT coding — OpenAI API" (Services, cost estimates, Re-analyze, Stop dialog title, "Spent" line, server reason text).
+  Mode names ("OpenAI only — OpenAI API"), "OpenAI suggestion" and the budget labels from the owner's label table
+  ("OpenAI coding budget per case") are unchanged. Label only: payloads and cost numbers verified identical.
+- Tests: `test_ui_labels` 37 (1 new check, 3 expectations updated).
+
 ## 2026-10-06 — Interface terminology standardized (merged to `main` 2026-10-06 with owner approval)
 - **This change modifies interface labels and explanatory copy only. It does not change provider behavior, model
   requests, evidence handling, caching, pricing, database structure, or coding results.**
