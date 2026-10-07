@@ -464,9 +464,9 @@ def main():
                         pg.locator(".hero .panel.form").screenshot(path=str(shots / f"home_{m}.png"))
                 ui_ok[f"estimates_change_{lang}"] = len(set(ests.values())) == 3
                 if lang == "en":
-                    ui_ok["not_selected_lines"] = "not selected" in ests["anthropic_only"] and "not selected" in ests["openai_only"] \
-                        and "not selected" not in ests["dual_independent"]
-                    ui_ok["shared_search_line"] = all("Shared web search (runs once)" in e for e in ests.values())
+                    ui_ok["not_selected_lines"] = "Not selected" in ests["anthropic_only"] and "Not selected" in ests["openai_only"] \
+                        and "Not selected" not in ests["dual_independent"]  # wording updated 2026-10-06 (labels only)
+                    ui_ok["shared_search_line"] = all("Shared web research" in e and "(runs once)" in e for e in ests.values())
             pg.evaluate("localStorage.setItem('wfd_lang','en')")
             pg.reload()
             pg.wait_for_selector("#providerChoice")
@@ -487,7 +487,7 @@ def main():
             dlg = pg.inner_text(".modal")
             pg.locator(".modal").screenshot(path=str(shots / "confirm_dual.png"))
             ui_ok["confirm_dialog_mode_and_estimate"] = ("Claude + OpenAI — independent comparison" in dlg
-                                                         and "One shared search" in dlg and "Combined (worst case)" in dlg
+                                                         and "One shared search" in dlg and "Combined — maximum estimated cost" in dlg
                                                          and "may still be billed" in dlg)
             pg.click("#csCancel")
             ui_ok["cancel_creates_nothing"] = not created and len(sent) == 1

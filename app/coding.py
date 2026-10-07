@@ -244,6 +244,10 @@ PUBLIC_MODES = ("anthropic_only", "openai_only", "dual_independent")
 CROSS_MODEL_MODES = ("anthropic_primary_openai_review", "openai_primary_anthropic_review")
 ALLOW_CROSS_MODEL_REVIEW = False  # tests may enable it to create historical-style data; never enabled in the app
 PROVIDER_LABELS = {"anthropic": "Claude (Anthropic)", "openai": "OpenAI", "openai_compatible": "OpenAI-compatible server"}
+# PROVIDER_LABELS above is part of stored prompts (historical cross-model review) and exports: never change it.
+# Display names for run logs and error messages only (label-only change 2026-10-06):
+PROVIDER_DISPLAY = {"anthropic": "Claude — Anthropic API", "openai": "OpenAI — OpenAI API",
+                    "openai_compatible": "OpenAI-compatible API"}
 ROLE_NOTES = {  # legacy role labels, kept only to describe historical rows
     "primary": "independent provider (recorded as 'primary' before 2026-10-05)",
     "independent": "independent provider (did not see the other model's result)",
@@ -294,7 +298,7 @@ def resolve_plan(settings: dict, mode: str | None = None) -> tuple[list, str, st
         c = cl.make_client(prov, settings.get("model_name", "claude-sonnet-5-5"), settings)
         if c is None or getattr(c, "provider", "") != prov:
             key = "ANTHROPIC_API_KEY" if prov == "anthropic" else "OPENAI_API_KEY"
-            return [], mode, (f"Coding mode '{mode}' needs {PROVIDER_LABELS[prov]}, but {key} is not configured on the "
+            return [], mode, (f"Coding mode '{mode}' needs {PROVIDER_DISPLAY[prov]}, but {key} is not configured on the "
                               f"server. Choose another mode; nothing was sent.")
         plan.append((c, role))
     return plan, mode, None
@@ -777,7 +781,7 @@ def run_coding(case: dict, settings: dict, client, job_id: int | None, log, budg
                    "No language model configured: these are the top-ranked candidate passages for manual coding.",
                    evidence=ev, basis="retrieval_only", meta=sysmeta)
     else:
-        label = f"{PROVIDER_LABELS.get(provider, provider)} {client.model}"
+        label = f"{PROVIDER_DISPLAY.get(provider, provider)} {client.model}"
         system = system_prompt_for(client)
         last_sig, abort_reason, preflight_done = None, None, False
         default_attempts = 3 if provider == "openai" else 4
@@ -790,7 +794,7 @@ def run_coding(case: dict, settings: dict, client, job_id: int | None, log, budg
                     stop_reason = stop_check()
                 if stop_reason:
                     report["stopped"] = True
-                    log("warn", f"[{provider}] stopped ({stop_reason}) before batch {bi+1}/{len(batches)}; batches not yet "
+                    log("warn", f"[{PROVIDER_DISPLAY.get(provider, provider)}] stopped ({stop_reason}) before batch {bi+1}/{len(batches)}; batches not yet "
                                 f"sent will not be sent; completed results are kept")
             if stop_reason:  # never sent: recorded as stopped, nothing billed
                 _record_call({**{"case_id": case["id"], "job_id": job_id, "run_id": run_id, "group_id": group_id,
@@ -839,7 +843,7 @@ def run_coding(case: dict, settings: dict, client, job_id: int | None, log, budg
                     report["cache_hits"] += 1
                     call_id = _record_call({**call, "status": "cache_hit", "http_attempts": 0, "cache_status": cache_status,
                                             "cost_usd": 0.0})
-                    log("info", f"batch {bi+1}/{len(batches)} [{provider}]: reused cached model reply (no charge)")
+                    log("info", f"batch {bi+1}/{len(batches)} [{PROVIDER_DISPLAY.get(provider, provider)}]: reused cached model reply (no charge)")
                 else:
                     why = limits.check(provider, worst_cost)
                     if why:
@@ -929,7 +933,7 @@ def run_coding(case: dict, settings: dict, client, job_id: int | None, log, budg
                         raise LLMError("model reply did not contain a list of results")
             except (LLMError, KeyError, TypeError, ValueError) as e:
                 report["failed_calls"] += 1
-                log("error", f"batch {bi+1} [{provider}]: model call failed: {e}")
+                log("error", f"batch {bi+1} [{PROVIDER_DISPLAY.get(provider, provider)}]: model call failed: {e}")
                 msg = str(e)
                 if call_id:  # a received reply that could not be used (e.g. unreadable JSON text)
                     row = db.q1("SELECT status FROM model_calls WHERE id=?", (call_id,))
@@ -988,14 +992,14 @@ def run_coding(case: dict, settings: dict, client, job_id: int | None, log, budg
                     db.update("model_calls", call_id, {"status": "complete"})
                 else:
                     db.update("model_calls", call_id, {"status": "complete_with_invalid_items"})
-                    log("warn", f"batch {bi+1} [{provider}]: reply had invalid or unsupported items — not cached")
+                    log("warn", f"batch {bi+1} [{PROVIDER_DISPLAY.get(provider, provider)}]: reply had invalid or unsupported items — not cached")
             if cached is not None:
                 out_used = ""
             else:
                 rt = resp.get("reasoning_tokens")
                 out_used = f", {resp.get('output_tokens')} of {max_out} output tokens" + \
                            (f" ({rt} reasoning)" if rt is not None else "")
-            log("info", f"coded batch {bi+1}/{len(batches)} [{provider}] ({len(fs)} variables, {len(ids)} passages{out_used})")
+            log("info", f"coded batch {bi+1}/{len(batches)} [{PROVIDER_DISPLAY.get(provider, provider)}] ({len(fs)} variables, {len(ids)} passages{out_used})")
     report["spent_usd"] = round(report["spent_usd"], 4)
     if derive:
         derive_fields(case, schema, run_id, targets, group_id=group_id)

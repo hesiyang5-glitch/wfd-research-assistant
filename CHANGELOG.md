@@ -6,6 +6,24 @@ Completed changes, newest first. Commit hashes refer to `hesiyang5-glitch/wfd-re
 
 
 
+## 2026-10-06 — Interface terminology standardized (branch `ui/terminology-labels`; not merged, not deployed)
+- **This change modifies interface labels and explanatory copy only. It does not change provider behavior, model
+  requests, evidence handling, caching, pricing, database structure, or coding results.**
+- Three levels are named consistently: provider (Anthropic / OpenAI), API (Anthropic API / OpenAI API) and model
+  (the identifier the backend already supplies: the `model_name` setting for Claude, `OPENAI_MODEL` for OpenAI).
+  "Claude (Anthropic)" vs "OpenAI" pairings removed; no "ChatGPT API"; no primary/secondary wording.
+- `web/app.js`, `web/i18n.js`: Services grouped (External services / AI coding providers / Internal processing, with
+  API, OCR, LSA and BM25 expanded); readable Settings labels (keys only as tooltips; option values unchanged);
+  provider cards with model identifiers; cost estimate names (Shared web research, Expected cost, Maximum estimated
+  cost, Cached requests, New paid requests, Not selected — $0.00); Re-analyze dialogs, Progress, Stop/Resume and
+  Review use the same names. `app/server.py`, `app/coding.py`, `app/research.py`: display names in user-facing
+  reasons, run logs and job messages only (`PROVIDER_LABELS`, used in stored prompts and exports, is unchanged).
+- Tests: new `tests/test_ui_labels.py` (36) — labels in every affected view, plus unchanged request payloads, settings
+  keys/values, cost numbers, cache keys, database schema, prompt, stored results and Human final values (fingerprints
+  pinned from `main` 302a2f2). `tests/test_independent_providers.py`: three wording assertions updated to the new
+  labels ("Not selected", "Shared web research", "Combined — maximum estimated cost"). Full label table:
+  `docs/ui_terminology_labels.md`.
+
 ## 2026-10-06 — Provider-neutral evidence status (merged to `main` 2026-10-06 with owner approval)
 - D-038. New `app/evidence_status.py` (five statuses, resolution rules, legacy read-time derivation). Shared prompt
   rules and reply format ask both providers for `evidence_status`, `rule_unclear`, `alternatives`, `missing_evidence`
