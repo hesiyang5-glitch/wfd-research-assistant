@@ -6,7 +6,7 @@ Completed changes, newest first. Commit hashes refer to `hesiyang5-glitch/wfd-re
 
 
 
-## 2026-10-06 — "GPT coding — OpenAI API" label (branch `ui/gpt-coding-label`; not merged, not deployed)
+## 2026-10-06 — "GPT coding — OpenAI API" label (merged to `main` 2026-10-06 with owner approval)
 - Owner choice: the coding lines name the model family on both sides — "Claude coding — Anthropic API" and
   "GPT coding — OpenAI API" (Services, cost estimates, Re-analyze, Stop dialog title, "Spent" line, server reason text).
   Mode names ("OpenAI only — OpenAI API"), "OpenAI suggestion" and the budget labels from the owner's label table
