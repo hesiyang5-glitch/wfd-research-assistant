@@ -6,6 +6,11 @@ Completed changes, newest first. Commit hashes refer to `hesiyang5-glitch/wfd-re
 
 
 
+## 2026-10-07 — Documentation: session handoff (branch `docs/handoff-2026-10-07`; documentation only, not deployed)
+- DEPLOY current deployment (`main` = `92f257c`, what was and was not verified live); PROJECT_SPEC §14 status rows for
+  D-037, D-038, labels and D-039 (branch only); ARCHITECTURE validation / evidence status / display names; KNOWN_ISSUES
+  status summary and K-53 (missing-value branch on hold); CLAUDE.md file map and current-state pointer. No code change.
+
 ## 2026-10-06 — Readable names in exports and run logs (merged to `main` 2026-10-06 with owner approval)
 - Display only: internal provider ids, roles, mode names, database values, API routes, request payloads and cache keys
   are unchanged; new runs still store `anthropic` / `openai` with role `independent`; historical `primary` / `reviewer`

@@ -98,6 +98,8 @@ Project under `WFD project/sources/20250704-TX01/`). Tests run fully offline.
 | `app/retrieval.py` | BM25 + semantic (LSA or embeddings) evidence retrieval |
 | `app/coding.py` | prompt rules, batching, worst-case budget checks, derived/admin fields |
 | `app/validator.py` | server-side validation of codes, quotes, evidence IDs, missing-value rules |
+| `app/evidence_status.py` | evidence status (D-038) resolution, legacy "not recorded" handling |
+| `app/display.py` | readable provider / mode / role names for exports and run logs (internal ids unchanged) |
 | `app/llm/clients.py` | Anthropic and OpenAI-compatible adapters, provider resolution, retry policy, cost math |
 | `app/llm/openai_responses.py`, `app/llm/structured.py` | OpenAI (official SDK, Responses API) and its strict per-batch schema |
 | `app/migrations.py` | additive DB migration; `rollback` / `restore` |
@@ -107,6 +109,11 @@ Project under `WFD project/sources/20250704-TX01/`). Tests run fully offline.
 | `config/pricing.json` | editable model and search prices (shipped defaults) |
 | `render.yaml`, `Dockerfile` | Render Blueprint and container image |
 | `tools/` | builds the static interface preview (not part of the app) |
+
+## Current state
+
+See `KNOWN_ISSUES.md` → "Status at <date>" for what is deployed, verified, on hold and planned. Open branch on hold:
+`audit/missingness` (D-039, K-53) — do not merge without the owner's decision and an update to current `main`.
 
 ## Before finishing a material task
 

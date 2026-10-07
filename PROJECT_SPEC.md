@@ -157,26 +157,31 @@ citations, and leaves every final decision to a human reviewer.
 | Pages: research entry, cases, progress, sources, search log, review, export/runs, schema, settings | TESTED |
 | Confirmations shown inside the page (browser popups can be blocked) | TESTED offline (fix deployed in `33a0c5e`; not yet confirmed by the user live) |
 
-## 14. Model providers (branch `feature/openai-provider`, not deployed)
+## 14. Model providers (deployed; status updated 2026-10-07)
 
 | Requirement | Status |
 |---|---|
 | Claude (Anthropic) workflow unchanged; default mode stays Claude-only | TESTED offline (prompt byte-identical; all earlier suites pass) |
 | OpenAI via official SDK + Responses API + strict Structured Outputs; model from `OPENAI_MODEL` (default `gpt-6.1-sol`); key only from `OPENAI_API_KEY` | TESTED offline (mocked transport); **live UNVERIFIED** |
 | Same evidence, codebook and validator for both providers; normalized result structure | TESTED offline |
-| Modes: Claude only, OpenAI only, Claude + OpenAI independent comparison — chosen on the first form and in Re-analyze; no automatic second provider; no primary/secondary/reviewer hierarchy (D-036, branch) | TESTED offline (incl. browser) |
-| Research once per case, shared by providers; results reference the same evidence snapshot and analysis version (D-036, branch) | TESTED offline |
-| Free availability check and one-request budget minimum before a case starts; pause after research before paid coding (D-036, branch) | TESTED offline; live checks **UNVERIFIED** |
+| Modes: Claude only, OpenAI only, Claude + OpenAI independent comparison — chosen on the first form and in Re-analyze; no automatic second provider; no primary/secondary/reviewer hierarchy (D-036) | TESTED offline (incl. browser) |
+| Research once per case, shared by providers; results reference the same evidence snapshot and analysis version (D-036) | TESTED offline |
+| Free availability check and one-request budget minimum before a case starts; pause after research before paid coding (D-036) | TESTED offline; live checks **UNVERIFIED** |
 | Search once per case regardless of providers | TESTED offline |
-| Providers never see each other's output; cross-model review refused for new runs, historical rows labelled `cross_model_review` (D-036, branch) | TESTED offline |
+| Providers never see each other's output; cross-model review refused for new runs, historical rows labelled `cross_model_review` (D-036) | TESTED offline |
 | Comparison statuses; disagreement routed to human review; agreement not treated as verification | TESTED offline |
-| Provider-specific cache keys based on model-visible input, not role (K-40, D-036 branch); invalid/incomplete replies never cached | TESTED offline |
+| Provider-specific cache keys based on model-visible input, not role (K-40, D-036); invalid/incomplete replies never cached | TESTED offline |
 | Unknown model / bad key / no quota → configuration error, no retries | TESTED offline |
 | Usage per provider incl. reasoning tokens and request ids | TESTED offline; real token figures **UNVERIFIED** |
 | Anthropic-only, OpenAI-only and manual fallbacks | TESTED offline |
 | Additive migration with rollback/restore | TESTED offline (database produced by deployed code `c57214a`) |
 | Stop Claude / Stop OpenAI / Resume Claude / Resume OpenAI, independently; warning that a sent request may still be billed | TESTED offline (incl. browser) |
 | Review table: Claude suggestion, OpenAI suggestion, Human final, Comparison, Review status; providers never overwrite each other; distinct states | TESTED offline (incl. browser) |
+| Multi-select values validated per selection; partially valid results kept for review, never cached / bulk-confirmed / exported unreviewed (D-037) | TESTED offline; deployed; **live UNVERIFIED** |
+| Provider-neutral evidence status (SUPPORTED / INFERRED / AMBIGUOUS / INSUFFICIENT / CONFLICTING) separate from validation status; INFERRED never final automatically; agreement never upgrades a status (D-038) | TESTED offline (both providers, stand-ins); deployed `302a2f2`; **live UNVERIFIED — no real model has produced an evidence status yet; first re-analysis is paid (K-47)** |
+| Interface terminology: provider / API / model named consistently ("Claude coding — Anthropic API", "GPT coding — OpenAI API"), no primary/secondary wording; label-only | TESTED offline (browser, payload/cost/cache fingerprints); deployed `4924f64`, `317fd4c`; owner saw the new Services labels live 2026-10-06 (before `317fd4c`) |
+| Exports and run logs show readable provider / mode / role names; internal ids, stored data, cache keys and JSON export unchanged; historical `primary` / `reviewer` shown as recorded | TESTED offline; deployed `92f257c`; **live UNVERIFIED** |
+| Missing values: `-9` only where defined for every variable type, consistency flags, audit table (D-039) | TESTED offline on branch `audit/missingness` only — **NOT merged** (owner put it on hold; PI decisions PI-M1…PI-M11 pending) |
 
 ## 15. Deployment
 

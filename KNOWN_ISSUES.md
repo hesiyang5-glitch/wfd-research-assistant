@@ -44,6 +44,7 @@ Last reviewed: 2026-10-01 (commit `33a0c5e`). Severity: **High** (blocks correct
 | K-47 | D-038 (merged 2026-10-06): after deployment, every earlier result (incl. pre-October cached Claude replies) is an earlier analysis version with evidence status "not recorded"; re-analysing for evidence statuses sends new paid requests (no reusable cache). Evidence statuses are the model's judgement — the server checks consistency and citations, not the soundness of an inference. Not yet run against a live model. | Medium |
 | K-48 | Pre-existing test hygiene (found 2026-10-06, also on `main`): the browser part of `test_independent_providers` starts a server subprocess (with a fake key and no network guard) that makes the free availability check (`GET /v1/models/...`) toward OpenAI. It was blocked by the sandbox; it is unbilled and the key is fake, but the subprocess should get a guard or a stubbed check. | Low |
 | K-52 | Label-only terminology change (merged 2026-10-06): left unchanged on purpose because changing them would alter stored data, prompts or exports — the stored rationale "No language model configured: …" on manual-coding rows, `PROVIDER_LABELS` ("Claude (Anthropic)") in historical cross-model prompts and in the Excel Provider_Suggestions sheet, internal ids/roles (`anthropic`, `openai`, `primary`, `reviewer`) and the legacy mode names (owner decision 2026-10-06: keep internal ids; exports and run logs show readable names since `ui/export-log-labels`; the JSON export and status codes stay raw). "Expected cost" is the low end of the existing estimate (typical output size), explained in a tooltip. | Low |
+| K-53 | Missing-value audit and codebook-stated rules (D-039) are on branch `audit/missingness` (`f9d8910`, based on `302a2f2`), **not merged** — owner put it on hold 2026-10-06 pending the PI decisions PI-M1…PI-M11 (`docs/missingness/PI_DECISIONS_missingness.md` on that branch; copy in the claude.ai Project as `WFD project/PI_DECISIONS_missingness.md`). On `main`, a numeric field without `-9` (e.g. MESSAGE_CHARACTERISTICS_LENGTH) still accepts `-9` as the number −9 from a model. The branch must be updated to current `main` (conflicts expected in docs and `web/app.js`) and re-tested before any merge. | Medium |
 | K-46 | D-037 (merged 2026-10-06): results stored as `validation_failed` before the fix are not re-validated automatically; their replies were never cached (D-025), so re-analyzing those variables sends new (paid) requests. Whether a passage substantively supports a code is not machine-checked (human review). | Low |
 
 ## Research quality
@@ -59,6 +60,16 @@ Last reviewed: 2026-10-01 (commit `33a0c5e`). Severity: **High** (blocks correct
 | K-13 | Free-text fields: quotes are validated, the model's prose is not. | Medium |
 | K-14 | Prompt-injection resistance (source text treated as data) is a prompt rule only; no adversarial test. | Medium |
 | K-15 | `WFD_ID` sequence uses IDs in the active workbook, not the master database. | Low |
+
+## Status at 2026-10-07 (handoff)
+
+- **Completed, tested offline, deployed, live-unverified:** D-037 multi-select validation, D-038 evidence status
+  (`302a2f2`), "GPT coding" label (`317fd4c`), readable export/log names (`92f257c`). Interface terminology (`4924f64`)
+  was seen live by the owner. No live paid run since D-038 (K-47).
+- **Completed on a branch, not merged (on hold):** D-039 missing values (K-53).
+- **Unresolved:** K-22 Anthropic key expires 2026-10-31 (rotate before); K-38 watch for "Instance failed" on the next
+  paid run; K-41, K-42, K-44, K-45, K-46, K-47, K-48, K-52, K-53.
+- **Deferred / planned:** incremental research (not started); PI decisions on missing values; benchmark scoring.
 
 ## Codebook / workbook issues (need PI decisions; app flags them, never guesses)
 
