@@ -131,7 +131,8 @@ def check_mode(mode: str | None, settings: dict) -> str | None:
     if not m:
         raise ApiError(400, f"unknown coding mode '{mode}'")
     if not m["available"]:
-        raise ApiError(400, f"coding mode '{mode}' cannot run: {m['reason']}")
+        from .display import mode_display
+        raise ApiError(400, f"coding mode '{mode_display(mode)}' cannot run: {m['reason']}")
     return mode
 
 

@@ -10,6 +10,8 @@ import time
 
 from . import db
 from .coding import schema_for_case
+from .display import (BULK_HEADERS, COMPARISON_CLASS, CONFIRM_METHOD, interpretation_display, mode_display,
+                      provider_api)
 
 VALUE_STATUSES = ("suggested", "derived", "admin_generated", "rule_unclear")
 INSUFFICIENT = ("insufficient_evidence", "manual_needed", "not_coded_budget", "model_error", "validation_failed")
@@ -162,10 +164,12 @@ def explanation_cell(row: dict, origin: str) -> str:
         parts.append(f"[human-confirmed CROSS-VERSION model agreement (bulk confirmation, version warning acknowledged) "
                      f"by {r.get('reviewer') or 'reviewer'}]")
     elif r and r.get("source_provider"):
-        parts.append(f"[accepted from {r['source_provider']} suggestion]")
+        parts.append(f"[accepted from {provider_api(r['source_provider'])} suggestion]")
     comp = row.get("comparison")
     if comp and comp.get("model_status") != "model_agreement":
-        parts.append(f"[providers: {comp.get('model_status')}; human decision needed]")
+        from .coding import COMPARISON_LABELS
+        ms = comp.get("model_status")
+        parts.append(f"[providers: {COMPARISON_LABELS.get(ms, ms)}; human decision needed]")
     if comp and comp.get("kind") == "cross_version":
         parts.append("[cross-version: " + ("same suggested value, different analysis versions"
                                            if comp.get("same_value")
@@ -189,7 +193,7 @@ def evidence_status_text(s: dict | None) -> str:
     if not s or s.get("basis") not in ("model", None) or s.get("status") in ("derived", "admin_generated"):
         return ""
     if s.get("display_kind") == "two_providers":
-        return "; ".join(f"{p}: {es or 'not recorded'}" for p, es in sorted((s.get("evidence_statuses") or {}).items()))
+        return "; ".join(f"{provider_api(p)}: {es or 'not recorded'}" for p, es in sorted((s.get("evidence_statuses") or {}).items()))
     return s.get("evidence_status") or "not recorded"
 
 
@@ -247,7 +251,7 @@ def xlsx(case_id: int, include_unreviewed=False) -> bytes:
         v, origin = export_value(row, include_unreviewed)
         wr.append([row["name"], v, source_cell(row, res["sources"]) if v else "", explanation_cell(row, origin), row["category"],
                    origin, (row["suggestion"] or {}).get("status", ""), (row.get("comparison") or {}).get("label", ""),
-                   (row["review"] or {}).get("source_provider") or "", (row.get("agreement") or {}).get("label", ""),
+                   provider_api((row["review"] or {}).get("source_provider")), (row.get("agreement") or {}).get("label", ""),
                    ("human-approved model agreement (bulk)" if (row["review"] or {}).get("method") == "bulk_independent_agreement"
                     else "human-approved cross-version agreement (bulk, D-035)"
                     if (row["review"] or {}).get("method") == "bulk_separate_run_agreement"
@@ -274,7 +278,7 @@ def xlsx(case_id: int, include_unreviewed=False) -> bytes:
                 src = res["sources"].get(ev.get("source_id"), {})
                 we.append([row["name"], ev.get("stance"), ev.get("id"), f"S{ev.get('source_id')}", ev.get("page"), ev.get("para"),
                            ev.get("quote"), src.get("final_url") or src.get("url"), src.get("source_type"),
-                           s.get("provider") or "", s.get("interpretation") or ""])
+                           provider_api(s.get("provider")), interpretation_display(s.get("interpretation"), s.get("role"))])
 
     wp = wb.create_sheet("Provider_Suggestions")
     wp.append(["Variable", "Provider", "Model", "Interpretation", "Suggested value", "Status", "Rationale", "Unresolved",
@@ -285,7 +289,8 @@ def xlsx(case_id: int, include_unreviewed=False) -> bytes:
         rv = row["review"] if (row["review"] and row["review"]["action"] in ("accepted", "edited", "cleared")) else None
         for s in row.get("providers") or []:
             ga = s.get("generated_at") or s.get("created_at")
-            wp.append([row["name"], s.get("provider"), s.get("model"), s.get("interpretation"), s.get("value"),
+            wp.append([row["name"], provider_api(s.get("provider")), s.get("model"),
+                       interpretation_display(s.get("interpretation"), s.get("role")), s.get("value"),
                        s.get("status"), s.get("rationale"), s.get("unresolved"), s.get("cache_status") or "",
                        s.get("evidence_snapshot_id") or "not recorded", s.get("analysis_spec_id") or "not recorded",
                        s.get("run_id"), s.get("cache_source_run_id") or s.get("run_id"),
@@ -300,10 +305,12 @@ def xlsx(case_id: int, include_unreviewed=False) -> bytes:
              "evidence_snapshot_id", "analysis_spec_id", "claude_run_id", "openai_run_id", "claude_cache_status",
              "openai_cache_status", "claude_generated_at", "openai_generated_at", "comparison_class", "differences_json",
              "warning_shown", "acknowledged", "claude_versions_json", "openai_versions_json", "selected_json"]
-    wbk.append(bcols)
+    wbk.append([BULK_HEADERS.get(k, k) for k in bcols])  # readable headers; the stored columns are unchanged
     for bc in db.q("SELECT * FROM bulk_confirmations WHERE case_id=? ORDER BY id", (case_id,)):
         for k in ("at", "claude_generated_at", "openai_generated_at"):
             bc[k] = dt.datetime.fromtimestamp(bc[k]).isoformat(timespec="seconds") if bc.get(k) else ""
+        bc["method"] = CONFIRM_METHOD.get(bc.get("method"), bc.get("method"))
+        bc["comparison_class"] = COMPARISON_CLASS.get(bc.get("comparison_class"), bc.get("comparison_class"))
         wbk.append([bc.get(k) for k in bcols])
 
     wsr = wb.create_sheet("Sources")
@@ -316,16 +323,16 @@ def xlsx(case_id: int, include_unreviewed=False) -> bytes:
         wsr.append([s.get(c) for c in cols])
 
     wq = wb.create_sheet("Search_Log")
-    wq.append(["Round", "Purpose", "Query", "Page", "Provider", "Status", "Results", "Error", "Target variables", "Time"])
+    wq.append(["Round", "Purpose", "Query", "Page", "Search service", "Status", "Results", "Error", "Target variables", "Time"])
     for q in db.q("SELECT * FROM search_queries WHERE case_id=? ORDER BY id", (case_id,)):
-        wq.append([q["round"], q["purpose"], q["query"], q["page"], q["provider"], q["status"], q["result_count"], q["error"],
+        wq.append([q["round"], q["purpose"], q["query"], q["page"], provider_api(q["provider"]), q["status"], q["result_count"], q["error"],
                    q["target_vars"], dt.datetime.fromtimestamp(q["created_at"]).isoformat(timespec="seconds")])
 
     wu = wb.create_sheet("Runs_Usage")
     wu.append(["Kind", "Provider", "Model", "Input tokens", "Output tokens", "Units", "Cost USD", "Estimated?", "Note", "Time",
                "Reasoning tokens", "Request id"])
     for u in db.q("SELECT * FROM usage WHERE case_id=? ORDER BY id", (case_id,)):
-        wu.append([u["kind"], u["provider"], u["model"], u["input_tokens"], u["output_tokens"], u["units"], u["cost_usd"],
+        wu.append([u["kind"], provider_api(u["provider"]), u["model"], u["input_tokens"], u["output_tokens"], u["units"], u["cost_usd"],
                    "yes" if u["estimated"] else "no", u["note"], dt.datetime.fromtimestamp(u["at"]).isoformat(timespec="seconds"),
                    u.get("reasoning_tokens"), u.get("request_id")])
     wu.append([])
@@ -334,7 +341,9 @@ def xlsx(case_id: int, include_unreviewed=False) -> bytes:
     from .coding import interpretation_of
     for r in db.q("SELECT * FROM runs WHERE case_id=? ORDER BY id", (case_id,)):
         wu.append([r["id"], r["mode"], r["model"], r["schema_version_id"], dt.datetime.fromtimestamp(r["created_at"]).isoformat(timespec="seconds"),
-                   r.get("provider"), interpretation_of(r) if r.get("provider") else "", r.get("coding_mode"),
+                   provider_api(r.get("provider")),
+                   interpretation_display(interpretation_of(r), r.get("role")) if r.get("provider") else "",
+                   mode_display(r.get("coding_mode")),
                    r.get("group_id"), r.get("evidence_snapshot_id") or "", r.get("analysis_spec_id") or ""])
 
     wm = wb.create_sheet("Field_Mapping")

@@ -6,6 +6,14 @@ Completed changes, newest first. Commit hashes refer to `hesiyang5-glitch/wfd-re
 
 
 
+## 2026-10-06 — Readable names in exports and run logs (branch `ui/export-log-labels`; not merged, not deployed)
+- Display only: internal provider ids, roles, mode names, database values, API routes, request payloads and cache keys
+  are unchanged; new runs still store `anthropic` / `openai` with role `independent`; historical `primary` / `reviewer`
+  are shown as recorded. New `app/display.py`; applied in `app/export.py` (Excel/TSV), run-log lines and messages in
+  `app/research.py`, `app/coding.py`, `app/server.py`. JSON export unchanged. Full list: `docs/export_log_labels.md`.
+- Tests: new `tests/test_export_labels.py` (23). Display-name assertions updated in `test_providers` (2),
+  `test_bulk_agreement` (1), `test_evidence_status` (1). All 14 suites pass offline.
+
 ## 2026-10-06 — Interface terminology standardized (merged to `main` 2026-10-06 with owner approval)
 - **This change modifies interface labels and explanatory copy only. It does not change provider behavior, model
   requests, evidence handling, caching, pricing, database structure, or coding results.**

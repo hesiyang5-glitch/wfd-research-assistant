@@ -309,7 +309,7 @@ def main():
           "Evidence status" in hdr and "Validation status" in hdr)
     res_rows = {r[0]: dict(zip(hdr, r)) for r in wb["Results"].iter_rows(min_row=2, values_only=True)}
     check("30b Results: per-provider evidence statuses for a two-provider variable",
-          res_rows["POPULATION_SCOPE"]["Evidence status"] == "anthropic: INFERRED; openai: INFERRED", res_rows["POPULATION_SCOPE"]["Evidence status"])
+          res_rows["POPULATION_SCOPE"]["Evidence status"] == "Anthropic API: INFERRED; OpenAI API: INFERRED", res_rows["POPULATION_SCOPE"]["Evidence status"])
     ph = [c.value for c in wb["Provider_Suggestions"][1]]
     check("31 Provider_Suggestions has evidence status, validation status, alternatives, missing evidence",
           {"Evidence status", "Validation status", "Alternative values", "Missing evidence"} <= set(ph))

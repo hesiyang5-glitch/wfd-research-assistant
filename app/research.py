@@ -505,6 +505,7 @@ def stage_gaps(ctx: Ctx) -> list[dict]:
 # ----------------------------------------------------------------------------- coding
 def stage_coding(ctx: Ctx):
     from .coding import PROVIDER_DISPLAY, estimate, limit_needs, resolve_plan, run_coding_plan
+    from .display import mode_display
     ctx.stage("coding", 0.85, "Coding and validating")
     mode = ctx.params.get("mode") or ctx.settings.get("coding_mode") or "single"
     resume = ctx.params.get("resume")  # continue ONE provider's stopped variables inside an earlier coding group
@@ -530,7 +531,7 @@ def stage_coding(ctx: Ctx):
                     ctx.state["awaiting"] = "provider"
                     ctx.save(status="needs_input", message=str(e)[:500])
                     raise Budget("model provider configuration error")
-                ctx.log("warn", f"could not check {c.provider} model availability now ({str(e)[:160]}); will check again "
+                ctx.log("warn", f"could not check {PROVIDER_DISPLAY.get(c.provider, c.provider)} model availability now ({str(e)[:160]}); will check again "
                                 f"before the first paid call")
     variables = (resume or {}).get("variables") or ctx.params.get("variables")
     spent, budget = ctx.spent(), ctx.budget()
@@ -550,7 +551,7 @@ def stage_coding(ctx: Ctx):
                             f"{'cross-model review' if p['role'] == 'reviewer' else 'independent'}]: {p['calls']} call(s) "
                             f"({p['calls_uncached']} not cached), ~{p['input_tokens']:,} input tokens, cost "
                             f"${p['cost_low']}–${p['cost_high']} worst case")
-        ctx.log("info", f"mode {mode}: combined worst case ${est['cost_high']}; case has spent ${spent:.2f} of ${budget:.2f}")
+        ctx.log("info", f"{mode_display(mode)}: combined worst case ${est['cost_high']}; case has spent ${spent:.2f} of ${budget:.2f}")
         for n in est.get("price_notes", []):
             ctx.log("warn", f"pricing: {n}")
         if est["cost_high"] is None:

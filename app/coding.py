@@ -246,8 +246,7 @@ ALLOW_CROSS_MODEL_REVIEW = False  # tests may enable it to create historical-sty
 PROVIDER_LABELS = {"anthropic": "Claude (Anthropic)", "openai": "OpenAI", "openai_compatible": "OpenAI-compatible server"}
 # PROVIDER_LABELS above is part of stored prompts (historical cross-model review) and exports: never change it.
 # Display names for run logs and error messages only (label-only change 2026-10-06):
-PROVIDER_DISPLAY = {"anthropic": "Claude — Anthropic API", "openai": "OpenAI — OpenAI API",
-                    "openai_compatible": "OpenAI-compatible API"}
+from .display import MODE_DISPLAY, PROVIDER_CODING as PROVIDER_DISPLAY  # noqa: E402  (display names only)
 ROLE_NOTES = {  # legacy role labels, kept only to describe historical rows
     "primary": "independent provider (recorded as 'primary' before 2026-10-05)",
     "independent": "independent provider (did not see the other model's result)",
@@ -298,7 +297,7 @@ def resolve_plan(settings: dict, mode: str | None = None) -> tuple[list, str, st
         c = cl.make_client(prov, settings.get("model_name", "claude-sonnet-5-5"), settings)
         if c is None or getattr(c, "provider", "") != prov:
             key = "ANTHROPIC_API_KEY" if prov == "anthropic" else "OPENAI_API_KEY"
-            return [], mode, (f"Coding mode '{mode}' needs {PROVIDER_DISPLAY[prov]}, but {key} is not configured on the "
+            return [], mode, (f"Coding mode '{MODE_DISPLAY.get(mode, mode)}' needs {PROVIDER_DISPLAY[prov]}, but {key} is not configured on the "
                               f"server. Choose another mode; nothing was sent.")
         plan.append((c, role))
     return plan, mode, None
@@ -1282,10 +1281,12 @@ def _combined_view(rows: list[dict]) -> dict:
             "evidence_recorded": any(r.get("evidence_recorded") for r in rows),
             "validation_state": "partially_valid" if any(r.get("validation_state") == "partially_valid" for r in rows)
             else ("invalid" if any(r.get("validation_state") == "invalid" for r in rows) else "valid"),
-            "evidence_review_reason": "; ".join(f"{r['provider']}: {r['evidence_review_reason']}" for r in rows
+            "evidence_review_reason": "; ".join(f"{PROVIDER_DISPLAY.get(r['provider'], r['provider'])}: "
+                                                f"{r['evidence_review_reason']}" for r in rows
                                                 if r.get("evidence_review_reason")),
             "alternatives": [dict(a, provider=r["provider"]) for r in rows for a in (r.get("alternatives") or [])],
-            "missing_evidence": "; ".join(f"{r['provider']}: {r['missing_evidence']}" for r in rows
+            "missing_evidence": "; ".join(f"{PROVIDER_DISPLAY.get(r['provider'], r['provider'])}: {r['missing_evidence']}"
+                                          for r in rows
                                           if r.get("missing_evidence"))}
 
 
