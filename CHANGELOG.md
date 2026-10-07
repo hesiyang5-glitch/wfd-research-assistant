@@ -6,7 +6,7 @@ Completed changes, newest first. Commit hashes refer to `hesiyang5-glitch/wfd-re
 
 
 
-## 2026-10-07 — "GPT" as the coder name where the model is meant (branch `ui/gpt-model-labels`; not merged, not deployed)
+## 2026-10-07 — "GPT" as the coder name where the model is meant (merged to `main` 2026-10-07 with owner approval)
 - Owner rule: name the model family that codes (Claude / GPT); keep "OpenAI" for the company, account, API and bill.
   "GPT only — OpenAI API", "Claude + GPT — independent comparison", "GPT suggestion", Stop/Resume GPT, agreement
   labels and reasons, version tables, Bulk_Confirmations headers, run-log mode names. Display only: ids, stored values,
