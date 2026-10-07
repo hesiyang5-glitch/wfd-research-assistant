@@ -64,8 +64,8 @@ Last reviewed: 2026-10-01 (commit `33a0c5e`). Severity: **High** (blocks correct
 ## Status at 2026-10-07 (handoff)
 
 - **Completed, tested offline, deployed, live-unverified:** D-037 multi-select validation, D-038 evidence status
-  (`302a2f2`), "GPT coding" label (`317fd4c`), readable export/log names (`92f257c`). Interface terminology (`4924f64`)
-  was seen live by the owner. No live paid run since D-038 (K-47).
+  (`302a2f2`), readable export/log names (`92f257c`). Interface terminology (`4924f64`) and the "GPT coding" label
+  (`317fd4c`) were seen live by the owner (screenshots 2026-10-06 23:12 and 2026-10-07 13:06). No live paid run since D-038 (K-47).
 - **Completed on a branch, not merged (on hold):** D-039 missing values (K-53).
 - **Unresolved:** K-22 Anthropic key expires 2026-10-31 (rotate before); K-38 watch for "Instance failed" on the next
   paid run; K-41, K-42, K-44, K-45, K-46, K-47, K-48, K-52, K-53.
