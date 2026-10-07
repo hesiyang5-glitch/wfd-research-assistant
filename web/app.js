@@ -11,7 +11,9 @@ const L = (zh, en) => (LANG === "zh" ? zh : en);
 const PROV = { anthropic: "Claude", openai: "OpenAI", openai_compatible: "OpenAI-compatible" };
 const PROV_API = { anthropic: "Anthropic API", openai: "OpenAI API", openai_compatible: "OpenAI-compatible API" };
 const provApi = (p) => (PROV[p] ? `${PROV[p]} — ${PROV_API[p]}` : p);                       // "Claude — Anthropic API"
-const provCoding = (p) => (PROV[p] ? `${PROV[p]} ${L("编码", "coding")} — ${PROV_API[p]}` : p);  // "Claude coding — Anthropic API"
+// coding lines name the model family (owner choice 2026-10-06): "Claude coding — Anthropic API", "GPT coding — OpenAI API"
+const CODER = { anthropic: "Claude", openai: "GPT", openai_compatible: "OpenAI-compatible" };
+const provCoding = (p) => (CODER[p] ? `${CODER[p]} ${L("编码", "coding")} — ${PROV_API[p]}` : p);
 const SEARCH_API = { tavily: "Tavily Search API", brave: "Brave Search API", searxng: "SearXNG" };
 const searchName = (n) => SEARCH_API[n] || n;
 // model identifiers already supplied by /api/status (Claude: the model_name setting; OpenAI: OPENAI_MODEL on the server)
@@ -200,7 +202,7 @@ function serviceList() {
   const s = STATUS;
   // Same status detection as before; only the wording and grouping changed (label-only, 2026-10-06).
   const li = (ok, label, text) => `<li><span class="dot ${ok}"></span><b>${label}</b> — ${text}</li>`;
-  const prov = (ok, p, model, status) => `<li class="svc-prov" data-svc="${p}"><span class="dot ${ok}"></span><b>${esc(PROV[p])} ${L("编码", "coding")}</b> — ${esc(PROV[p] === "Claude" ? "Anthropic" : "OpenAI")} ${abbr("API")}
+  const prov = (ok, p, model, status) => `<li class="svc-prov" data-svc="${p}"><span class="dot ${ok}"></span><b>${esc(CODER[p])} ${L("编码", "coding")}</b> — ${esc(PROV[p] === "Claude" ? "Anthropic" : "OpenAI")} ${abbr("API")}
       <div class="small svc-sub">${L("模型", "Model")}: <span class="mono">${esc(model || "—")}</span><br>${L("状态", "Status")}: ${status}</div></li>`;
   const h = (txt) => `<li class="svc-head small muted">${txt}</li>`;
   return `<ul class="services" style="padding-left:0;list-style:none;margin:0">
@@ -546,7 +548,7 @@ async function startRecode(id, variables, btn) {
           ${twoOrMore ? `<div><b>${L("合计", "Combined")}</b></div><div>${costPair(e.cost_low, e.cost_high)}</div>` : ""}
           ${e.cost_high_new != null && e.cost_high - e.cost_high_new > 0.005 ? `<div>${L("新增费用上限（不含缓存批次）", "Max additional cost (cached batches are free)")}</div><div><b>${money(e.cost_high_new)}</b></div>` : ""}
           <div>${t("case_spend")}</div><div>${money(lg.spent_total)} / ${money(lim.budget_usd)}</div>
-          <div>${L("已花费：Claude 编码 / OpenAI 编码 / 网页搜索", "Spent: Claude coding / OpenAI coding / web search")}</div><div>${money((lg.spent_by || {}).anthropic || 0)} / ${money((lg.spent_by || {}).openai || 0)} / ${money((lg.spent_by || {}).search || 0)}</div>
+          <div>${L("已花费：Claude 编码 / GPT 编码 / 网页搜索", "Spent: Claude coding / GPT coding / web search")}</div><div>${money((lg.spent_by || {}).anthropic || 0)} / ${money((lg.spent_by || {}).openai || 0)} / ${money((lg.spent_by || {}).search || 0)}</div>
           <div>${L("OpenAI 编码预算", "OpenAI coding budget")}</div><div>${money((lg.spent_by || {}).openai || 0)} / ${money(lim.openai_budget_usd)}</div>
           <div>${L("模型请求次数（本案例）", "Model requests (this case)")}</div><div>${lg.attempts_total || 0} / ${lim.max_model_attempts_per_case} · OpenAI API ${(lg.attempts_by || {}).openai || 0} / ${lim.max_openai_attempts_per_case}</div></div>
           ${Object.keys(e.limit_needs || {}).length ? `<div class="callout warn small">${L("这次运行可能超过上限；开始后会暂停，请你按明确数值批准：", "This run could exceed a limit; it will pause and ask you to approve explicit values:")} ${Object.values(e.limit_needs).map((v) => `${esc(v.label)} ${esc(v.current)} → ${esc(v.needed)}`).join("; ")}</div>` : ""}

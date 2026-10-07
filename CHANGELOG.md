@@ -6,13 +6,20 @@ Completed changes, newest first. Commit hashes refer to `hesiyang5-glitch/wfd-re
 
 
 
-## 2026-10-06 — Readable names in exports and run logs (branch `ui/export-log-labels`; not merged, not deployed)
+## 2026-10-06 — Readable names in exports and run logs (merged to `main` 2026-10-06 with owner approval)
 - Display only: internal provider ids, roles, mode names, database values, API routes, request payloads and cache keys
   are unchanged; new runs still store `anthropic` / `openai` with role `independent`; historical `primary` / `reviewer`
   are shown as recorded. New `app/display.py`; applied in `app/export.py` (Excel/TSV), run-log lines and messages in
   `app/research.py`, `app/coding.py`, `app/server.py`. JSON export unchanged. Full list: `docs/export_log_labels.md`.
 - Tests: new `tests/test_export_labels.py` (23). Display-name assertions updated in `test_providers` (2),
   `test_bulk_agreement` (1), `test_evidence_status` (1). All 14 suites pass offline.
+
+## 2026-10-06 — "GPT coding — OpenAI API" label (merged to `main` 2026-10-06 with owner approval)
+- Owner choice: the coding lines name the model family on both sides — "Claude coding — Anthropic API" and
+  "GPT coding — OpenAI API" (Services, cost estimates, Re-analyze, Stop dialog title, "Spent" line, server reason text).
+  Mode names ("OpenAI only — OpenAI API"), "OpenAI suggestion" and the budget labels from the owner's label table
+  ("OpenAI coding budget per case") are unchanged. Label only: payloads and cost numbers verified identical.
+- Tests: `test_ui_labels` 37 (1 new check, 3 expectations updated).
 
 ## 2026-10-06 — Interface terminology standardized (merged to `main` 2026-10-06 with owner approval)
 - **This change modifies interface labels and explanatory copy only. It does not change provider behavior, model
