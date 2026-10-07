@@ -32,3 +32,5 @@ Not changed (raw values kept on purpose): the JSON export; stored data; suggesti
 `insufficient_evidence` / `providers_differ` in the "Suggestion status" column and explanation notes (status codes,
 not provider/role/mode ids); cache status `new` / `hit`; Sources-sheet columns; the API error for an unknown mode
 (it repeats the value that was sent).
+
+Update 2026-10-07: coder display names use GPT where the model is meant (see `docs/ui_terminology_labels.md`, last section).

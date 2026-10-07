@@ -156,7 +156,7 @@ def explanation_cell(row: dict, origin: str) -> str:
     if s and s.get("display_kind") == "two_providers" and origin != "reviewed":
         vb = s.get("values_by_provider") or {}
         parts.append("[independent providers: " + "; ".join(
-            f"{'Claude' if p == 'anthropic' else 'OpenAI' if p in ('openai', 'openai_compatible') else p}="
+            f"{'Claude' if p == 'anthropic' else 'GPT' if p in ('openai', 'openai_compatible') else p}="
             f"{v or '(blank)'}" for p, v in sorted(vb.items())) + "]")
     if r and r.get("method") == "bulk_independent_agreement":
         parts.append(f"[human-confirmed independent model agreement (bulk confirmation) by {r.get('reviewer') or 'reviewer'}]")

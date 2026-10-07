@@ -101,7 +101,8 @@ PROVIDER_PLAIN = {"anthropic": "Claude coding (Anthropic API)", "openai": "GPT c
 
 def available_modes(settings: dict) -> list[dict]:
     """The ONE list of coding-provider choices, shared by the first research form, Re-analyze and Settings (D-036):
-    Claude only, OpenAI only, Claude + OpenAI — independent comparison. Equal providers; no primary or reviewer.
+    Claude only, GPT only, Claude + GPT — independent comparison (display names; ids anthropic_only / openai_only /
+    dual_independent). Equal providers; no primary or reviewer.
     A mode is unavailable when a provider it needs has no key configured (the reason is plain text, never a key)."""
     from .coding import MODES, PUBLIC_MODES
     ps = provider_status()
@@ -126,7 +127,7 @@ def check_mode(mode: str | None, settings: dict) -> str | None:
         return mode
     if mode in CROSS_MODEL_MODES:
         raise ApiError(400, "cross-model review (one model sees the other's answer) is outside the current scope; "
-                            "choose Claude only, OpenAI only, or Claude + OpenAI — independent comparison")
+                            "choose Claude only, GPT only, or Claude + GPT — independent comparison")
     m = next((x for x in available_modes(settings) if x["mode"] == mode), None)
     if not m:
         raise ApiError(400, f"unknown coding mode '{mode}'")
@@ -392,7 +393,7 @@ def api_cancel(h, jid, **_):
     return {"ok": True}
 
 
-PROVIDER_NAMES = {"anthropic": "Claude", "openai": "OpenAI", "openai_compatible": "OpenAI-compatible"}
+PROVIDER_NAMES = {"anthropic": "Claude", "openai": "GPT", "openai_compatible": "OpenAI-compatible"}  # display only
 STOP_WARNING = ("A request already sent to the provider cannot be recalled: it may still finish and may still be billed; "
                 "its result will be kept. Batches not yet sent will not be sent. The other provider is not affected.")
 

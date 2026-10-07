@@ -283,7 +283,7 @@ def resolve_plan(settings: dict, mode: str | None = None) -> tuple[list, str, st
         return [], mode, f"unknown coding mode '{mode}'"
     if mode in CROSS_MODEL_MODES and not ALLOW_CROSS_MODEL_REVIEW:
         return [], mode, ("Cross-model review (one model sees the other's answer) is outside the current scope. Choose "
-                          "Claude only, OpenAI only, or Claude + OpenAI — independent comparison. Nothing was sent.")
+                          "Claude only, GPT only, or Claude + GPT — independent comparison. Nothing was sent.")
     if settings.get("model_provider") == "none":
         return [], mode, None
     if mode == "single":

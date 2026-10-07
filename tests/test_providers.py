@@ -944,8 +944,8 @@ def ui_check(cid: int, key_an: str, key_oa: str, stopped_case=None, controls_cas
                     pg.goto(f"http://127.0.0.1:{port}/#/case/{cid}/review")
                     pg.wait_for_timeout(1500)
                     heads = [h.strip() for h in pg.eval_on_selector_all("#wbTable thead th", "els => els.map(e => e.innerText)")]
-                    want_en = ["#", "Variable", "Claude suggestion", "OpenAI suggestion", "Human final", "Comparison", "Review status"]
-                    want_zh = ["#", "变量", "Claude 建议", "OpenAI 建议", "人工最终值", "比较", "复核状态"]
+                    want_en = ["#", "Variable", "Claude suggestion", "GPT suggestion", "Human final", "Comparison", "Review status"]
+                    want_zh = ["#", "变量", "Claude 建议", "GPT 建议", "人工最终值", "比较", "复核状态"]
                     print(f"  [{port}] review columns:", heads)
                     ok &= heads in (want_en, want_zh)
                     pg.screenshot(path=str(TMP / "ui_review_table.png"), full_page=False)

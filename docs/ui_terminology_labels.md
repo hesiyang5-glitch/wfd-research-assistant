@@ -66,3 +66,27 @@ Chinese labels follow the same pattern (e.g. "Claude 编码 — Anthropic API").
 Not changed (would alter stored data, prompts or exports — see KNOWN_ISSUES K-52): the stored rationale "No language model
 configured: …" on manual-coding rows, `PROVIDER_LABELS` ("Claude (Anthropic)") inside historical cross-model prompts and
 the Excel Provider_Suggestions sheet, internal ids/roles/mode names, environment-variable names in the Keys panel.
+
+## Update 2026-10-07 — the coder is named "GPT" where the model is meant (owner rule)
+
+Display text only (`web/app.js` `PROV`, mode / help text; `app/display.py`; `app/agreement.py` labels and reasons;
+`app/server.py` Stop/Resume messages; `app/export.py` explanation). Stored ids (`openai`, `openai_only`,
+`dual_independent`), payloads, cache, costs and the database are unchanged.
+
+| Before | After |
+|---|---|
+| OpenAI only — OpenAI API | GPT only — OpenAI API |
+| Claude + OpenAI — independent comparison | Claude + GPT — independent comparison |
+| One shared research process, followed by coding with OpenAI. | … followed by coding with GPT. |
+| OpenAI suggestion (Review table, detail panel) | GPT suggestion |
+| OpenAI: OpenAI API · gpt-… / OpenAI model: gpt-… | GPT: OpenAI API · gpt-… / GPT model: gpt-… |
+| Stop OpenAI / Resume OpenAI (buttons, job messages) | Stop GPT / Resume GPT |
+| Agreement "OpenAI only"; "OpenAI has no completed result…"; "OpenAI marked the evidence …" | "GPT only"; "GPT has no completed result…"; "GPT marked the evidence …" |
+| Version tables: Claude / OpenAI columns; "only in OpenAI's version" | Claude / GPT; "only in GPT's version" |
+| Excel Bulk_Confirmations: "OpenAI model (OpenAI API)", "OpenAI run ID …", "OpenAI cache status" … | "GPT model (OpenAI API)", "GPT run ID …", "GPT cache status" … |
+| Run log: "Claude + OpenAI — independent comparison: combined worst case …"; "[OpenAI — OpenAI API]" | "Claude + GPT — …"; "[GPT — OpenAI API]" |
+| Explanation "[independent providers: Claude=…; OpenAI=…]" | "[independent providers: Claude=…; GPT=…]" |
+
+Kept as **OpenAI** (company, account, API or bill): "OpenAI API", "OpenAI coding budget (per case)", "OpenAI request
+limit per case", "OpenAI reasoning effort" and other OpenAI request settings, budget/limit pause messages
+("OpenAI case budget"), `OPENAI_API_KEY` / `OPENAI_MODEL`, the Excel Provider column ("OpenAI API").

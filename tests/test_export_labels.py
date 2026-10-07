@@ -166,7 +166,7 @@ def main():
           str(set(pcol)))
     h, rows = sheet("Bulk_Confirmations")
     check("Bulk_Confirmations: readable, provider-specific headers",
-          "Claude model (Anthropic API)" in h and "OpenAI model (OpenAI API)" in h and "Confirmation method" in h
+          "Claude model (Anthropic API)" in h and "GPT model (OpenAI API)" in h and "Confirmation method" in h
           and not [x for x in h if re.fullmatch(r"[a-z_]+", str(x))], str(h))
     check("Bulk_Confirmations: method and comparison class shown as readable text",
           rows and rows[0][h.index("Confirmation method")] == "Human-approved model agreement (bulk)"
@@ -183,7 +183,7 @@ def main():
           any(str(x).startswith("primary (historical role)") for x in interp)
           and any(str(x).startswith("reviewer (historical role)") for x in interp), str(interp))
     check("Runs_Usage: coding mode and provider readable",
-          {"Claude + OpenAI — independent comparison", "Cross-model review (historical, audit only)",
+          {"Claude + GPT — independent comparison", "Cross-model review (historical, audit only)",
            "One provider (default of older cases)"} <= {r[rh.index("Coding mode")] for r in runs}
           and {r[rh.index("Provider")] for r in runs} <= {"Anthropic API", "OpenAI API"})
     raw_cells = [(ws_.title, c.coordinate, c.value) for ws_ in wb.worksheets if ws_.title not in ("Field_Mapping",)
@@ -216,8 +216,8 @@ def main():
           and j["bulk_confirmations"][0]["method"] == "bulk_independent_agreement")
     log = [x["message"] for x in db.q("SELECT message FROM job_log WHERE job_id=?", (jid,))]
     joined = "\n".join(log)
-    check("run log: 'Claude + OpenAI — independent comparison' instead of 'mode dual_independent'",
-          "Claude + OpenAI — independent comparison: combined worst case" in joined and "mode dual_independent" not in joined)
+    check("run log: 'Claude + GPT — independent comparison' instead of 'mode dual_independent'",
+          "Claude + GPT — independent comparison: combined worst case" in joined and "mode dual_independent" not in joined)
     check("run log: no raw provider ids in brackets", not re.search(r"\[(anthropic|openai)\]", joined))
     msg = coding.resolve_plan({**st, "model_provider": "auto"}, "nonexistent")[2]
     check("unknown mode error still names the value that was sent", "nonexistent" in (msg or ""))

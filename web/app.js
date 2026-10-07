@@ -8,7 +8,9 @@ const WB = { filter: "all", q: "", sel: null, data: null, section: "" };
 const L = (zh, en) => (LANG === "zh" ? zh : en);
 // Display names only (2026-10-06, label-only change): provider = company, API = programming interface, model = the
 // identifier the backend already supplies. Internal ids (anthropic / openai), roles and modes are unchanged.
-const PROV = { anthropic: "Claude", openai: "OpenAI", openai_compatible: "OpenAI-compatible" };
+// coder names (owner rule 2026-10-07): the model family that codes — Claude / GPT. "OpenAI" stays where the company,
+// account, API or bill is meant (OpenAI API, OpenAI coding budget, OpenAI request limit, OPENAI_* settings).
+const PROV = { anthropic: "Claude", openai: "GPT", openai_compatible: "OpenAI-compatible" };
 const PROV_API = { anthropic: "Anthropic API", openai: "OpenAI API", openai_compatible: "OpenAI-compatible API" };
 const provApi = (p) => (PROV[p] ? `${PROV[p]} — ${PROV_API[p]}` : p);                       // "Claude — Anthropic API"
 // coding lines name the model family (owner choice 2026-10-06): "Claude coding — Anthropic API", "GPT coding — OpenAI API"
@@ -24,14 +26,14 @@ const abbr = (a) => `<abbr title="${esc(L(ABBR[a][0], ABBR[a][1]))}">${a}</abbr>
 const MODE_TEXT = {
   single: ["一个模型（旧案例的默认设置）", "One provider (default of older cases)"],
   anthropic_only: ["仅 Claude — Anthropic API", "Claude only — Anthropic API"],
-  openai_only: ["仅 OpenAI — OpenAI API", "OpenAI only — OpenAI API"],
-  dual_independent: ["Claude + OpenAI — 独立比较", "Claude + OpenAI — independent comparison"],
+  openai_only: ["仅 GPT — OpenAI API", "GPT only — OpenAI API"],
+  dual_independent: ["Claude + GPT — 独立比较", "Claude + GPT — independent comparison"],
   anthropic_primary_openai_review: ["跨模型复核（历史记录，仅供审核）", "Cross-model review (historical, audit only)"],
   openai_primary_anthropic_review: ["跨模型复核（历史记录，仅供审核）", "Cross-model review (historical, audit only)"],
 };
 const MODE_HELP = {
   anthropic_only: ["做一次共享研究，然后由 Claude 编码。", "One shared research process, followed by coding with Claude."],
-  openai_only: ["做一次共享研究，然后由 OpenAI 编码。", "One shared research process, followed by coding with OpenAI."],
+  openai_only: ["做一次共享研究，然后由 GPT 编码。", "One shared research process, followed by coding with GPT."],
   dual_independent: ["两个模型各自独立分析同样的现有证据，彼此看不到对方的答案。为了保持服务器响应，请求可能会依次处理。", "Both providers independently analyze the same available evidence. Requests may be processed sequentially to protect server responsiveness."],
 };
 const DUAL_NEUTRAL = ["两个模型各自独立分析同样的现有证据，不区分主次。", "Both providers independently analyze the same available evidence. Neither provider is labeled as primary or secondary."];
@@ -89,7 +91,7 @@ function cellHtml(cell, row) {
 }
 const availModes = () => (STATUS.modes || []).filter((m) => m.available);
 function providerCostRows(e) {
-  return (e.providers || []).map((p) => `<div>${esc(provCoding(p.provider))}<br><span class="small muted">${esc(PROV[p.provider] || p.provider)} ${L("模型", "model")}: <span class="mono">${esc(p.model)}</span></span>${p.reasoning_effort ? `<br><span class="small muted" title="${esc(L("OpenAI 模型可以使用的内部推理量；越高可能越贵。", "How much internal reasoning the OpenAI model may use; higher can cost more."))}">${L("OpenAI 推理强度", "OpenAI reasoning effort")}: ${esc(p.reasoning_effort)}</span>` : ""}</div>
+  return (e.providers || []).map((p) => `<div>${esc(provCoding(p.provider))}<br><span class="small muted">${esc(PROV[p.provider] || p.provider)} ${L("模型", "model")}: <span class="mono">${esc(p.model)}</span></span>${p.reasoning_effort ? `<br><span class="small muted" title="${esc(L("GPT 模型可以使用的内部推理量；越高可能越贵。", "How much internal reasoning the GPT model may use; higher can cost more."))}">${L("OpenAI 推理强度", "OpenAI reasoning effort")}: ${esc(p.reasoning_effort)}</span>` : ""}</div>
     <div>${p.calls != null ? `${p.calls} ${L("次请求", "request(s)")}${p.calls_uncached != null ? ` · ${L("缓存请求", "Cached requests")} ${p.calls - p.calls_uncached} · ${L("新的付费请求", "New paid requests")} ${p.calls_uncached}` : ""}<br>` : ""}${costPair(p.cost_low, p.cost_high)}${p.price_note ? ` <span class="badge warn" title="${esc(p.price_note)}">${L("价格需核对", "check price")}</span>` : ""}</div>`).join("");
 }
 
@@ -179,7 +181,7 @@ const SET_LABELS = {
   max_model_attempts_per_case: ["每个案例的模型请求上限", "Model-request limit per case", "发送给任何模型提供方的全部请求，包括重试和重新运行。", "Every request sent to any coding provider, including retries and re-runs."],
   openai_budget_usd: ["每个案例的 OpenAI 编码预算（美元）", "OpenAI coding budget per case (USD)", "包含在研究预算上限之内。", "Counted inside the research budget limit."],
   max_openai_attempts_per_case: ["每个案例的 OpenAI 请求上限", "OpenAI request limit per case"],
-  openai_reasoning_effort: ["OpenAI 推理强度", "OpenAI reasoning effort", "OpenAI 模型可以使用的内部推理量；越高可能越贵。", "How much internal reasoning the OpenAI model may use; higher can cost more."],
+  openai_reasoning_effort: ["OpenAI 推理强度", "OpenAI reasoning effort", "GPT 模型可以使用的内部推理量；越高可能越贵。", "How much internal reasoning the GPT model may use; higher can cost more."],
   openai_reasoning_reserve_tokens: ["OpenAI 推理 token 额度", "OpenAI reasoning-token allowance", "加在可见输出额度之上的推理额度（推理也按输出计费）。", "Added to the visible-output allowance; reasoning counts as output."],
   openai_max_output_tokens: ["OpenAI 每次请求的最多输出 token", "OpenAI maximum output tokens per request"],
   openai_timeout_seconds: ["OpenAI 请求超时（秒）", "OpenAI request timeout (seconds)", "每次请求的读取超时；超时的请求不会自动重试。", "Per-request read timeout; a timed-out request is never retried."],
@@ -241,7 +243,7 @@ function estimateHtml(e) {
       <div>${L("本案例总上限", "Case cap (all providers + search)")}</div><div>${money(e.budget_usd)}</div>
       <div>${L("请求次数上限", "Request caps")}</div><div>${L("全部模型", "all providers")} ${e.max_model_attempts_per_case} · OpenAI API ${e.max_openai_attempts_per_case}</div></div>
     ${e.minimum_check ? `<div class="callout bad small">${esc(e.minimum_check)}</div>` : ""}
-    ${!e.minimum_check && e.combined_high != null && (e.combined_high > e.budget_usd || (e.providers || []).some((p) => p.selected && p.provider === "openai" && p.cost_high > e.openai_budget_usd)) ? `<div class="callout warn small">${L("最坏情况高于本案例的上限。花费不会超过上限：编码开始前会暂停，请你把上限提高到一个明确的金额，或者停在那里。最坏情况假设每次请求都用满全部额度；目前唯一一次实测的完整 OpenAI 运行，实际花费约为最坏情况的 1/9。", "The worst case is above this case's cap. Spending never exceeds the cap: before coding, the run pauses and asks you to raise it to an explicit amount, or to stop. The worst case assumes every request uses its full allowance; in the one full OpenAI run measured so far, the actual cost was about 1/9 of the worst case.")}</div>` : ""}
+    ${!e.minimum_check && e.combined_high != null && (e.combined_high > e.budget_usd || (e.providers || []).some((p) => p.selected && p.provider === "openai" && p.cost_high > e.openai_budget_usd)) ? `<div class="callout warn small">${L("最坏情况高于本案例的上限。花费不会超过上限：编码开始前会暂停，请你把上限提高到一个明确的金额，或者停在那里。最坏情况假设每次请求都用满全部额度；目前唯一一次实测的完整 GPT 运行，实际花费约为最坏情况的 1/9。", "The worst case is above this case's cap. Spending never exceeds the cap: before coding, the run pauses and asks you to raise it to an explicit amount, or to stop. The worst case assumes every request uses its full allowance; in the one full GPT run measured so far, the actual cost was about 1/9 of the worst case.")}</div>` : ""}
     <p class="small muted">${L("初步估算：还不知道会找到哪些资料。最高值是预算检查使用的“最坏情况预留”。研究完成后、任何付费模型请求之前，会根据实际证据重新计算。", "Preliminary estimate: the sources are not known yet. The high end is the worst-case reserve used by the budget check. After research and before any paid model request, it is recalculated from the evidence actually found.")}</p>`;
 }
 async function renderHome() {
@@ -609,11 +611,11 @@ async function tabReview(c, body) {
   const sections = [...new Set(WB.data.rows.map((r) => r.section).filter(Boolean))];
   body.innerHTML = `<div class="workbench"><div>
       <div class="row" style="align-items:flex-start"><div class="chips">${cats.map((k) => `<span class="chip ${WB.filter === k ? "on" : ""}" data-f="${k}">${t("filter_" + k)} ${counts[k] || 0}</span>`).join("")}</div><span class="spacer"></span>
-      <button id="bulkBtn" class="small" disabled title="${esc(L("两个模型给出相同有效值的变量（同一次运行，或不同运行并附警告）；需要你逐一勾选并确认", "Variables where Claude and OpenAI gave the same valid value (same run, or separate runs with a warning); you review and confirm them"))}">${L("确认模型一致的变量…", "Confirm model agreements…")}</button></div>
+      <button id="bulkBtn" class="small" disabled title="${esc(L("两个模型给出相同有效值的变量（同一次运行，或不同运行并附警告）；需要你逐一勾选并确认", "Variables where Claude and GPT gave the same valid value (same run, or separate runs with a warning); you review and confirm them"))}">${L("确认模型一致的变量…", "Confirm model agreements…")}</button></div>
       <div class="row" style="margin-bottom:8px"><input id="wbq" placeholder="${esc(t("search_vars"))}" value="${esc(WB.q)}" style="max-width:260px">
       <select id="wbsec" style="max-width:260px"><option value="">— section —</option>${sections.map((s) => `<option ${WB.section === s ? "selected" : ""}>${esc(s)}</option>`).join("")}</select>
       <span class="small muted">${t("filter_note")}</span></div>
-      <div class="wb-table"><table id="wbTable"><thead><tr><th>#</th><th>${t("col_var")}</th><th>${L("Claude 建议", "Claude suggestion")}</th><th>${L("OpenAI 建议", "OpenAI suggestion")}</th><th>${L("人工最终值", "Human final")}</th><th>${L("比较", "Comparison")}</th><th>${L("复核状态", "Review status")}</th></tr></thead><tbody id="wbRows"></tbody></table></div>
+      <div class="wb-table"><table id="wbTable"><thead><tr><th>#</th><th>${t("col_var")}</th><th>${L("Claude 建议", "Claude suggestion")}</th><th>${L("GPT 建议", "GPT suggestion")}</th><th>${L("人工最终值", "Human final")}</th><th>${L("比较", "Comparison")}</th><th>${L("复核状态", "Review status")}</th></tr></thead><tbody id="wbRows"></tbody></table></div>
     </div><div class="wb-detail panel" id="wbDetail"><p class="muted">${t("select_var")}</p></div></div>`;
   const drawRows = () => {
     const rows = WB.data.rows.filter((r) => (WB.filter === "all" || r.category === WB.filter) && (!WB.section || r.section === WB.section) &&
@@ -647,7 +649,7 @@ async function tabReview(c, body) {
   if (WB.sel) drawDetail(c);
 }
 const AG_BADGE = { eligible: "info", eligible_evidence_difference: "info", eligible_cross_version: "warn", cross_version_disagreement: "bad", confirmed: "ok", cross_model_review: "warn", value_disagreement: "bad", both_insufficient: "", claude_only: "", openai_only: "", validation_failed: "bad", pending: "dispute" };
-const AG_TEXT = { eligible: ["独立一致 — 分析版本相同", "Independent agreement — matched analysis version"], eligible_cross_version: ["跨版本一致 — 请核对版本差异", "Cross-version agreement — review version differences"], cross_version_disagreement: ["跨版本不一致 — 模型差异和输入差异都可能有影响", "Cross-version disagreement — model and input differences may both contribute"], cross_model_review: ["跨模型复核（仅供审核）— 非独立", "Cross-model review (audit only) — not independent"], eligible_evidence_difference: ["独立一致 — 分析版本相同（支持来源不同）", "Independent agreement — matched analysis version (different supporting sources)"], confirmed: ["独立一致 — 已人工确认", "Independent model agreement — human confirmed"], value_disagreement: ["取值不一致", "Value disagreement"], both_insufficient: ["均证据不足", "Both insufficient"], claude_only: ["仅 Claude", "Claude only"], openai_only: ["仅 OpenAI", "OpenAI only"], validation_failed: ["验证失败", "Validation failed"], pending: ["待人工复核", "Pending human review"] };
+const AG_TEXT = { eligible: ["独立一致 — 分析版本相同", "Independent agreement — matched analysis version"], eligible_cross_version: ["跨版本一致 — 请核对版本差异", "Cross-version agreement — review version differences"], cross_version_disagreement: ["跨版本不一致 — 模型差异和输入差异都可能有影响", "Cross-version disagreement — model and input differences may both contribute"], cross_model_review: ["跨模型复核（仅供审核）— 非独立", "Cross-model review (audit only) — not independent"], eligible_evidence_difference: ["独立一致 — 分析版本相同（支持来源不同）", "Independent agreement — matched analysis version (different supporting sources)"], confirmed: ["独立一致 — 已人工确认", "Independent model agreement — human confirmed"], value_disagreement: ["取值不一致", "Value disagreement"], both_insufficient: ["均证据不足", "Both insufficient"], claude_only: ["仅 Claude", "Claude only"], openai_only: ["仅 GPT", "GPT only"], validation_failed: ["验证失败", "Validation failed"], pending: ["待人工复核", "Pending human review"] };
 const agText = (s) => (AG_TEXT[s] ? L(AG_TEXT[s][0], AG_TEXT[s][1]) : s);
 async function openBulkConfirm(c) {
   let d;
@@ -659,7 +661,7 @@ async function openBulkConfirm(c) {
       ${L("只有你勾选并点击“确认”后，才会写入“人工最终值”；之后仍可在每个变量里撤销或修改。", "Nothing is written until you click Confirm. Each value can still be reset or edited afterwards in that variable's review panel.")}</div>
     <p class="small">${L("可确认", "Eligible")}: <b id="bulkN">${d.eligible.length}</b> · ${L("不符合条件（保持待复核）", "Excluded (stay pending)")}: <b>${d.excluded_count}</b>
       ${Object.keys(d.excluded).length ? `<span class="muted">(${Object.entries(d.excluded).map(([k, v]) => `${esc(agTextFromLabel(k))}: ${v}`).join("; ")})</span>` : ""}</p>
-    <div class="wb-table" style="max-height:52vh"><table id="bulkTable"><thead><tr><th><input type="checkbox" id="bulkAll" ${d.eligible.some((x) => x.cross_version) ? "" : "checked"} style="width:auto"></th><th>${t("col_var")}</th><th>${L("一致的取值", "Agreed value")}</th><th>Claude</th><th>OpenAI</th><th>${L("备注", "Note")}</th></tr></thead><tbody>
+    <div class="wb-table" style="max-height:52vh"><table id="bulkTable"><thead><tr><th><input type="checkbox" id="bulkAll" ${d.eligible.some((x) => x.cross_version) ? "" : "checked"} style="width:auto"></th><th>${t("col_var")}</th><th>${L("一致的取值", "Agreed value")}</th><th>Claude</th><th>GPT</th><th>${L("备注", "Note")}</th></tr></thead><tbody>
     ${d.eligible.map((x) => `<tr><td><input type="checkbox" class="bulkChk" style="width:auto" value="${esc(x.variable)}" data-cross="${x.cross_version ? 1 : 0}" ${x.cross_version ? "" : "checked"}></td><td class="mono">${esc(x.variable)}</td>
       <td><b class="mono">${esc(x.value)}</b>${x.value_label ? `<div class="small muted">${esc(x.value_label)}</div>` : ""}</td>
       <td class="small mono">${esc(x.claude.model || "")}<div class="muted">#${x.claude.suggestion_id}</div></td><td class="small mono">${esc(x.openai.model || "")}<div class="muted">#${x.openai.suggestion_id}</div></td>
@@ -778,9 +780,9 @@ function drawDetail(c) {
     try {
       const v = await api("GET", `/api/cases/${c.id}/version_diff?variable=${encodeURIComponent(r.name)}`);
       const rowv = (lab, k) => `<tr><td>${lab}</td><td class="mono">${esc(v.claude[k] ?? L("未记录", "not recorded"))}</td><td class="mono">${esc(v.openai[k] ?? L("未记录", "not recorded"))}</td></tr>`;
-      const lst = (o) => (o ? `${L("仅 Claude 版本", "only in Claude's version")}: ${esc((o.only_in_claude_version || []).join(", ") || "—")}; ${L("仅 OpenAI 版本", "only in OpenAI's version")}: ${esc((o.only_in_openai_version || []).join(", ") || "—")}${o.changed_text ? `; ${L("文字有变化", "text changed")}: ${esc(o.changed_text.join(", ") || "—")}` : ""}` : L("未记录（版本化之前的结果）", "not recorded (result from before versioning)"));
+      const lst = (o) => (o ? `${L("仅 Claude 版本", "only in Claude's version")}: ${esc((o.only_in_claude_version || []).join(", ") || "—")}; ${L("仅 GPT 版本", "only in GPT's version")}: ${esc((o.only_in_openai_version || []).join(", ") || "—")}${o.changed_text ? `; ${L("文字有变化", "text changed")}: ${esc(o.changed_text.join(", ") || "—")}` : ""}` : L("未记录（版本化之前的结果）", "not recorded (result from before versioning)"));
       $("#vdOut").innerHTML = `<div><b>${L("不同之处", "Differs in")}:</b> ${esc((v.differences || []).join(", ") || "—")}</div>
-        <table class="small" style="margin:6px 0"><thead><tr><th></th><th>Claude</th><th>OpenAI</th></tr></thead><tbody>
+        <table class="small" style="margin:6px 0"><thead><tr><th></th><th>Claude</th><th>GPT</th></tr></thead><tbody>
         ${rowv(L("证据版本", "Evidence version"), "evidence_snapshot_id")}${rowv(L("编码手册版本", "Codebook version"), "codebook_version")}${rowv(L("提示词版本", "Prompt version"), "prompt_version")}${rowv(L("分析版本", "Analysis version"), "analysis_spec_id")}${rowv(L("模型", "Model"), "model")}${rowv(L("原始运行", "Original run"), "original_run_id")}
         <tr><td>${L("生成时间", "Generated")}</td><td>${esc(fmtTime(v.claude.generated_at))}</td><td>${esc(fmtTime(v.openai.generated_at))}</td></tr>${rowv(L("缓存", "Cache"), "cache_status")}</tbody></table>
         <div><b>${L("来源", "Sources")}:</b> ${"sources" in v ? lst(v.sources) : "—"}</div>

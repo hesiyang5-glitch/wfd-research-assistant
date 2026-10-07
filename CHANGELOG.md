@@ -6,6 +6,15 @@ Completed changes, newest first. Commit hashes refer to `hesiyang5-glitch/wfd-re
 
 
 
+## 2026-10-07 — "GPT" as the coder name where the model is meant (branch `ui/gpt-model-labels`; not merged, not deployed)
+- Owner rule: name the model family that codes (Claude / GPT); keep "OpenAI" for the company, account, API and bill.
+  "GPT only — OpenAI API", "Claude + GPT — independent comparison", "GPT suggestion", Stop/Resume GPT, agreement
+  labels and reasons, version tables, Bulk_Confirmations headers, run-log mode names. Display only: ids, stored values,
+  payloads, cache, costs and database unchanged (payloads and cost amounts compared before/after in the browser).
+  List: `docs/ui_terminology_labels.md` (last section).
+- Tests: `test_ui_labels` 38 (1 new check); wording expectations updated in `test_ui_labels`, `test_export_labels`,
+  `test_independent_providers`, `test_providers`. All 14 suites pass offline.
+
 ## 2026-10-06 — Readable names in exports and run logs (merged to `main` 2026-10-06 with owner approval)
 - Display only: internal provider ids, roles, mode names, database values, API routes, request payloads and cache keys
   are unchanged; new runs still store `anthropic` / `openai` with role `independent`; historical `primary` / `reviewer`

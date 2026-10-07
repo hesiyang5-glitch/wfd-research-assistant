@@ -486,7 +486,7 @@ def main():
             pg.wait_for_selector("#csOk", timeout=5000)
             dlg = pg.inner_text(".modal")
             pg.locator(".modal").screenshot(path=str(shots / "confirm_dual.png"))
-            ui_ok["confirm_dialog_mode_and_estimate"] = ("Claude + OpenAI — independent comparison" in dlg
+            ui_ok["confirm_dialog_mode_and_estimate"] = ("Claude + GPT — independent comparison" in dlg
                                                          and "One shared search" in dlg and "Combined — maximum estimated cost" in dlg
                                                          and "may still be billed" in dlg)
             pg.click("#csCancel")
@@ -518,7 +518,7 @@ def main():
             if not ui_ok["review_no_hierarchy"]:
                 print("  hierarchy phrases found:", [w for w in HIER if w in rtxt])
             ui_ok["review_combined_view_and_both_columns"] = ("Both providers — combined view" in rtxt
-                                                              and "Claude suggestion" in rtxt and "OpenAI suggestion" in rtxt)
+                                                              and "Claude suggestion" in rtxt and "GPT suggestion" in rtxt)
             ui_ok["no_js_errors"] = not errors
             br.close()
     finally:

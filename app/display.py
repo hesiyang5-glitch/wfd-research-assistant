@@ -9,13 +9,13 @@ from __future__ import annotations
 
 PROVIDER_API = {"anthropic": "Anthropic API", "openai": "OpenAI API", "openai_compatible": "OpenAI-compatible API",
                 "tavily": "Tavily Search API", "brave": "Brave Search API", "searxng": "SearXNG"}
-PROVIDER_CODING = {"anthropic": "Claude — Anthropic API", "openai": "OpenAI — OpenAI API",
+PROVIDER_CODING = {"anthropic": "Claude — Anthropic API", "openai": "GPT — OpenAI API",
                    "openai_compatible": "OpenAI-compatible API"}
 MODE_DISPLAY = {
     "single": "One provider (default of older cases)",
     "anthropic_only": "Claude only — Anthropic API",
-    "openai_only": "OpenAI only — OpenAI API",
-    "dual_independent": "Claude + OpenAI — independent comparison",
+    "openai_only": "GPT only — OpenAI API",
+    "dual_independent": "Claude + GPT — independent comparison",
     "anthropic_primary_openai_review": "Cross-model review (historical, audit only)",
     "openai_primary_anthropic_review": "Cross-model review (historical, audit only)",
 }
@@ -25,18 +25,18 @@ CONFIRM_METHOD = {"bulk_independent_agreement": "Human-approved model agreement 
                   "bulk_separate_run_agreement": "Human-approved cross-version agreement (bulk, D-035)"}
 BULK_HEADERS = {
     "batch_id": "Batch ID", "variable": "Variable", "value": "Confirmed value",
-    "claude_suggestion_id": "Claude suggestion ID (Anthropic API)", "openai_suggestion_id": "OpenAI suggestion ID (OpenAI API)",
-    "claude_model": "Claude model (Anthropic API)", "openai_model": "OpenAI model (OpenAI API)",
+    "claude_suggestion_id": "Claude suggestion ID (Anthropic API)", "openai_suggestion_id": "GPT suggestion ID (OpenAI API)",
+    "claude_model": "Claude model (Anthropic API)", "openai_model": "GPT model (OpenAI API)",
     "group_id": "Comparison group", "codebook_version": "Codebook version", "prompt_version": "Prompt version",
     "evidence_difference": "Different supporting sources (1 = yes)", "previous_value": "Previous value",
     "reviewer": "Reviewer", "at": "Confirmed at", "method": "Confirmation method",
     "evidence_snapshot_id": "Evidence version", "analysis_spec_id": "Analysis version",
-    "claude_run_id": "Claude run ID (Anthropic API)", "openai_run_id": "OpenAI run ID (OpenAI API)",
-    "claude_cache_status": "Claude cache status", "openai_cache_status": "OpenAI cache status",
-    "claude_generated_at": "Claude result generated at", "openai_generated_at": "OpenAI result generated at",
+    "claude_run_id": "Claude run ID (Anthropic API)", "openai_run_id": "GPT run ID (OpenAI API)",
+    "claude_cache_status": "Claude cache status", "openai_cache_status": "GPT cache status",
+    "claude_generated_at": "Claude result generated at", "openai_generated_at": "GPT result generated at",
     "comparison_class": "Comparison class", "differences_json": "Version differences (JSON)",
     "warning_shown": "Cross-version warning shown (1 = yes)", "acknowledged": "Warning acknowledged (1 = yes)",
-    "claude_versions_json": "Claude analysis versions (JSON)", "openai_versions_json": "OpenAI analysis versions (JSON)",
+    "claude_versions_json": "Claude analysis versions (JSON)", "openai_versions_json": "GPT analysis versions (JSON)",
     "selected_json": "Selected variables (JSON)",
 }
 

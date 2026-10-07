@@ -230,6 +230,11 @@ def main():
     check("1e Services: groups External services / AI coding providers / Internal processing; no 'Language model'",
           all(x in s for x in ("External services", "AI coding providers", "Internal processing")) and "Language model" not in s)
     check("1f Services (中文): Claude 编码 — Anthropic API", "Claude 编码 — Anthropic API" in T["zh_services"])
+    allt = json.dumps(T, ensure_ascii=False)
+    check("1h coder named GPT where the model is meant (choices, suggestions); OpenAI kept for API / account / budget",
+          "GPT only — OpenAI API" in allt and "GPT suggestion" in allt and "Claude + GPT — independent comparison" in allt
+          and "OpenAI only" not in allt and "OpenAI suggestion" not in allt and "Claude + OpenAI" not in allt
+          and "OpenAI coding budget per case" in T["en_settings"] and "OpenAI API" in T["en_services"])
     check("1g OpenAI coding line names the model family (GPT) and the OpenAI API; no 'OpenAI coding' label left",
           "GPT 编码 — OpenAI API" in T["zh_services"] and "OpenAI coding —" not in json.dumps(T, ensure_ascii=False))
     st_txt = en("en_settings")
@@ -248,14 +253,14 @@ def main():
           "Claude model identifier used with the Anthropic API" in st_txt)
     ch = en("en_choice")
     check("3 Research page: three choices with standardized names",
-          all(x in ch for x in ("Claude only — Anthropic API", "OpenAI only — OpenAI API",
-                                "Claude + OpenAI — independent comparison")), ch)
+          all(x in ch for x in ("Claude only — Anthropic API", "GPT only — OpenAI API",
+                                "Claude + GPT — independent comparison")), ch)
     check("3b Research page: model identifiers shown for each choice",
           f"Model: {claude_model}" in ch and f"Model: {openai_model}" in ch and f"Claude: Anthropic API · {claude_model}" in ch
-          and f"OpenAI: OpenAI API · {openai_model}" in ch)
+          and f"GPT: OpenAI API · {openai_model}" in ch)
     check("3c Research page: explanatory copy",
           "One shared research process, followed by coding with Claude." in ch
-          and "One shared research process, followed by coding with OpenAI." in ch
+          and "One shared research process, followed by coding with GPT." in ch
           and "Both providers independently analyze the same available evidence. Requests may be processed sequentially "
               "to protect server responsiveness." in ch)
     e1, e2 = en("en_est_anthropic_only"), en("en_est_dual_independent")
@@ -270,15 +275,15 @@ def main():
         check(f"5 Re-analyze ({'whole case' if k.endswith('dual_independent') else 'one variable'}): labels, models, "
               f"neutral sentence, cached/new requests",
               "Claude coding — Anthropic API" in r and "GPT coding — OpenAI API" in r and f"Claude model: {claude_model}" in r
-              and f"OpenAI model: {openai_model}" in r and NEUTRAL in r and "Cached requests" in r and "New paid requests" in r, r[:400])
+              and f"GPT model: {openai_model}" in r and NEUTRAL in r and "Cached requests" in r and "New paid requests" in r, r[:400])
     opts = dict(T["en_recode_options"])
     check("5b Re-analyze: options show the standardized names; submitted values unchanged",
-          opts == {"anthropic_only": "Claude only — Anthropic API", "openai_only": "OpenAI only — OpenAI API",
-                   "dual_independent": "Claude + OpenAI — independent comparison"}, str(opts))
+          opts == {"anthropic_only": "Claude only — Anthropic API", "openai_only": "GPT only — OpenAI API",
+                   "dual_independent": "Claude + GPT — independent comparison"}, str(opts))
     check("5c Re-analyze (中文) options", dict(T["zh_recode_options"]).get("anthropic_only") == "仅 Claude — Anthropic API")
     rv = en("en_review")
-    check("6/7 Review: Claude suggestion with Anthropic API; OpenAI suggestion with OpenAI API",
-          "Claude suggestion" in rv and "Anthropic API" in rv and "OpenAI suggestion" in rv and "OpenAI API" in rv)
+    check("6/7 Review: Claude suggestion with Anthropic API; GPT suggestion with OpenAI API",
+          "Claude suggestion" in rv and "Anthropic API" in rv and "GPT suggestion" in rv and "OpenAI API" in rv)
     every = json.dumps(T, ensure_ascii=False)
     check("8 'ChatGPT' appears nowhere in the interface or its source",
           "ChatGPT" not in every and "ChatGPT" not in (ROOT / "web" / "app.js").read_text()
