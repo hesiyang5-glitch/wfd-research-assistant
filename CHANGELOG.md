@@ -22,7 +22,14 @@ Completed changes, newest first. Commit hashes refer to `hesiyang5-glitch/wfd-re
   coding rules, wording of buttons and labels (except the readable status names and the empty-progress sentence).
 - Files: `web/styles.css` (rewritten with colour tokens), `web/index.html`, new `web/theme.js`, `web/app.js`
   (markup/classes only). List: `docs/visual_polish.md`.
-- Tests: new `tests/test_visual.py` (21 checks; fails on `main` as expected). Full suite results in TEST_PLAN.
+- Tests (offline, 2026-10-29, this branch): test_visual 21/21 (new; fails on `main` as expected), test_ui_labels 38/38
+  (payloads, settings keys/values, cost numbers, cache-key / schema / prompt fingerprints unchanged), test_pipeline 44,
+  test_costs 32, test_auth 24, test_ui_flow PASS, test_legacy_migration 18, test_bulk_agreement 67, test_resilience 31,
+  test_independent_providers 68, test_cross_version 27, test_export_labels 23, test_evidence_status 59,
+  test_multiselect_validation 24 — all pass. **test_providers NOT run**: the OpenAI SDK package could not be installed
+  in this session (package registry unreachable), so the suite stops at `import openai`; it touches no interface file
+  but must be re-run before merging. First test_ui_labels run found group titles turned uppercase by CSS (changes the
+  text read by screen readers/copy) — fixed by keeping the original case.
  where the model is meant (merged to `main` 2026-10-07 with owner approval)
 - Owner rule: name the model family that codes (Claude / GPT); keep "OpenAI" for the company, account, API and bill.
   "GPT only — OpenAI API", "Claude + GPT — independent comparison", "GPT suggestion", Stop/Resume GPT, agreement

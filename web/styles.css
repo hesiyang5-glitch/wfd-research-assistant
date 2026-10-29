@@ -111,7 +111,7 @@ h3 { font-size: 14.5px; margin: 16px 0 7px; color: var(--ink); }
 
 /* ------------------------------------------------------------ status lights, badges, chips */
 .services li { margin: 6px 0; }
-.services .svc-head { margin-top: 12px; font-family: var(--mono); font-size: 11px; letter-spacing: .6px; text-transform: uppercase; }
+.services .svc-head { margin-top: 12px; font-family: var(--mono); font-size: 11px; letter-spacing: .4px; }
 .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 7px; vertical-align: 1px; }
 .dot.ok { background: var(--ok); box-shadow: 0 0 0 2px var(--ok-soft), 0 0 7px var(--ok); }
 .dot.warn { background: #d59a1b; box-shadow: 0 0 0 2px var(--warn-soft), 0 0 7px #d59a1b; }
@@ -260,7 +260,7 @@ details summary:hover { color: var(--ink); }
 
 /* ------------------------------------------------------------ settings and sources */
 .set-section { grid-column: 1 / -1; margin: 14px 0 0; padding-top: 10px; border-top: 1px solid var(--line); font-family: var(--mono); font-size: 11px;
-  letter-spacing: .6px; text-transform: uppercase; color: var(--muted); }
+  letter-spacing: .4px; color: var(--muted); }
 .set-section:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
 .add-box { display: flex; flex-direction: column; }
 .add-box .add-btn { align-self: flex-start; margin-top: auto; }
