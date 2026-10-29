@@ -6,7 +6,7 @@ Completed changes, newest first. Commit hashes refer to `hesiyang5-glitch/wfd-re
 
 
 
-## 2026-10-29 — Visual polish and "research instrument" theme (branch `ui/visual-polish`, NOT merged, NOT deployed)
+## 2026-10-29 — Visual polish and "research instrument" theme (merged to `main` 2026-10-29 with owner approval)
 - Presentation only (owner request 2026-10-29: items 1–22 visual polish + items 1–10 tech-style elements). Button,
   tab, chip and status-tag text never wraps; buttons react to hover / press / keyboard focus; disabled buttons don't.
   Signal-wave brand mark, faint dot-grid background, cyan accent line on panels, status "LEDs", glowing pipeline step
@@ -26,9 +26,8 @@ Completed changes, newest first. Commit hashes refer to `hesiyang5-glitch/wfd-re
   (payloads, settings keys/values, cost numbers, cache-key / schema / prompt fingerprints unchanged), test_pipeline 44,
   test_costs 32, test_auth 24, test_ui_flow PASS, test_legacy_migration 18, test_bulk_agreement 67, test_resilience 31,
   test_independent_providers 68, test_cross_version 27, test_export_labels 23, test_evidence_status 59,
-  test_multiselect_validation 24 — all pass. **test_providers NOT run**: the OpenAI SDK package could not be installed
-  in this session (package registry unreachable), so the suite stops at `import openai`; it touches no interface file
-  but must be re-run before merging. First test_ui_labels run found group titles turned uppercase by CSS (changes the
+  test_multiselect_validation 24 — all pass. test_providers 141/141 (run before merging with the official OpenAI SDK
+  v3.41.0 loaded from its GitHub source because the package registry was unreachable; `main` gives the same 141/141). First test_ui_labels run found group titles turned uppercase by CSS (changes the
   text read by screen readers/copy) — fixed by keeping the original case.
  where the model is meant (merged to `main` 2026-10-07 with owner approval)
 - Owner rule: name the model family that codes (Claude / GPT); keep "OpenAI" for the company, account, API and bill.

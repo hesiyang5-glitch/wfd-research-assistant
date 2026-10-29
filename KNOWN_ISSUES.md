@@ -7,7 +7,7 @@ Last reviewed: 2026-10-01 (commit `33a0c5e`). Severity: **High** (blocks correct
 
 | ID | Issue | Severity |
 |---|---|---|
-| K-54 | **Awaiting owner approval (owner asked 2026-10-29 that every update lists these).** (1) `docs/handoff-2026-10-07` — docs-only handoff branch, not merged; must be updated to current `main` first. (2) `audit/missingness` (D-039, Prompt 3) — on hold for PI decisions PI-M1…PI-M11. (3) `ui/visual-polish` — visual polish + tech-style theme (2026-10-29), on the branch, not merged or deployed. | — |
+| K-54 | **Awaiting owner approval (owner asked 2026-10-29 that every update lists these).** (1) `docs/handoff-2026-10-07` — docs-only handoff branch, not merged; must be updated to current `main` first. (2) `audit/missingness` (D-039, Prompt 3) — on hold for PI decisions PI-M1…PI-M11. (`ui/visual-polish` was approved and merged 2026-10-29.) | — |
 | K-02 | **Per-case cap on search requests missing.** Model-attempt caps per case are implemented on `feature/openai-provider` (D-027, not deployed); search query count (40) is still per run. | Medium |
 
 ## Live verification gaps

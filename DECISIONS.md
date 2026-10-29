@@ -317,7 +317,7 @@ change sends new (paid) requests; there is no cache to reuse for the new version
 citations, not whether the inference is sound. Human review remains the safeguard.
 
 
-## D-040 · 2026-10-29 · Visual polish and "research instrument" theme — Proposed (branch `ui/visual-polish`, awaiting owner approval to merge)
+## D-040 · 2026-10-29 · Visual polish and "research instrument" theme — Active (merged to `main` 2026-10-29 with owner approval)
 **Decision.** The interface gets a restrained "research instrument / data console" look (owner request 2026-10-29):
 one-line button and tag text, hover/press/focus feedback, signal-wave mark, dot-grid background, cyan accents, LED-style
 status dots, terminal-style run log, and an opt-in dark theme. Light stays the default because long evidence passages are

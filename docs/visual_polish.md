@@ -1,4 +1,4 @@
-# Visual polish and "research instrument" theme — 2026-10-29 (branch `ui/visual-polish`)
+# Visual polish and "research instrument" theme — 2026-10-29 (`ui/visual-polish`, merged to `main` 2026-10-29)
 
 Owner request 2026-10-29: optimise the look only — button text on one line, buttons that respond to the mouse, the
 22 presentation items and the 10 tech-style elements proposed in chat. **No functional change**: features, API
