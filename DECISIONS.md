@@ -316,3 +316,12 @@ change sends new (paid) requests; there is no cache to reuse for the new version
 **Limit.** The evidence status is the model's own judgement under the rules; the server checks its consistency and the
 citations, not whether the inference is sound. Human review remains the safeguard.
 
+
+## D-040 · 2026-10-29 · Visual polish and "research instrument" theme — Proposed (branch `ui/visual-polish`, awaiting owner approval to merge)
+**Decision.** The interface gets a restrained "research instrument / data console" look (owner request 2026-10-29):
+one-line button and tag text, hover/press/focus feedback, signal-wave mark, dot-grid background, cyan accents, LED-style
+status dots, terminal-style run log, and an opt-in dark theme. Light stays the default because long evidence passages are
+easier to read on light; the dark choice is stored only in the browser. **Constraints kept:** presentation only — no
+change to payloads, settings keys/values, stored data, cache, costs, exports or coding rules; result-state colours stay
+distinct (never confuse "not run", "no supported value", stopped, failed, invalid); no external fonts or scripts (CSP
+`default-src 'self'`); animation stops under the system "reduce motion" setting. Full list: `docs/visual_polish.md`.

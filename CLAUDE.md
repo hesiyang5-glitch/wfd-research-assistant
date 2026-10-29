@@ -82,6 +82,7 @@ python3 -m tests.test_export_labels   # readable provider / mode / role names in
 python3 -m tests.test_ui_labels       # interface terminology (provider / API / model labels); behaviour fingerprints unchanged
 python3 -m tests.test_evidence_status # five evidence statuses x both providers, validation separate, no upgrade on agreement (D-038)
 python3 -m tests.test_multiselect_validation  # per-selection multi-select validation, partially valid, reason codes (D-037)
+python3 -m tests.test_visual         # no wrapped button/tab/tag text, hover feedback, theme switch sends nothing, readable status tags
 ```
 
 Tests need the Texas-flood sample PDFs: set `WFD_TEST_PDFS=/path/to/folder` (they are in the claude.ai

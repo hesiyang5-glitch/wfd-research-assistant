@@ -40,7 +40,7 @@ const DUAL_NEUTRAL = ["两个模型各自独立分析同样的现有证据，不
 const DUAL_SEQ = ["为了保持服务器响应，请求可能会依次处理。", "Requests may be processed sequentially to protect server responsiveness."];
 function modeModelsHtml(mode) {
   // model identifiers for a coding-provider choice (display only)
-  const line = (p, withApi) => `<span class="small mono pmodel">${withApi ? `${esc(PROV[p])}: ${esc(PROV_API[p])} · ` : `${L("模型", "Model")}: `}${esc(provModel(p) || "—")}</span>`;
+  const line = (p, withApi) => `<span class="small mono pmodel">${withApi ? `${esc(PROV[p])}: ${esc(PROV_API[p])} · ` : `${L("模型", "Model")}: `}<span class="nowrap">${esc(provModel(p) || "—")}</span></span>`;
   if (mode === "anthropic_only") return line("anthropic", false);
   if (mode === "openai_only") return line("openai", false);
   if (mode === "dual_independent") return line("anthropic", true) + line("openai", true);
@@ -140,8 +140,30 @@ function fileToB64(file) {
 function applyStaticText() {
   $$("[data-t]").forEach((el) => (el.textContent = t(el.dataset.t)));
   document.documentElement.lang = LANG;
+  // language switch shows which language is active (display only)
+  $("#langBtn").innerHTML = `<span class="${LANG === "en" ? "on" : "off"}">EN</span><span class="sep">/</span><span class="${LANG === "zh" ? "on" : "off"}">中文</span>`;
+  $("#langBtn").title = L("切换界面语言", "Switch interface language");
+  const dark = document.documentElement.getAttribute("data-theme") === "dark";
+  const tb = $("#themeBtn");
+  if (tb) {
+    tb.textContent = dark ? "☀" : "☾";
+    tb.title = dark ? L("切换到浅色界面", "Switch to light theme") : L("切换到深色界面", "Switch to dark theme");
+    tb.setAttribute("aria-label", tb.title);
+  }
 }
 $("#langBtn").onclick = () => { setLang(LANG === "zh" ? "en" : "zh"); applyStaticText(); route(); };
+// display theme only: stored in this browser, never sent to the server
+if ($("#themeBtn")) $("#themeBtn").onclick = () => {
+  const next = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
+  document.documentElement.setAttribute("data-theme", next);
+  try { localStorage.setItem("wfd_theme", next); } catch (e) {}
+  applyStaticText();
+};
+// variable names break only after an underscore, never in the middle of a word (display only)
+const varName = (n) => esc(n).replace(/_/g, "_<wbr>");
+const JOB_TEXT = { done: ["已完成", "Done"], running: ["运行中", "Running"], queued: ["排队中", "Queued"], needs_input: ["需要你处理", "Needs your input"], failed: ["失败", "Failed"], cancelled: ["已取消", "Cancelled"] };
+const CASE_TEXT = { new: ["新建", "New"], review: ["待复核", "In review"], needs_sources: ["需要资料", "Sources needed"] };
+const stText = (map, s) => (map[s] ? L(map[s][0], map[s][1]) : s);
 
 // ------------------------------------------------------------------ router
 async function route() {
@@ -342,9 +364,9 @@ async function renderHome() {
 
 // ------------------------------------------------------------------ cases
 function statusBadge(job, caseStatus) {
-  if (!job) return `<span class="badge">${esc(caseStatus)}</span>`;
+  if (!job) return `<span class="badge" title="${esc(caseStatus)}">${esc(stText(CASE_TEXT, caseStatus))}</span>`;
   const cls = { done: "ok", running: "info", queued: "info", needs_input: "warn", failed: "bad", cancelled: "" }[job.status] || "";
-  return `<span class="badge ${cls}">${esc(job.status)}${job.status === "running" ? " · " + esc(t("st_" + job.stage) || job.stage) : ""}</span>`;
+  return `<span class="badge ${cls}" title="${esc(job.status)}">${esc(stText(JOB_TEXT, job.status))}${job.status === "running" ? " · " + esc(t("st_" + job.stage) || job.stage) : ""}</span>`;
 }
 async function renderCases() {
   const rows = await api("GET", "/api/cases");
@@ -377,7 +399,7 @@ const STAGES = ["identify", "search", "fetch", "gaps", "followup", "coding", "re
 async function tabProgress(c, body) {
   const draw = async () => {
     const j = await api("GET", `/api/cases/${c.id}/job`);
-    if (!j) { body.innerHTML = `<div class="panel">${t("none")} <button class="primary" id="runBtn">${t("rerun")}</button></div>`; $("#runBtn").onclick = () => startResearch(c.id); return; }
+    if (!j) { body.innerHTML = `<div class="panel empty-state"><span>${L("这个案例还没有研究记录。", "No research has been run for this case yet.")}</span><button class="primary" id="runBtn">${t("rerun")}</button></div>`; $("#runBtn").onclick = () => startResearch(c.id); return; }
     const cur = STAGES.indexOf(j.stage);
     const st = j.state || {};
     const cov = st.coverage;
@@ -426,7 +448,7 @@ async function tabProgress(c, body) {
       needs = `<div class="callout warn"><b>${t("need_sources")}</b><p>${esc(j.message)}</p><a href="#/case/${c.id}/sources">→ ${t("tab_sources")}</a></div>`;
     }
     body.innerHTML = `<div class="panel">
-      <div class="stepper">${STAGES.map((s, i) => `<div class="st ${i < cur || j.status === "done" ? "done" : i === cur ? "cur" : ""}">${t("st_" + s)}</div>`).join("")}</div>
+      <div class="stepper ${j.status === "running" ? "running" : ""}">${STAGES.map((s, i) => `<div class="st ${i < cur || j.status === "done" ? "done" : i === cur ? "cur" : ""}">${t("st_" + s)}</div>`).join("")}</div>
       <div class="bar"><i style="width:${Math.round((j.progress || 0) * 100)}%"></i></div>
       <div class="row" style="margin-top:10px">${statusBadge(j)}<span>${esc(j.message || "")}</span><span class="spacer"></span>
       ${["running", "queued"].includes(j.status) ? `<button class="danger" id="cancelBtn">${t("cancel")}</button>` : `<button id="rerunBtn">${t("rerun")}</button> <button id="recodeBtn">${t("recode")}</button> <a href="#/case/${c.id}/review"><button class="primary">${t("tab_review")} →</button></a>`}</div>
@@ -441,7 +463,7 @@ async function tabProgress(c, body) {
         <div>${LANG === "zh" ? "重复 / 转载" : "Duplicates / syndicated"}</div><div>${cov.exact_duplicates} / ${cov.near_duplicates}</div>
         <div>${LANG === "zh" ? "无关 / 相关性不确定" : "Irrelevant / uncertain"}</div><div>${cov.irrelevant} / ${cov.uncertain}</div>
         <div>${LANG === "zh" ? "扫描页未识别的来源" : "Sources with unread scanned pages"}</div><div>${cov.ocr_gaps}</div>
-        <div>${LANG === "zh" ? "证据仍薄弱的变量" : "Variables still weak on evidence"}</div><div class="small">${esc((cov.gaps_remaining || []).join(", ")) || t("none")}</div></div>` : ""}
+        <div>${LANG === "zh" ? "证据仍薄弱的变量" : "Variables still weak on evidence"}</div><div class="small">${(cov.gaps_remaining || []).length ? `<details class="gap-list"><summary>${cov.gaps_remaining.length} ${L("个变量 — 点击展开", cov.gaps_remaining.length === 1 ? "variable — show" : "variables — show")}</summary><div class="var-chips">${cov.gaps_remaining.map((g) => `<span>${esc(g)}</span>`).join("")}</div></details>` : t("none")}</div></div>` : ""}
       ${st.coding_report ? `<p class="small muted">${LANG === "zh" ? "编码" : "Coding"}${st.coding_report.mode ? ` (${esc(modeText(st.coding_report.mode))})` : ""}: ${st.coding_report.calls} call(s), ${st.coding_report.failed_calls} failed${st.coding_report.cache_hits ? `, ${st.coding_report.cache_hits} ${L("个来自缓存（免费）", "from cache (free)")}` : ""}, ${esc(st.coding_report.semantic_method)}, ${st.coding_report.n_passages_indexed} passages indexed${st.coding_report.not_coded_budget?.length ? `, <b>${st.coding_report.not_coded_budget.length} not coded (limit)</b>` : ""}.
         ${(st.coding_report.providers || []).filter((r) => r.provider).map((r) => `<br>· ${esc(provApi(r.provider))} · <span class="mono">${esc(r.model || "")}</span> — ${r.role === "reviewer" ? esc(interpText("cross_model_review")) : esc(interpText("independent"))}: ${r.calls} call(s), ${r.failed_calls} failed, ${r.cache_hits || 0} cached, ${money(r.spent_usd)}`).join("")}
         ${st.coding_report.comparison && Object.keys(st.coding_report.comparison).length ? `<br>${L("比较", "Comparison")}: ${Object.entries(st.coding_report.comparison).map(([k, v]) => `${esc(compText(k))} ${v}`).join(" · ")} — ${L("模型一致不等于事实已核实。", "agreement is not verification.")}` : ""}</p>` : ""}
@@ -610,7 +632,7 @@ async function tabReview(c, body) {
   const counts = { all: WB.data.rows.length }; WB.data.rows.forEach((r) => (counts[r.category] = (counts[r.category] || 0) + 1));
   const sections = [...new Set(WB.data.rows.map((r) => r.section).filter(Boolean))];
   body.innerHTML = `<div class="workbench"><div>
-      <div class="row" style="align-items:flex-start"><div class="chips">${cats.map((k) => `<span class="chip ${WB.filter === k ? "on" : ""}" data-f="${k}">${t("filter_" + k)} ${counts[k] || 0}</span>`).join("")}</div><span class="spacer"></span>
+      <div class="row wb-tools"><div class="chips">${cats.map((k) => `<span class="chip ${WB.filter === k ? "on" : ""}" data-f="${k}" role="button" tabindex="0">${t("filter_" + k)} <span class="n">${counts[k] || 0}</span></span>`).join("")}</div><span class="spacer"></span>
       <button id="bulkBtn" class="small" disabled title="${esc(L("两个模型给出相同有效值的变量（同一次运行，或不同运行并附警告）；需要你逐一勾选并确认", "Variables where Claude and GPT gave the same valid value (same run, or separate runs with a warning); you review and confirm them"))}">${L("确认模型一致的变量…", "Confirm model agreements…")}</button></div>
       <div class="row" style="margin-bottom:8px"><input id="wbq" placeholder="${esc(t("search_vars"))}" value="${esc(WB.q)}" style="max-width:260px">
       <select id="wbsec" style="max-width:260px"><option value="">— section —</option>${sections.map((s) => `<option ${WB.section === s ? "selected" : ""}>${esc(s)}</option>`).join("")}</select>
@@ -631,15 +653,18 @@ async function tabReview(c, body) {
         ? `<td colspan="2" class="val"><span class="cell-tag st-system">${esc(sys.basis === "retrieval_only" ? L("仅候选证据（人工编码）", "candidates only (manual coding)") : sys.basis === "derived" ? L("计算得出", "derived") : sys.basis === "generated" ? L("系统生成", "generated") : sys.status)}</span> <span class="mono">${esc((sys.value || "").slice(0, 60))}</span></td>`
         : `<td class="val pc-anthropic">${cellHtml((r.cells || {}).anthropic, r)}</td><td class="val pc-openai">${cellHtml((r.cells || {}).openai, r)}</td>`;
       return `<tr class="click ${WB.sel === r.name ? "sel" : ""}" data-v="${esc(r.name)}"><td class="small muted">${r.position}</td>
-        <td><b class="mono">${esc(r.name)}</b>${r.issues.length ? ` <span class="badge warn" title="${esc(r.issues.join("\n"))}">!</span>` : ""}${s.stale ? ` <span class="badge bad">stale</span>` : ""}</td>
+        <td><b class="var-name">${varName(r.name)}</b>${r.issues.length ? ` <span class="badge warn" title="${esc(r.issues.join("\n"))}">!</span>` : ""}${s.stale ? ` <span class="badge bad">stale</span>` : ""}</td>
         ${provCells}
         <td class="val human-final">${final ? `<span class="final-val mono">${esc((rv.value || "∅").slice(0, 60))}</span>${rv.source_provider ? `<div class="small muted">${esc(L("采纳自", "from"))} ${esc(PROV[rv.source_provider] || rv.source_provider)}</div>` : ""}` : rv && rv.action === "deferred" ? `<span class="muted small">${L("暂缓", "deferred")}</span>` : `<span class="muted small">—</span>`}</td>
-        <td class="ag-cell">${r.agreement ? `<span class="badge wrap ${AG_BADGE[r.agreement.status] || ""}" title="${esc(r.agreement.reason || "")}">${esc(agText(r.agreement.status))}</span>` : r.comparison ? `<span class="badge ${COMP_BADGE[r.comparison.model_status] || ""}">${esc(compText(r.comparison.model_status))}</span>${r.comparison.kind === "cross_model_review" ? `<div class="small muted">${L("跨模型复核（非独立）", "cross-model (not independent)")}</div>` : r.comparison.kind === "cross_version" ? `<div class="small muted">${L("跨版本", "cross-version")}</div>` : ""}` : `<span class="muted small">—</span>`}</td>
+        <td class="ag-cell">${r.agreement ? `<span class="badge ${agText(r.agreement.status).length > 16 ? "wrap" : ""} ${AG_BADGE[r.agreement.status] || ""}" title="${esc(r.agreement.reason || "")}">${esc(agText(r.agreement.status))}</span>` : r.comparison ? `<span class="badge ${COMP_BADGE[r.comparison.model_status] || ""}">${esc(compText(r.comparison.model_status))}</span>${r.comparison.kind === "cross_model_review" ? `<div class="small muted">${L("跨模型复核（非独立）", "cross-model (not independent)")}</div>` : r.comparison.kind === "cross_version" ? `<div class="small muted">${L("跨版本", "cross-version")}</div>` : ""}` : `<span class="muted small">—</span>`}</td>
         <td><span class="badge ${CAT_BADGE[r.category]}">${t("filter_" + r.category)}</span></td></tr>`;
     }).join("");
     $$("#wbRows tr").forEach((tr) => (tr.onclick = () => { WB.sel = tr.dataset.v; drawRows(); drawDetail(c); }));
   };
-  $$(".chip", body).forEach((ch) => (ch.onclick = () => { WB.filter = ch.dataset.f; tabReview(c, body); }));
+  $$(".chip", body).forEach((ch) => {
+    ch.onclick = () => { WB.filter = ch.dataset.f; tabReview(c, body); };
+    ch.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); ch.click(); } };
+  });
   const nElig = WB.data.rows.filter((r) => r.agreement && r.agreement.eligible).length;
   if (nElig) { $("#bulkBtn").disabled = false; $("#bulkBtn").classList.add("primary"); $("#bulkBtn").textContent = `${L("确认", "Confirm")} ${nElig} ${L("个模型一致的变量…", nElig === 1 ? "model agreement…" : "model agreements…")}`; }
   $("#bulkBtn").onclick = () => openBulkConfirm(c);
@@ -707,7 +732,7 @@ function drawDetail(c) {
     ? (r.multi ? `<div>${r.codes.concat((r.missing_codes || []).map((m) => ({ code: m, label: "special missing value" }))).map((cd) => `<label style="display:flex;gap:6px;margin:2px 0;color:var(--ink)"><input type="checkbox" style="width:auto" value="${esc(cd.code)}" class="mcode">${esc(cd.code)} = ${esc(cd.label)}</label>`).join("")}</div>`
       : `<select id="edVal"><option value="">(blank)</option>${r.codes.concat((r.missing_codes || []).map((m) => ({ code: m, label: "special missing value" }))).map((cd) => `<option value="${esc(cd.code)}">${esc(cd.code)} = ${esc(cd.label)}</option>`).join("")}</select>`)
     : `<textarea id="edVal">${esc(rv ? rv.value : s.value || "")}</textarea>`;
-  d.innerHTML = `<div class="row"><h2 class="mono" style="margin:0">${esc(r.name)}</h2><span class="spacer"></span><span class="badge ${CAT_BADGE[r.category]}">${t("filter_" + r.category)}</span></div>
+  d.innerHTML = `<div class="row"><h2 class="var-name" style="margin:0;font-size:15px">${varName(r.name)}</h2><span class="spacer"></span><span class="badge ${CAT_BADGE[r.category]}">${t("filter_" + r.category)}</span></div>
     <div class="small muted">${esc(r.section || "")} · ${esc(r.type)}${r.multi ? " · multi-select" : ""} · class: ${esc(r.field_class)}</div>
     <h3>${t("definition")}</h3><div class="def">${esc(r.definition || "—")}
       ${r.codes.length ? `<ul class="codes">${r.codes.map((cd) => `<li><b>${esc(cd.code)}</b> = ${esc(cd.label)}</li>`).join("")}</ul>` : ""}
@@ -750,10 +775,10 @@ function drawDetail(c) {
     <div class="callout ${rv && ["accepted", "edited", "cleared"].includes(rv.action) ? "ok" : ""} small"><b>${L("人工确认的最终值", "Human-approved final value")}:</b>
       ${rv && ["accepted", "edited", "cleared"].includes(rv.action) ? `<span class="mono">${esc(rv.value || "∅")}</span> — ${esc(rv.action)}${rv.source_provider ? ` (${L("采纳自", "from")} ${esc(PROV[rv.source_provider] || rv.source_provider)})` : ""}${rv.reviewer ? " · " + esc(rv.reviewer) : ""} ${rv.reason ? "— " + esc(rv.reason) : ""} (${fmtTime(rv.updated_at)})` : `<span class="muted">${L("尚未确认（模型建议不会自动成为最终值）", "not yet approved (model suggestions never become final on their own)")}</span>`}</div>
     ${rv && rv.action === "deferred" ? `<div class="small">Current: <b>deferred</b>${rv.reviewer ? " (" + esc(rv.reviewer) + ")" : ""}</div>` : ""}
-    <div class="row" style="margin:6px 0"><button class="primary" id="acceptBtn" ${s.value && !(r.comparison && r.comparison.model_status !== "model_agreement") ? "" : "disabled"} title="${r.comparison && r.comparison.model_status !== "model_agreement" ? esc(L("模型不一致：请在上方选择要接受的建议，或直接修改", "Models differ: accept a specific model's suggestion above, or edit")) : ""}">${t("accept")}</button><button id="deferBtn">${t("defer")}</button><button class="danger" id="clearBtn">${t("clear")}</button>${rv ? `<button id="resetBtn">${t("reset")}</button>` : ""}</div>
+    <div class="act-group"><button class="primary" id="acceptBtn" ${s.value && !(r.comparison && r.comparison.model_status !== "model_agreement") ? "" : "disabled"} title="${r.comparison && r.comparison.model_status !== "model_agreement" ? esc(L("模型不一致：请在上方选择要接受的建议，或直接修改", "Models differ: accept a specific model's suggestion above, or edit")) : ""}">${t("accept")}</button><button id="deferBtn">${t("defer")}</button><button class="danger" id="clearBtn">${t("clear")}</button>${rv ? `<button id="resetBtn">${t("reset")}</button>` : ""}</div>
     <label>${t("value")}</label>${editor}
     <label>${t("reason")}</label><input id="edReason">
-    <div class="row" style="margin-top:6px"><button id="editBtn">${t("edit")} → ${t("save")}</button><span class="spacer"></span>
+    <div class="act-group"><button id="editBtn">${t("edit")} → ${t("save")}</button><span class="spacer"></span>
       ${["sourced", "judgment"].includes(r.field_class) && !r.rule_missing ? `<button id="recodeVar" title="${esc(L("只重新分析这一个变量；会先显示模式和费用估算", "Re-analyze only this variable; shows the mode and cost estimate first"))}">${L("只重新分析此变量", "Re-analyze this variable")}</button>` : ""}</div>
     <details style="margin-top:14px"><summary>${t("manual_search")}</summary><div class="row" style="margin-top:6px"><input id="msq" placeholder="${esc(t("manual_search_ph"))}"><button id="msBtn">${t("find")}</button></div><div id="msOut"></div></details>
     <details style="margin-top:8px" id="histBox"><summary>${t("history")}</summary><div id="histOut" class="small"></div></details>`;
@@ -822,9 +847,9 @@ const TYPES = ["aar", "government", "regulatory", "legislative", "academic", "ng
 async function tabSources(c, body) {
   const rows = await api("GET", `/api/cases/${c.id}/sources`);
   body.innerHTML = `<div class="panel"><h3 style="margin-top:0">${t("src_add")}</h3>
-    <div class="grid3"><div><label>${t("add_url")}</label><div class="row"><input id="addUrl" placeholder="https://"><button id="addUrlBtn">${t("add")}</button></div></div>
-    <div><label>${t("add_file")} (PDF, HTML, DOCX, TXT)</label><div class="row"><input id="addFile" type="file" multiple><button id="addFileBtn">${t("add")}</button></div></div>
-    <div><label>${t("add_text")}</label><input id="addTitle" placeholder="${t("src_title")}"><textarea id="addText" style="margin-top:4px"></textarea><button id="addTextBtn" style="margin-top:4px">${t("add")}</button></div></div>
+    <div class="grid3"><div class="add-box"><label>${t("add_url")}</label><input id="addUrl" placeholder="https://"><button id="addUrlBtn" class="add-btn">${t("add")}</button></div>
+    <div class="add-box"><label>${t("add_file")} (PDF, HTML, DOCX, TXT)</label><input id="addFile" type="file" multiple><button id="addFileBtn" class="add-btn">${t("add")}</button></div>
+    <div class="add-box"><label>${t("add_text")}</label><input id="addTitle" placeholder="${t("src_title")}"><textarea id="addText" style="margin-top:4px"></textarea><button id="addTextBtn" class="add-btn">${t("add")}</button></div></div>
     <p class="small muted">${LANG === "zh" ? "不会绕过登录或付费墙；无法访问的来源可在有合法访问权时手动补充正文。补充后点击“重新分析”。" : "Logins and paywalls are never bypassed; add text manually if you have legitimate access. Re-analyze after adding."}
     <button class="small" id="recodeAll">${t("recode")}</button></p><div id="affBox"></div></div>
     <div class="panel" style="padding:0;margin-top:12px"><table><thead><tr><th>#</th><th>${t("src_title")}</th><th>${t("src_type")}</th><th>${t("src_rel")}</th><th>${t("src_status")}</th><th>${t("src_flags")}</th><th></th></tr></thead><tbody>
@@ -837,9 +862,9 @@ async function tabSources(c, body) {
       <td>${s.fetch_status === "ok" ? `<span class="badge ok">ok</span><div class="small muted">${s.n_pages ? s.n_pages + " pp · " : ""}${s.n_passages || 0} passages</div>` : `<span class="badge bad">${esc(s.fetch_status)}</span><div class="small">${esc(s.fetch_error || "")}</div>`}</td>
       <td class="small">${s.duplicate_of ? `<span class="badge bad">${t("dup_of")} S${s.duplicate_of}</span> ` : ""}${s.near_duplicate_of ? `<span class="badge warn">${t("near_of")} S${s.near_duplicate_of} (${Math.round((s.similarity || 0) * 100)}%)</span> ` : ""}${s.excluded ? `<span class="badge bad">${t("excluded")}</span> ${esc(s.exclude_reason || "")}` : ""}
         ${s.ocr_status && !["not_needed", "not_applicable"].includes(s.ocr_status) ? `<div class="muted">${esc(s.ocr_status)}</div>` : ""}</td>
-      <td class="row">${s.fetch_status === "ok" ? `<button class="small" data-open="${s.id}">${t("view")}</button>` : ""}
+      <td class="actions"><div class="row">${s.fetch_status === "ok" ? `<button class="small" data-open="${s.id}">${t("view")}</button>` : ""}
         <button class="small" data-excl="${s.id}" data-on="${s.excluded ? 0 : 1}">${s.excluded ? t("include") : t("exclude")}</button>
-        <select class="small" data-rel="${s.id}" style="width:auto"><option value="">relevance…</option><option>relevant</option><option>uncertain</option><option>irrelevant</option></select></td></tr>`).join("") || `<tr><td colspan="7" class="muted">${t("none")}</td></tr>`}
+        <select class="small" data-rel="${s.id}" style="width:auto"><option value="">relevance…</option><option>relevant</option><option>uncertain</option><option>irrelevant</option></select></div></td></tr>`).join("") || `<tr><td colspan="7" class="muted">${t("none")}</td></tr>`}
     </tbody></table></div>`;
   const add = async (payload) => { try { const s = await api("POST", `/api/cases/${c.id}/sources`, payload); toast(`S${s.id}: ${s.fetch_status}${s.fetch_error ? " — " + s.fetch_error : ""}`, s.fetch_status !== "ok"); tabSources(c, body); } catch (e) { toast(e.message, true); } };
   $("#addUrlBtn").onclick = () => add({ kind: "url", url: $("#addUrl").value.trim() });
@@ -917,11 +942,11 @@ async function renderSchema() {
   };
   if (!s) return;
   const draw = () => {
-    $("#mapRows").innerHTML = s.fields.filter((f) => !issuesOnly || f.issues.length).map((f) => `<tr><td class="small">${f.position}</td><td class="mono small">${esc(f.raw_header || "(blank)")}</td>
-      <td><span class="badge ${f.mapping === "exact" ? "ok" : f.mapping === "none" ? "bad" : "warn"}">${esc(f.mapping)}</span><div class="small muted">${esc(f.codebook_name || "")}</div></td>
+    $("#mapRows").innerHTML = s.fields.filter((f) => !issuesOnly || f.issues.length).map((f) => `<tr><td class="small">${f.position}</td><td class="mono small">${f.raw_header ? varName(f.raw_header) : "(blank)"}</td>
+      <td><span class="badge ${f.mapping === "exact" ? "ok" : f.mapping === "none" ? "bad" : "warn"}">${esc(f.mapping)}</span><div class="small muted">${varName(f.codebook_name || "")}</div></td>
       <td class="small">${esc(f.type)}${f.multi ? " · multi" : ""}${f.missing_codes?.length ? " · " + esc(f.missing_codes.join(",")) : ""}</td><td class="small">${esc(f.field_class)}</td>
       <td class="small">${f.codes.map((c) => esc(c.code)).join(", ")}</td><td class="small">${f.issues.map((i) => `<div>• ${esc(i)}</div>`).join("")}</td>
-      <td><button class="small" data-edit="${esc(f.name)}">${t("edit_rule")}</button></td></tr>`).join("");
+      <td class="actions"><button class="small" data-edit="${esc(f.name)}">${t("edit_rule")}</button></td></tr>`).join("");
     $$("[data-edit]").forEach((b) => (b.onclick = () => editRule(s, s.fields.find((f) => f.name === b.dataset.edit))));
   };
   $("#issOnly").onchange = (e) => { issuesOnly = e.target.checked; draw(); };
@@ -962,19 +987,31 @@ async function renderSettings() {
     <h3>${t("services")}</h3>${serviceList()}
     <p class="small muted">Data folder: <span class="mono">${esc(STATUS.data_dir)}</span></p></div>
   <div class="panel"><h3 style="margin-top:0">${t("defaults")}</h3><div class="grid2">
-    ${[["search_provider", ["auto", "tavily", "brave", "searxng", "none"]], ["model_provider", ["auto", "anthropic", "openai", "none"]]].map(([n, opts]) => `<div>${setLabel(n)}<select data-set="${n}">${opts.map((o) => `<option value="${o}" ${s[n] === o ? "selected" : ""}>${esc(optLabel(n, o))}</option>`).join("")}</select></div>`).join("")}
-    ${["model_name", "max_search_rounds", "max_queries", "pages_per_query", "results_per_query", "max_fetch", "time_limit_minutes", "budget_usd", "passages_per_variable", "max_passages_per_call"].map((n) => `<div>${setLabel(n)}<input data-set="${n}" value="${esc(s[n])}"></div>`).join("")}
-    <div>${setLabel("coding_mode")}<select data-set="coding_mode"><option value="single" ${(s.coding_mode || "single") === "single" ? "selected" : ""}>${esc(modeText("single"))}</option>${availModes().map((m) => `<option value="${esc(m.mode)}" ${s.coding_mode === m.mode ? "selected" : ""}>${esc(modeText(m.mode))}</option>`).join("")}</select></div>
-    <div>${setLabel("max_model_attempts_per_case")}<input data-set="max_model_attempts_per_case" value="${esc(s.max_model_attempts_per_case)}"></div>
-    ${STATUS.providers && STATUS.providers.openai.configured ? `
-    <div>${setLabel("openai_budget_usd")}<input data-set="openai_budget_usd" value="${esc(s.openai_budget_usd)}"></div>
-    <div>${setLabel("max_openai_attempts_per_case")}<input data-set="max_openai_attempts_per_case" value="${esc(s.max_openai_attempts_per_case)}"></div>
-    <div>${setLabel("openai_reasoning_effort")}<select data-set="openai_reasoning_effort">${["low", "medium", "high", "xhigh", "max"].map((o) => `<option value="${o}" ${s.openai_reasoning_effort === o ? "selected" : ""}>${o}</option>`).join("")}</select></div>
-    <div>${setLabel("openai_reasoning_reserve_tokens")}<input data-set="openai_reasoning_reserve_tokens" value="${esc(s.openai_reasoning_reserve_tokens)}"></div>
-    <div>${setLabel("openai_max_output_tokens")}<input data-set="openai_max_output_tokens" value="${esc(s.openai_max_output_tokens)}"></div>
-    <div>${setLabel("openai_timeout_seconds")}<input data-set="openai_timeout_seconds" value="${esc(s.openai_timeout_seconds)}"></div>` : ""}
-    <div>${setLabel("follow_links")}<select data-set="follow_links"><option value="true" ${s.follow_links ? "selected" : ""}>${t("yes")}</option><option value="false" ${!s.follow_links ? "selected" : ""}>${t("no")}</option></select></div>
-    <div>${setLabel("require_approval_over_budget")}<select data-set="require_approval_over_budget"><option value="true" ${s.require_approval_over_budget ? "selected" : ""}>${t("yes")}</option><option value="false" ${!s.require_approval_over_budget ? "selected" : ""}>${t("no")}</option></select></div>
+    ${(() => {
+      // grouping and order are display only; every field keeps its data-set key, value and options
+      const sel = (n, opts) => `<div>${setLabel(n)}<select data-set="${n}">${opts.map((o) => `<option value="${o}" ${s[n] === o ? "selected" : ""}>${esc(optLabel(n, o))}</option>`).join("")}</select></div>`;
+      const inp = (n) => `<div>${setLabel(n)}<input data-set="${n}" value="${esc(s[n])}"></div>`;
+      const yesno = (n) => `<div>${setLabel(n)}<select data-set="${n}"><option value="true" ${s[n] ? "selected" : ""}>${t("yes")}</option><option value="false" ${!s[n] ? "selected" : ""}>${t("no")}</option></select></div>`;
+      const sec = (zh, en) => `<div class="set-section">${L(zh, en)}</div>`;
+      const oa = STATUS.providers && STATUS.providers.openai.configured;
+      return [
+        sec("网页研究", "Web research"),
+        sel("search_provider", ["auto", "tavily", "brave", "searxng", "none"]),
+        ...["max_search_rounds", "max_queries", "pages_per_query", "results_per_query", "max_fetch"].map(inp),
+        yesno("follow_links"),
+        sec("编码", "Coding"),
+        `<div>${setLabel("coding_mode")}<select data-set="coding_mode"><option value="single" ${(s.coding_mode || "single") === "single" ? "selected" : ""}>${esc(modeText("single"))}</option>${availModes().map((m) => `<option value="${esc(m.mode)}" ${s.coding_mode === m.mode ? "selected" : ""}>${esc(modeText(m.mode))}</option>`).join("")}</select></div>`,
+        sel("model_provider", ["auto", "anthropic", "openai", "none"]),
+        inp("model_name"),
+        inp("passages_per_variable"), inp("max_passages_per_call"),
+        sec("上限（每个案例）", "Limits (per case)"),
+        inp("budget_usd"), inp("time_limit_minutes"), inp("max_model_attempts_per_case"), yesno("require_approval_over_budget"),
+        ...(oa ? [inp("openai_budget_usd"), inp("max_openai_attempts_per_case"),
+          sec("OpenAI 请求设置", "OpenAI request settings"),
+          `<div>${setLabel("openai_reasoning_effort")}<select data-set="openai_reasoning_effort">${["low", "medium", "high", "xhigh", "max"].map((o) => `<option value="${o}" ${s.openai_reasoning_effort === o ? "selected" : ""}>${o}</option>`).join("")}</select></div>`,
+          inp("openai_reasoning_reserve_tokens"), inp("openai_max_output_tokens"), inp("openai_timeout_seconds")] : []),
+      ].join("");
+    })()}
     </div><button class="primary" id="saveSet" style="margin-top:10px">${t("save_settings")}</button>
     <p class="small muted">${LANG === "zh" ? "“每次模型请求的证据段落数”是批量大小，不是上限：证据更多时会分成更多次请求。" : "Evidence passages per model request is a batch size, not a cap: more evidence means more requests."}</p>
     <p class="small muted">${L("OpenAI 模型由服务器环境变量 OPENAI_MODEL 决定（默认 gpt-6.1-sol）。新案例使用这里的默认值；已有案例保留创建时的设置，上限可在暂停时按明确数值提高。", "The OpenAI model is set by the server's OPENAI_MODEL environment variable (default gpt-6.1-sol). New cases use these defaults; existing cases keep the settings they were created with, and their limits can be raised to explicit values when a run pauses.")}</p></div></div>
