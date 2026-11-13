@@ -311,7 +311,7 @@ def main():
     check("Bulk_Confirmations audit sheet present with the 3 confirmations", "Bulk_Confirmations" in xl.sheetnames
           and len(list(xl["Bulk_Confirmations"].iter_rows(min_row=2))) == 3)
     ps = [[c.value for c in r] for r in xl["Provider_Suggestions"].iter_rows(min_row=2) if r[0].value == "SYSTEM_LEVEL"]
-    check("Provider_Suggestions keeps the separate Claude and OpenAI results", {p[1] for p in ps} == {"anthropic", "openai"})
+    check("Provider_Suggestions keeps the separate Claude and OpenAI results", {p[1] for p in ps} == {"Anthropic API", "OpenAI API"})  # display names (2026-10-06)
     before = {r["variable"]: (r["value"], r["method"]) for r in db.q("SELECT * FROM reviews WHERE case_id=?", (cA,))}
     pol2 = {**A_POL, "SYSTEM_LEVEL": "5"}
     run(cA, stA, [(claude(pol2), "independent"), (openai({**O_POL, "SYSTEM_LEVEL": "4"}), "independent")], ["SYSTEM_LEVEL", "ALERT_ORIGINATOR_PLATFORM"], "dual_independent")

@@ -7,6 +7,7 @@ Last reviewed: 2026-10-01 (commit `33a0c5e`). Severity: **High** (blocks correct
 
 | ID | Issue | Severity |
 |---|---|---|
+| K-54 | **Awaiting owner approval (owner asked 2026-10-29 that every update lists these).** (1) `docs/handoff-2026-10-07` — docs-only handoff branch, not merged; must be updated to current `main` first. (2) `audit/missingness` (D-039, Prompt 3) — on hold for PI decisions PI-M1…PI-M11. (`ui/visual-polish` was approved and merged 2026-10-29.) | — |
 | K-02 | **Per-case cap on search requests missing.** Model-attempt caps per case are implemented on `feature/openai-provider` (D-027, not deployed); search query count (40) is still per run. | Medium |
 
 ## Live verification gaps
@@ -46,7 +47,10 @@ Last reviewed: 2026-10-01 (commit `33a0c5e`). Severity: **High** (blocks correct
 | K-49 | D-039 (branch only): missing-value rules that need a PI decision (PI-M1 … PI-M11 in `docs/missingness/PI_DECISIONS_missingness.md`) — above all whether the assistant may suggest `-9 = Unknown` or an "absence" code (e.g. PERCEIVED_TIMELINESS 3) when its passages are silent; it currently leaves those blank. Historical workbook `-9` in 21 variables is flagged, not recoded. | Medium |
 | K-50 | D-039: the new `-9` wording and the workbook flags come from the schema loader, so they appear only for schemas loaded after the change. The production database keeps its stored schema (prompt still says "-9 = unknown" for TRANSMISSION_LATENCY; codebook: "unknown or inapplicable") until the schema is reloaded on the Schema page — a new schema version, owner's choice. The `-9` validation and consistency flags apply to all schemas. | Low |
 | K-51 | HARM_LOSS_INDICATORS is typed numeric, so text such as "3 fatalities" (the codebook's own example) fails validation; the definition allows qualitative evidence. Part of PI-M11. | Medium |
+| K-52 | Label-only terminology change (merged 2026-10-06): left unchanged on purpose because changing them would alter stored data, prompts or exports — the stored rationale "No language model configured: …" on manual-coding rows, `PROVIDER_LABELS` ("Claude (Anthropic)") in historical cross-model prompts and in the Excel Provider_Suggestions sheet, internal ids/roles (`anthropic`, `openai`, `primary`, `reviewer`) and the legacy mode names (owner decision 2026-10-06: keep internal ids; exports and run logs show readable names since `ui/export-log-labels`; the JSON export and status codes stay raw). "Expected cost" is the low end of the existing estimate (typical output size), explained in a tooltip. | Low |
 | K-46 | D-037 (merged 2026-10-06): results stored as `validation_failed` before the fix are not re-validated automatically; their replies were never cached (D-025), so re-analyzing those variables sends new (paid) requests. Whether a passage substantively supports a code is not machine-checked (human review). | Low |
+
+| K-55 | Visual polish (2026-10-29): the interface asks for the JetBrains Mono font but does not download it (no external font, CSP `default-src 'self'`); computers without it use their built-in monospace font. The dark theme is opt-in and stored only in the browser (`localStorage`); a new browser starts in the light theme. | Low |
 
 ## Research quality
 

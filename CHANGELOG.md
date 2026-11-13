@@ -6,6 +6,38 @@ Completed changes, newest first. Commit hashes refer to `hesiyang5-glitch/wfd-re
 
 
 
+## 2026-10-29 — Visual polish and "research instrument" theme (merged to `main` 2026-10-29 with owner approval)
+- Presentation only (owner request 2026-10-29: items 1–22 visual polish + items 1–10 tech-style elements). Button,
+  tab, chip and status-tag text never wraps; buttons react to hover / press / keyboard focus; disabled buttons don't.
+  Signal-wave brand mark, faint dot-grid background, cyan accent line on panels, status "LEDs", glowing pipeline step
+  (pulses while running; off under reduced motion), terminal-style run log, selected review row marked in cyan,
+  opt-in dark theme (header ◐ button, stored in this browser only), language switch shows the active language.
+  Layout: variable names break only after "_", Schema "Edit rule" column fixed, provider cards keep model ids whole and
+  mark the chosen card with ✓, cost/coverage label column sized to content, review detail actions grouped, progress
+  "weak evidence" list collapsible with a count, empty Progress sentence, Settings fields grouped (Web research /
+  Coding / Limits / OpenAI request settings — same keys, values and options), Sources "Add" buttons aligned,
+  phone: header/nav and tabs scroll sideways, review table scrolls with the variable column fixed.
+  Status tags show readable names (`needs_input` → "Needs your input"); the raw id stays as a tooltip.
+- Unchanged: features, API routes and payloads, settings keys/values, database, cache, costs, exports, prompts,
+  coding rules, wording of buttons and labels (except the readable status names and the empty-progress sentence).
+- Files: `web/styles.css` (rewritten with colour tokens), `web/index.html`, new `web/theme.js`, `web/app.js`
+  (markup/classes only). List: `docs/visual_polish.md`.
+- Tests (offline, 2026-10-29, this branch): test_visual 21/21 (new; fails on `main` as expected), test_ui_labels 38/38
+  (payloads, settings keys/values, cost numbers, cache-key / schema / prompt fingerprints unchanged), test_pipeline 44,
+  test_costs 32, test_auth 24, test_ui_flow PASS, test_legacy_migration 18, test_bulk_agreement 67, test_resilience 31,
+  test_independent_providers 68, test_cross_version 27, test_export_labels 23, test_evidence_status 59,
+  test_multiselect_validation 24 — all pass. test_providers 141/141 (run before merging with the official OpenAI SDK
+  v3.41.0 loaded from its GitHub source because the package registry was unreachable; `main` gives the same 141/141). First test_ui_labels run found group titles turned uppercase by CSS (changes the
+  text read by screen readers/copy) — fixed by keeping the original case.
+ where the model is meant (merged to `main` 2026-10-07 with owner approval)
+- Owner rule: name the model family that codes (Claude / GPT); keep "OpenAI" for the company, account, API and bill.
+  "GPT only — OpenAI API", "Claude + GPT — independent comparison", "GPT suggestion", Stop/Resume GPT, agreement
+  labels and reasons, version tables, Bulk_Confirmations headers, run-log mode names. Display only: ids, stored values,
+  payloads, cache, costs and database unchanged (payloads and cost amounts compared before/after in the browser).
+  List: `docs/ui_terminology_labels.md` (last section).
+- Tests: `test_ui_labels` 38 (1 new check); wording expectations updated in `test_ui_labels`, `test_export_labels`,
+  `test_independent_providers`, `test_providers`. All 14 suites pass offline.
+
 ## 2026-10-06 — Missing-value audit and codebook-stated missingness rules (branch `audit/missingness`; not merged, not deployed)
 - D-039. Audit of all 82 workbook columns: `docs/missingness/missingness_audit.csv` / `.json` (generator
   `tools/missingness_audit.py`) and the proposed PI decision document `docs/missingness/PI_DECISIONS_missingness.md`
@@ -17,6 +49,39 @@ Completed changes, newest first. Commit hashes refer to `hesiyang5-glitch/wfd-re
   `app/coding.py`: INCIDENT_DURATION blank for reversed dates. `app/export.py` / `web/app.js`: "Rule checks" column,
   explanation note, review-panel callout, `-9` wording in the definition panel.
 - Tests: new `tests/test_missingness.py` (58).
+
+## 2026-10-06 — Readable names in exports and run logs (merged to `main` 2026-10-06 with owner approval)
+- Display only: internal provider ids, roles, mode names, database values, API routes, request payloads and cache keys
+  are unchanged; new runs still store `anthropic` / `openai` with role `independent`; historical `primary` / `reviewer`
+  are shown as recorded. New `app/display.py`; applied in `app/export.py` (Excel/TSV), run-log lines and messages in
+  `app/research.py`, `app/coding.py`, `app/server.py`. JSON export unchanged. Full list: `docs/export_log_labels.md`.
+- Tests: new `tests/test_export_labels.py` (23). Display-name assertions updated in `test_providers` (2),
+  `test_bulk_agreement` (1), `test_evidence_status` (1). All 14 suites pass offline.
+
+## 2026-10-06 — "GPT coding — OpenAI API" label (merged to `main` 2026-10-06 with owner approval)
+- Owner choice: the coding lines name the model family on both sides — "Claude coding — Anthropic API" and
+  "GPT coding — OpenAI API" (Services, cost estimates, Re-analyze, Stop dialog title, "Spent" line, server reason text).
+  Mode names ("OpenAI only — OpenAI API"), "OpenAI suggestion" and the budget labels from the owner's label table
+  ("OpenAI coding budget per case") are unchanged. Label only: payloads and cost numbers verified identical.
+- Tests: `test_ui_labels` 37 (1 new check, 3 expectations updated).
+
+## 2026-10-06 — Interface terminology standardized (merged to `main` 2026-10-06 with owner approval)
+- **This change modifies interface labels and explanatory copy only. It does not change provider behavior, model
+  requests, evidence handling, caching, pricing, database structure, or coding results.**
+- Three levels are named consistently: provider (Anthropic / OpenAI), API (Anthropic API / OpenAI API) and model
+  (the identifier the backend already supplies: the `model_name` setting for Claude, `OPENAI_MODEL` for OpenAI).
+  "Claude (Anthropic)" vs "OpenAI" pairings removed; no "ChatGPT API"; no primary/secondary wording.
+- `web/app.js`, `web/i18n.js`: Services grouped (External services / AI coding providers / Internal processing, with
+  API, OCR, LSA and BM25 expanded); readable Settings labels (keys only as tooltips; option values unchanged);
+  provider cards with model identifiers; cost estimate names (Shared web research, Expected cost, Maximum estimated
+  cost, Cached requests, New paid requests, Not selected — $0.00); Re-analyze dialogs, Progress, Stop/Resume and
+  Review use the same names. `app/server.py`, `app/coding.py`, `app/research.py`: display names in user-facing
+  reasons, run logs and job messages only (`PROVIDER_LABELS`, used in stored prompts and exports, is unchanged).
+- Tests: new `tests/test_ui_labels.py` (36) — labels in every affected view, plus unchanged request payloads, settings
+  keys/values, cost numbers, cache keys, database schema, prompt, stored results and Human final values (fingerprints
+  pinned from `main` 302a2f2). `tests/test_independent_providers.py`: three wording assertions updated to the new
+  labels ("Not selected", "Shared web research", "Combined — maximum estimated cost"). Full label table:
+  `docs/ui_terminology_labels.md`.
 
 ## 2026-10-06 — Provider-neutral evidence status (merged to `main` 2026-10-06 with owner approval)
 - D-038. New `app/evidence_status.py` (five statuses, resolution rules, legacy read-time derivation). Shared prompt

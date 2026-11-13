@@ -316,6 +316,7 @@ change sends new (paid) requests; there is no cache to reuse for the new version
 **Limit.** The evidence status is the model's own judgement under the rules; the server checks its consistency and the
 citations, not whether the inference is sound. Human review remains the safeguard.
 
+
 ## D-039 · 2026-10-06 · Missing values: implement only what codebook v1.3 states; the rest goes to the PI team — Proposed (branch `audit/missingness`, not merged, not deployed)
 **Context.** The benchmark showed disagreement on TRANSMISSION_LATENCY, DELIVERY_COVERAGE, POPULATION_AFFECTED_ESTIMATE,
 HARM_LOSS_INDICATORS, MESSAGE_DISSEMINATION_TIME, END_DATE and INCIDENT_DURATION, and the workbook uses `-9` in many
@@ -339,3 +340,11 @@ suggested from silence in the retrieved passages; separating unknown from not ap
 for flag 0; nonuse-case message variables; DELIVERY_COVERAGE format; POPULATION_AFFECTED_ESTIMATE scope;
 HARM_LOSS_INDICATORS type and attribution. Current behaviour stays until the team decides.
 
+## D-040 · 2026-10-29 · Visual polish and "research instrument" theme — Active (merged to `main` 2026-10-29 with owner approval)
+**Decision.** The interface gets a restrained "research instrument / data console" look (owner request 2026-10-29):
+one-line button and tag text, hover/press/focus feedback, signal-wave mark, dot-grid background, cyan accents, LED-style
+status dots, terminal-style run log, and an opt-in dark theme. Light stays the default because long evidence passages are
+easier to read on light; the dark choice is stored only in the browser. **Constraints kept:** presentation only — no
+change to payloads, settings keys/values, stored data, cache, costs, exports or coding rules; result-state colours stay
+distinct (never confuse "not run", "no supported value", stopped, failed, invalid); no external fonts or scripts (CSP
+`default-src 'self'`); animation stops under the system "reduce motion" setting. Full list: `docs/visual_polish.md`.

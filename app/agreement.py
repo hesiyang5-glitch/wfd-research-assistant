@@ -49,7 +49,7 @@ LABELS = {
     "value_disagreement": "Value disagreement",
     "both_insufficient": "Both insufficient",
     "claude_only": "Claude only",
-    "openai_only": "OpenAI only",
+    "openai_only": "GPT only",
     "validation_failed": "Validation failed",
     "pending": "Pending human review",
 }
@@ -111,7 +111,7 @@ def assess(case_id: int, field: dict, sset: dict | None, review: dict | None) ->
     if not a_done and not b_done:
         return None if (a is None and b is None) else out("pending", "neither provider completed this variable")
     if a_done and not b_done:
-        return out("claude_only", "OpenAI has no completed result for this variable")
+        return out("claude_only", "GPT has no completed result for this variable")
     if b_done and not a_done:
         return out("openai_only", "Claude has no completed result for this variable")
     kind = comparison_kind(a, b)
@@ -155,7 +155,7 @@ def assess(case_id: int, field: dict, sset: dict | None, review: dict | None) ->
     if a.get("counter") or b.get("counter"):
         problems.append("a provider reported contradicting or alternative evidence")
     not_recorded = []
-    for who, r in (("Claude", a), ("OpenAI", b)):
+    for who, r in (("Claude", a), ("GPT", b)):
         es = es_mod.evidence_status_of(r)
         if es_mod.recorded(r):
             if es is None:
@@ -294,10 +294,10 @@ def bulk_confirm(case_id: int, variables: list[str], reviewer: str | None, ackno
                 if cross:
                     reason = (f"Bulk confirmation of CROSS-VERSION agreement (D-035): same suggested value, different "
                               f"analysis versions ({', '.join(a.get('differences') or [])}); Claude {a['claude']['model']} "
-                              f"+ OpenAI {a['openai']['model']}; version warning acknowledged by the reviewer")
+                              f"+ GPT {a['openai']['model']}; version warning acknowledged by the reviewer")
                 else:
                     reason = (f"Bulk confirmation of independent agreement — matched analysis version "
-                              f"(Claude {a['claude']['model']} + OpenAI {a['openai']['model']}; evidence snapshot "
+                              f"(Claude {a['claude']['model']} + GPT {a['openai']['model']}; evidence snapshot "
                               f"{a['evidence_snapshot_id']}, analysis version {a['analysis_spec_id']})"
                               + ("; evidence differed but both sets passed validation" if a["evidence_difference"] else ""))
                 reason += (f"; reused from validated cache: {', '.join(a['cached_providers'])}" if a.get("cached_providers") else "")

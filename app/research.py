@@ -504,7 +504,8 @@ def stage_gaps(ctx: Ctx) -> list[dict]:
 
 # ----------------------------------------------------------------------------- coding
 def stage_coding(ctx: Ctx):
-    from .coding import PROVIDER_LABELS, estimate, limit_needs, resolve_plan, run_coding_plan
+    from .coding import PROVIDER_DISPLAY, estimate, limit_needs, resolve_plan, run_coding_plan
+    from .display import mode_display
     ctx.stage("coding", 0.85, "Coding and validating")
     mode = ctx.params.get("mode") or ctx.settings.get("coding_mode") or "single"
     resume = ctx.params.get("resume")  # continue ONE provider's stopped variables inside an earlier coding group
@@ -513,7 +514,7 @@ def stage_coding(ctx: Ctx):
         mode = resume.get("mode") or mode
         c = make_client(resume["provider"], ctx.settings.get("model_name", "claude-sonnet-5-5"), ctx.settings)
         plan, err = ([(c, resume.get("role") or "primary")], None) if c else \
-            ([], f"Cannot resume {PROVIDER_LABELS.get(resume['provider'], resume['provider'])}: its API key is not configured.")
+            ([], f"Cannot resume {PROVIDER_DISPLAY.get(resume['provider'], resume['provider'])}: its API key is not configured.")
     else:
         plan, mode, err = resolve_plan(ctx.settings, mode)
     if err:
@@ -530,7 +531,7 @@ def stage_coding(ctx: Ctx):
                     ctx.state["awaiting"] = "provider"
                     ctx.save(status="needs_input", message=str(e)[:500])
                     raise Budget("model provider configuration error")
-                ctx.log("warn", f"could not check {c.provider} model availability now ({str(e)[:160]}); will check again "
+                ctx.log("warn", f"could not check {PROVIDER_DISPLAY.get(c.provider, c.provider)} model availability now ({str(e)[:160]}); will check again "
                                 f"before the first paid call")
     variables = (resume or {}).get("variables") or ctx.params.get("variables")
     spent, budget = ctx.spent(), ctx.budget()
@@ -546,10 +547,11 @@ def stage_coding(ctx: Ctx):
         ctx.state["estimate"] = est
         ctx.state["budget"] = {"budget_usd": round(budget, 2), "spent_usd": round(spent, 4), "remaining_usd": round(remaining, 4)}
         for p in est["providers"]:
-            ctx.log("info", f"estimate [{p['provider']} {p['model']}, {p['role']}]: {p['calls']} call(s) "
+            ctx.log("info", f"estimate [{PROVIDER_DISPLAY.get(p['provider'], p['provider'])} · {p['model']}, "
+                            f"{'cross-model review' if p['role'] == 'reviewer' else 'independent'}]: {p['calls']} call(s) "
                             f"({p['calls_uncached']} not cached), ~{p['input_tokens']:,} input tokens, cost "
                             f"${p['cost_low']}–${p['cost_high']} worst case")
-        ctx.log("info", f"mode {mode}: combined worst case ${est['cost_high']}; case has spent ${spent:.2f} of ${budget:.2f}")
+        ctx.log("info", f"{mode_display(mode)}: combined worst case ${est['cost_high']}; case has spent ${spent:.2f} of ${budget:.2f}")
         for n in est.get("price_notes", []):
             ctx.log("warn", f"pricing: {n}")
         if est["cost_high"] is None:
@@ -577,18 +579,18 @@ def stage_coding(ctx: Ctx):
             # Stage 2 of the estimate (D-036): research is done, nothing has been sent to a model. The owner sees the
             # exact estimate for the evidence actually found and decides whether to start paid coding.
             ctx.state["awaiting"] = "coding_approval"
-            parts = [f"{PROVIDER_LABELS.get(p['provider'], p['provider'])}: {p['calls']} request(s), "
+            parts = [f"{PROVIDER_DISPLAY.get(p['provider'], p['provider'])}: {p['calls']} request(s), "
                      f"{p['calls_uncached']} new, up to ${p['cost_high']:.2f}" for p in est["providers"]]
             ctx.save(status="needs_input", message=(
                 f"Research finished. Nothing has been sent to a model yet. Exact estimate for the evidence found — "
                 f"{'; '.join(parts)}; combined worst case ${est['cost_high']:.2f} (case has spent ${spent:.2f} of "
                 f"${budget:.2f}). Start coding, or stop here at no model cost."))
             raise Budget("awaiting coding approval")
-        names = " + ".join(PROVIDER_LABELS.get(c.provider, c.provider) for c, _role in plan)
+        names = " + ".join(PROVIDER_DISPLAY.get(c.provider, c.provider) for c, _role in plan)
         ctx.log("info", f"coding with {names} (independent; same shared evidence; processed one after another); "
                         f"search and evidence are shared — nothing is searched again per provider")
     else:
-        ctx.log("warn", "No language model configured — running local evidence retrieval only (manual coding mode).")
+        ctx.log("warn", "No AI coding provider configured — running local evidence retrieval only (manual coding mode).")
     # The cap always applies: approving raises the case budget to a set amount, it never removes the limit.
     def on_status(provider, status, **extra):
         r = ctx.state["provider_runs"].setdefault(provider, {})

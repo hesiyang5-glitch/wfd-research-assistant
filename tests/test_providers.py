@@ -597,7 +597,7 @@ def main():
     check("Case_Row headers still identical to the workbook header row", [h or "" for h in hdr] == [f["raw_header"] or "" for f in schema["fields"]],
           str([(a, b) for a, b in zip(hdr, [f["raw_header"] for f in schema["fields"]]) if (a or "") != (b or "")][:3]))
     check("Provider_Suggestions sheet lists both providers", "Provider_Suggestions" in xl.sheetnames
-          and {r[1].value for r in xl["Provider_Suggestions"].iter_rows(min_row=2)} >= {"anthropic", "openai"})
+          and {r[1].value for r in xl["Provider_Suggestions"].iter_rows(min_row=2)} >= {"Anthropic API", "OpenAI API"})  # display names (2026-10-06)
 
     # human review stays separate and final
     class H2:
@@ -660,7 +660,8 @@ def main():
           and row["agreement"]["status"] == "cross_model_review" and not row["agreement"]["eligible"], str(row["comparison"]))
     xl = openpyxl.load_workbook(io.BytesIO(export.xlsx(c15)))
     vals = [[c.value for c in r] for r in xl["Provider_Suggestions"].iter_rows(min_row=2)]
-    check("22 export labels it 'cross_model_review'", any(v[1] == "openai" and v[3] == "cross_model_review" for v in vals))
+    check("22 export labels it 'cross_model_review'", any(v[1] == "OpenAI API" and str(v[3]).startswith("reviewer (historical role) — Cross-model review") for v in vals))
+    # display names since 2026-10-06; the stored role/provider ids are unchanged ('openai', 'reviewer')
     os.environ.pop("WFD_TEST_FIXTURE", None)
 
     # =========================================================================================================
@@ -943,8 +944,8 @@ def ui_check(cid: int, key_an: str, key_oa: str, stopped_case=None, controls_cas
                     pg.goto(f"http://127.0.0.1:{port}/#/case/{cid}/review")
                     pg.wait_for_timeout(1500)
                     heads = [h.strip() for h in pg.eval_on_selector_all("#wbTable thead th", "els => els.map(e => e.innerText)")]
-                    want_en = ["#", "Variable", "Claude suggestion", "OpenAI suggestion", "Human final", "Comparison", "Review status"]
-                    want_zh = ["#", "变量", "Claude 建议", "OpenAI 建议", "人工最终值", "比较", "复核状态"]
+                    want_en = ["#", "Variable", "Claude suggestion", "GPT suggestion", "Human final", "Comparison", "Review status"]
+                    want_zh = ["#", "变量", "Claude 建议", "GPT 建议", "人工最终值", "比较", "复核状态"]
                     print(f"  [{port}] review columns:", heads)
                     ok &= heads in (want_en, want_zh)
                     pg.screenshot(path=str(TMP / "ui_review_table.png"), full_page=False)
