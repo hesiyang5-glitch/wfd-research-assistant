@@ -6,6 +6,12 @@ Completed changes, newest first. Commit hashes refer to `hesiyang5-glitch/wfd-re
 
 
 
+## 2026-11-13 — Methodology decision memo: END_DATE, FAILURE_TYPE vs Composite, harm attribution (branch `docs/methodology-memo-abc`; docs only)
+- Read-only audit, no behaviour change: `docs/methodology/PI_DECISIONS_enddate_failuretype_harm.md` — codebook language,
+  software behaviour, workbook practice, available benchmark results (Claude B1 only; other provider results need an
+  export from the live site), candidate rules, labelled recommendations and the exact decisions needed (A1–A5, B1–B5,
+  C1–C7). Recommendations are suggestions, not WFD requirements.
+
 ## 2026-11-13 — Missing values: owner decision PI-M4 option (c) (merged to `main` 2026-11-13 with owner approval)
 - For 7 variables the codebook's own "nothing documented" code may be suggested from silence in the passages the model
   read: PERCEIVED_TIMELINESS 3, PERCEIVED_MESSAGE_CLARITY 3, TRAINING_AND_PROCEDURAL_CONTEXT 0, MESSAGE_ARCHIVAL_STATUS 0,
