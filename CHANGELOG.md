@@ -6,6 +6,19 @@ Completed changes, newest first. Commit hashes refer to `hesiyang5-glitch/wfd-re
 
 
 
+## 2026-11-13 — Raise the reading (fetch) limit on an existing case (branch `feature/case-fetch-limit`, not merged) — D-044
+- The fetch limit (`max_fetch`, default 60) counts every page read for the case in all runs, so re-running research on
+  a case that had reached it searched (using Tavily credits) but read nothing new. There was no way to change it on an
+  existing case.
+- **Re-run research** now opens a dialog first: pages already read for this case, the case's reading limit, a warning
+  when it is reached, and a field to set a new limit (whole number 1–300). The first research run of a new case is
+  unchanged.
+- `max_fetch` added to the per-case limits API (`POST /api/cases/{id}/limits`); each change is recorded in
+  `limit_changes` with who and why. Ceiling 300 protects the 512 MB server (K-17).
+- `GET /api/cases/{id}` reports `fetched_count` and `max_fetch`. The limit message now says it counts all runs and
+  where to raise it.
+- New `tests/test_fetch_limit.py` (15 checks); browser check of the dialog done by hand (screenshot), not automated.
+
 ## 2026-11-13 — Find more sources from name + date + location (merged to `main` 2026-11-13 with owner approval) — D-043
 - Owner request: entering only the incident name, approximate date and location should find comprehensive sources and
   recognise more related keywords. Prompted by case #11 (Ahr valley flood, Germany), where every query was

@@ -85,4 +85,6 @@ DEFAULT_SETTINGS = {
 }
 
 # Limits that an approval may raise — always to an explicit number, never to "unlimited".
-RAISABLE_LIMITS = ("budget_usd", "openai_budget_usd", "max_openai_attempts_per_case", "max_model_attempts_per_case")
+RAISABLE_LIMITS = ("budget_usd", "openai_budget_usd", "max_openai_attempts_per_case", "max_model_attempts_per_case", "max_fetch")
+# max_fetch counts every page read for the case (all runs); ceiling protects the 512 MB server (K-17), D-044
+MAX_FETCH_CEILING = 300

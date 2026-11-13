@@ -493,7 +493,7 @@ async function tabProgress(c, body) {
       try { const r = await api("POST", `/api/jobs/${j.id}/providers/${prov}/resume`); toast(r.resumed_in_place ? L("已撤回停止请求", "Stop request withdrawn") : `${L("已排队继续", "Resume queued")}: ${r.variables.length} ${L("个变量", "variable(s)")}`); draw(); }
       catch (e) { toast(e.message, true); }
     }));
-    on("#rerunBtn", (ev) => startResearch(c.id, ev.currentTarget));
+    on("#rerunBtn", (ev) => startResearch(c.id, ev.currentTarget, true));
     on("#recodeBtn", (ev) => startRecode(c.id, null, ev.currentTarget));
     on("#recodeBtn2", (ev) => startRecode(c.id, null, ev.currentTarget));
     on("#approveBtn", async () => { await api("POST", `/api/jobs/${j.id}/resume`, { approve_over_budget: true }); draw(); });
@@ -549,9 +549,26 @@ function busy(btn, on, text) {
   if (on) { btn.dataset.label = btn.textContent; btn.disabled = true; if (text) btn.textContent = text; }
   else { btn.disabled = false; if (btn.dataset.label) btn.textContent = btn.dataset.label; }
 }
-async function startResearch(id, btn) {
+async function startResearch(id, btn, ask = false) {
   busy(btn, true);
-  try { await api("POST", `/api/cases/${id}/research`, {}); location.hash = `#/case/${id}/progress`; route(); }
+  try {
+    if (ask) {  // re-run: show pages already read vs this case's fetch limit, which counts every run (D-044)
+      const c = await api("GET", `/api/cases/${id}`);
+      const full = c.fetched_count >= c.max_fetch;
+      const v = await askDialog({
+        title: t("rerun"),
+        body: `<div class="kv"><div>${L("本案例已读取的网页（所有运行）", "Pages already read for this case (all runs)")}</div><div><b>${c.fetched_count}</b></div>
+          <div>${L("本案例的读取上限", "This case's reading limit")}</div><div><b>${c.max_fetch}</b></div></div>
+          ${full ? `<div class="callout warn small">${L("已达到读取上限：不提高上限的话，这次运行会搜索，但不会读取新网页。", "The reading limit is reached: without raising it, this run will search but read no new pages.")}</div>` : ""}
+          <p class="small muted">${L("新的搜索会用到 Tavily 额度（按每次 $0.016 计入本案例预算）。读取更多网页会让之后的编码费用变高。上限最高 300；每次修改都会记录。", "New searches use Tavily credits (counted at $0.016 each in this case's budget). Reading more pages makes later coding cost more. Maximum 300; every change is recorded.")}</p>`,
+        okText: L("开始重新研究", "Start research"), cancelText: L("取消", "Cancel"),
+        input: { label: L("读取上限（本案例所有运行合计）", "Reading limit (all runs of this case)"), value: String(full ? Math.min(c.fetched_count + 60, 300) : c.max_fetch) } });
+      if (v === null) return;
+      const n = parseInt(v, 10);
+      if (!(n >= 1 && n <= 300)) { toast(L("读取上限必须是 1–300 之间的整数", "The reading limit must be a whole number from 1 to 300"), true); return; }
+      if (n !== c.max_fetch) await api("POST", `/api/cases/${id}/limits`, { limits: { max_fetch: n }, reason: "set before re-running research" });
+    }
+    await api("POST", `/api/cases/${id}/research`, {}); location.hash = `#/case/${id}/progress`; route(); }
   catch (e) { toast(e.message, true); }
   finally { busy(btn, false); }
 }

@@ -480,7 +480,8 @@ def fetch_candidates(ctx: Ctx, cands: list[dict], found_via: str = "search") -> 
         fetched_so_far = db.q1("SELECT COUNT(*) n FROM sources WHERE case_id=? AND origin IN ('search','followed_link')",
                                (ctx.case["id"],))["n"]
         if fetched_so_far >= int(ctx.settings["max_fetch"]):
-            ctx.limit(f"fetch limit ({ctx.settings['max_fetch']})")
+            ctx.limit(f"fetch limit ({ctx.settings['max_fetch']} pages for this case, all runs; "
+                      f"can be raised in the Re-run research dialog)")
         ctx.check_limits("fetch")
         if c["identity_score"] < 0.3:
             continue  # remains visible in the search log as "not fetched (weak identity match)"

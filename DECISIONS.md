@@ -408,3 +408,11 @@ that aliases are searched, long names are unquoted, and discovery queries are ad
 **Risks.** Hand-made word lists may be imperfect (only affects what is searched); discovered keywords can drift to a
 neighbouring topic (mitigated: only results that already match the incident, at least two websites); more Tavily
 credits per case.
+
+## D-044 · 2026-11-13 · The reading limit can be raised on an existing case — Active (branch `feature/case-fetch-limit`, not merged)
+**Decision (owner request 2026-11-13).** `max_fetch` stays a per-case total across all runs, and it becomes an
+explicit per-case limit that can be raised or lowered (1–300) from the Re-run research dialog; every change is
+recorded with who and why (like the other per-case limits, D-011).
+**Why.** A re-run on a case at its limit spent search credits without reading new pages; the owner otherwise had to
+create a new case.
+**Ceiling 300.** More pages mean more memory on the 512 MB server (K-17) and higher later coding cost.

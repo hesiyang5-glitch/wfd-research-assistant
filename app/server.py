@@ -173,6 +173,10 @@ def check_limit_value(k: str, v):
         raise ApiError(400, f"{k} must be a finite number ≥ 0 (limits can be raised, never removed)")
     if k.endswith("_usd") and x > 1000:
         raise ApiError(400, f"{k} must be at most $1,000 per case")
+    if k == "max_fetch":
+        from .config import MAX_FETCH_CEILING
+        if not (1 <= x <= MAX_FETCH_CEILING):
+            raise ApiError(400, f"max_fetch (pages read for this case, all runs) must be between 1 and {MAX_FETCH_CEILING}")
     if k.startswith("max_") and x > 10000:
         raise ApiError(400, f"{k} must be at most 10,000 per case")
     return round(x, 2) if k.endswith("_usd") else int(x)
@@ -342,6 +346,10 @@ def api_case(h, cid, **_):
         raise ApiError(404, "case not found")
     c["identity"] = json.loads(c.pop("identity_json") or "{}")
     c["settings"] = json.loads(c.pop("settings_json") or "{}")
+    # pages already read for this case (all runs); the fetch limit counts these (same rule as research.fetch_candidates)
+    c["fetched_count"] = db.q1("SELECT COUNT(*) n FROM sources WHERE case_id=? AND origin IN ('search','followed_link')",
+                               (int(cid),))["n"]
+    c["max_fetch"] = c["settings"].get("max_fetch", DEFAULT_SETTINGS["max_fetch"])
     return c
 
 
