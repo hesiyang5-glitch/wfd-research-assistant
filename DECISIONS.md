@@ -416,3 +416,22 @@ recorded with who and why (like the other per-case limits, D-011).
 **Why.** A re-run on a case at its limit spent search credits without reading new pages; the owner otherwise had to
 create a new case.
 **Ceiling 300.** More pages mean more memory on the 512 MB server (K-17) and higher later coding cost.
+
+## D-045 · 2026-11-13 · "Search only" and "Search & analyze" run modes — Active (branch `feature/search-only`, not merged)
+**Decision (owner request after the AlertHub demonstration).** The Research form offers two mutually exclusive modes,
+default **Search only**. Search only runs the existing search and retrieval stages and stops; Search & analyze is the
+existing full pipeline. Sources can be viewed and exported in both, and analysis can be started later.
+**Boundary.** Search only includes identity check, searches with D-043 expansion, fetch/extraction, de-duplication,
+relevance screening (word match on name/place/year, no AI), source-type ranking and passages. It excludes the codebook
+evidence-gap check and its follow-up searches (both organised around coding variables) and all model coding. It is not
+necessarily free: searches use Tavily credits (counted in the case budget). Continuing later uses Re-analyze on the
+sources already read (no new search; no gap-driven follow-up).
+**Ranking.** Unchanged and already equal to the requested order: after-action reports; government / regulatory;
+legislative; academic / technical (ngo_technical); news; other (`research.TYPE_PRIORITY`, D-041). Type comes from an
+address/title heuristic and is a sorting signal, not proof of accuracy.
+**Selection.** "Select" uses the existing per-source Exclude / Include; the export lists kept sources by default.
+Excluding also removes a source from later analysis (same meaning as before).
+**Change to D-036 (needs owner confirmation, K-60).** The spec says Search & analyze must not ask again after retrieval;
+the optional "pause after research" box therefore defaults to unticked (was ticked). Caps still pause.
+**Compatibility.** `run_mode` is stored in case settings; absent → full pipeline, so existing cases and API clients are
+unchanged. No database migration (settings are JSON).

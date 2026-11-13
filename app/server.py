@@ -315,7 +315,10 @@ def api_new_case(h, body, **_):
     # Coding provider chosen on the first form (D-036). Validated BEFORE anything is created or searched: the mode must
     # exist, its keys must be configured, the free availability check must pass, and the hard limits must cover at
     # least one worst-case request per selected provider. Without "mode" (older clients) the global default applies.
-    mode = check_mode(body.get("mode"), {**global_settings(), **overrides})
+    run_mode = check_run_mode(body.get("run_mode"))
+    overrides["run_mode"] = run_mode
+    # Search only (D-045): no model is used, so no coding-provider choice or provider check is needed.
+    mode = None if run_mode == "search_only" else check_mode(body.get("mode"), {**global_settings(), **overrides})
     if mode and mode != "single":
         overrides["coding_mode"] = mode
         checks = provider_checks(mode, {**global_settings(), **overrides})
@@ -326,7 +329,7 @@ def api_new_case(h, body, **_):
         short = minimum_request_check(mode, {**global_settings(), **overrides}, spent=0.0, spent_openai=0.0)
         if short:
             raise ApiError(400, short + " Raise the limit or choose another mode. Nothing was created or searched.")
-    if "pause_before_coding" in body:
+    if "pause_before_coding" in body and run_mode == "search_analyze":
         overrides["pause_before_coding"] = bool(body["pause_before_coding"])
     cid = db.insert("cases", {"name": body["name"].strip(), "location": body.get("location", "").strip(),
                               "date_text": body.get("date_text", "").strip(), "date_start": body.get("date_start", ""),
@@ -335,8 +338,17 @@ def api_new_case(h, body, **_):
                               "schema_version_id": act["id"] if act else None, "status": "new", "identity_json": "{}",
                               "settings_json": json.dumps({**global_settings(), **overrides}), "created_at": time.time(),
                               "updated_at": time.time()})
-    jid = jobs.enqueue(cid, "research", {"mode": mode} if mode else None) if body.get("start", True) else None
-    return {"id": cid, "job_id": jid, "mode": mode}
+    params = {**({"mode": mode} if mode else {}), **({"search_only": True} if run_mode == "search_only" else {})}
+    jid = jobs.enqueue(cid, "research", params or None) if body.get("start", True) else None
+    return {"id": cid, "job_id": jid, "mode": mode, "run_mode": run_mode}
+
+
+def check_run_mode(v) -> str:
+    if v in (None, ""):
+        return "search_analyze"  # older clients: unchanged full pipeline
+    if v not in ("search_only", "search_analyze"):
+        raise ApiError(400, "run_mode must be 'search_only' or 'search_analyze'")
+    return v
 
 
 @route("GET", "/api/cases/{cid}")
@@ -368,7 +380,19 @@ def api_edit_case(h, cid, body, **_):
 
 @route("POST", "/api/cases/{cid}/research")
 def api_research(h, cid, body, **_):
-    return {"job_id": jobs.enqueue(int(cid), "research", {"identity_confirmed": bool(body.get("identity_confirmed"))})}
+    c = db.q1("SELECT * FROM cases WHERE id=?", (int(cid),))
+    if not c:
+        raise ApiError(404, "case not found")
+    st = json.loads(c["settings_json"] or "{}")
+    # D-045: a re-run uses the case's own mode unless the request names one; cases from before D-045 analyze as before
+    run_mode = check_run_mode(body.get("run_mode") or st.get("run_mode"))
+    if body.get("run_mode") and st.get("run_mode") != run_mode:
+        st["run_mode"] = run_mode
+        db.update("cases", int(cid), {"settings_json": json.dumps(st), "updated_at": time.time()})
+    params = {"identity_confirmed": bool(body.get("identity_confirmed"))}
+    if run_mode == "search_only":
+        params["search_only"] = True
+    return {"job_id": jobs.enqueue(int(cid), "research", params), "run_mode": run_mode}
 
 
 @route("POST", "/api/cases/{cid}/recode")
@@ -865,6 +889,13 @@ def export_response(h, cid, query):
     fmt = (query.get("format") or ["xlsx"])[0]
     unrev = (query.get("unreviewed") or ["0"])[0] == "1"
     c = db.q1("SELECT * FROM cases WHERE id=?", (int(cid),))
+    if fmt in ("sources", "sources_csv"):  # D-045: sources only, no coding results; works before any analysis
+        include_all = (query.get("all") or ["0"])[0] == "1"
+        sbase = re.sub(r"[^\w\-]+", "_", c["name"])[:40] + ("_sources_all" if include_all else "_sources")
+        if fmt == "sources_csv":
+            return h.send_bytes(export.sources_csv(int(cid), include_all).encode("utf-8-sig"), "text/csv; charset=utf-8", f"{sbase}.csv")
+        return h.send_bytes(export.sources_xlsx(int(cid), include_all),
+                            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", f"{sbase}.xlsx")
     base = re.sub(r"[^\w\-]+", "_", c["name"])[:40] + ("_UNREVIEWED" if unrev else "_reviewed")
     if fmt == "tsv":
         return h.send_bytes(export.tsv(int(cid), unrev).encode("utf-8"), "text/tab-separated-values; charset=utf-8", f"{base}.tsv")

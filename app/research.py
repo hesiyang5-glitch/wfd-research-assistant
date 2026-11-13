@@ -714,6 +714,7 @@ def stage_coding(ctx: Ctx):
 # ----------------------------------------------------------------------------- orchestration
 def coverage_report(ctx: Ctx) -> dict:
     cid = ctx.case["id"]
+    # D-045: in a search-only run the codebook gap check is not run, so "gaps remaining" is reported as not checked
     srcs = db.q("SELECT fetch_status, relevance_status, duplicate_of, near_duplicate_of, excluded, ocr_status FROM sources WHERE case_id=?", (cid,))
     qs = db.q("SELECT status, round FROM search_queries WHERE case_id=?", (cid,))
     return {
@@ -731,6 +732,8 @@ def coverage_report(ctx: Ctx) -> dict:
         "research_complete": bool(ctx.provider) and not ctx.provider.is_test and any(x["status"] == "ok" for x in qs)
                              and not ctx.state.get("limits_hit"),
         "gaps_remaining": [g["name"] for g in ctx.state.get("gaps", [])],
+        "gaps_checked": not ctx.state.get("search_only"),
+        "search_only": bool(ctx.state.get("search_only")),
         "spent_usd": round(ctx.spent(), 4),
         "budget_usd": round(ctx.budget(), 2),
         "search_price_configured": ctx.search_unit is not None,
@@ -765,6 +768,9 @@ def run_research(job: dict):
                     pass
                 ctx.state.pop("cands", None)
                 done.append("fetch"); ctx.save()
+            if ctx.params.get("search_only"):
+                finish_search_only(ctx)
+                return
             # gap-driven follow-up rounds
             while ctx.state["round"] < int(ctx.settings["max_search_rounds"]) and ctx.provider:
                 gaps = stage_gaps(ctx)
@@ -820,6 +826,30 @@ def run_research(job: dict):
         import traceback
         ctx.log("error", traceback.format_exc()[-1500:])
         ctx.save(status="failed", error=f"{type(e).__name__}: {e}")
+
+
+def finish_search_only(ctx: Ctx):
+    """D-045 Search only: stop after discovery, deduplication, relevance screening, ranking and retrieval.
+
+    Not run: the codebook evidence-gap check and its follow-up searches (they are organised around coding variables),
+    and any model coding. Sources stay viewable and exportable; analysis can be started later (Re-analyze)."""
+    ctx.state["search_only"] = True
+    ctx.state["coverage"] = coverage_report(ctx)
+    cov = ctx.state["coverage"]
+    n_ok = db.q1("SELECT COUNT(*) n FROM sources WHERE case_id=? AND fetch_status='ok'", (ctx.case["id"],))["n"]
+    why = ("" if cov["research_complete"] else
+           " — search incomplete: " + ("; ".join(cov["limits_hit"]) if cov["limits_hit"] else "no real automatic web search in this run"))
+    ctx.log("info", f"search only: stopping after retrieval ({n_ok} sources read); no evidence-gap check, follow-up search "
+                    "or coding analysis was run")
+    if not n_ok:  # same outcome as the full pipeline when nothing could be read
+        msg = ("No source text is available yet. " + ("Automatic search found nothing retrievable. " if ctx.provider else
+               "No search provider is configured. ") + "Add links, upload files, or paste text on the Sources tab, then re-run.")
+        ctx.save(status="needs_input", stage="fetch", message=msg)
+        db.update("cases", ctx.case["id"], {"status": "needs_sources", "updated_at": time.time()})
+        return
+    ctx.stage("sources", 1.0, f"Sources ready ({n_ok} read) — search only, no coding analysis{why}")
+    ctx.save(status="done")
+    db.update("cases", ctx.case["id"], {"status": "sources_ready", "updated_at": time.time()})
 
 
 def ingest_manual(case_id: int, kind: str, payload: dict) -> int:

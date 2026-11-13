@@ -166,7 +166,7 @@ if ($("#themeBtn")) $("#themeBtn").onclick = () => {
 // variable names break only after an underscore, never in the middle of a word (display only)
 const varName = (n) => esc(n).replace(/_/g, "_<wbr>");
 const JOB_TEXT = { done: ["已完成", "Done"], running: ["运行中", "Running"], queued: ["排队中", "Queued"], needs_input: ["需要你处理", "Needs your input"], failed: ["失败", "Failed"], cancelled: ["已取消", "Cancelled"] };
-const CASE_TEXT = { new: ["新建", "New"], review: ["待复核", "In review"], needs_sources: ["需要资料", "Sources needed"] };
+const CASE_TEXT = { new: ["新建", "New"], review: ["待复核", "In review"], needs_sources: ["需要资料", "Sources needed"], sources_ready: ["来源已就绪（未分析）", "Sources ready (not analyzed)"] };
 const stText = (map, s) => (map[s] ? L(map[s][0], map[s][1]) : s);
 
 // ------------------------------------------------------------------ router
@@ -272,10 +272,24 @@ function estimateHtml(e) {
     ${!e.minimum_check && e.combined_high != null && (e.combined_high > e.budget_usd || (e.providers || []).some((p) => p.selected && p.provider === "openai" && p.cost_high > e.openai_budget_usd)) ? `<div class="callout warn small">${L("最坏情况高于本案例的上限。花费不会超过上限：编码开始前会暂停，请你把上限提高到一个明确的金额，或者停在那里。最坏情况假设每次请求都用满全部额度；目前唯一一次实测的完整 GPT 运行，实际花费约为最坏情况的 1/9。", "The worst case is above this case's cap. Spending never exceeds the cap: before coding, the run pauses and asks you to raise it to an explicit amount, or to stop. The worst case assumes every request uses its full allowance; in the one full GPT run measured so far, the actual cost was about 1/9 of the worst case.")}</div>` : ""}
     <p class="small muted">${L("初步估算：还不知道会找到哪些资料。最高值是预算检查使用的“最坏情况预留”。研究完成后、任何付费模型请求之前，会根据实际证据重新计算。", "Preliminary estimate: the sources are not known yet. The high end is the worst-case reserve used by the budget check. After research and before any paid model request, it is recalculated from the evidence actually found.")}</p>`;
 }
+// D-045: two mutually exclusive run modes on the first form. Search only is the default.
+const RUN_MODES = {
+  search_only: { title: ["只搜索", "Search only"], help: ["查找并整理相关来源，不运行编码分析。", "Find and organize relevant sources without running coding analysis."], start: ["搜索来源", "Search sources"] },
+  search_analyze: { title: ["搜索并分析", "Search & analyze"], help: ["查找相关来源，并生成编码建议供人工复核。", "Find relevant sources and generate coding suggestions for human review."], start: ["搜索并分析", "Search & analyze"] },
+};
+function runModeHtml(sel) {
+  return `<fieldset class="pchoice" id="runModeChoice"><legend>${L("运行方式", "What to run")}</legend>
+    ${Object.entries(RUN_MODES).map(([k, m]) => `<label class="pcard ${k === sel ? "on" : ""}">
+      <input type="radio" name="rmode" value="${k}" ${k === sel ? "checked" : ""} aria-describedby="rh_${k}">
+      <span><b>${esc(L(m.title[0], m.title[1]))}</b><span class="small muted" id="rh_${k}">${esc(L(m.help[0], m.help[1]))}</span></span></label>`).join("")}
+    </fieldset>`;
+}
 async function renderHome() {
   const st = STATUS.settings;
   const modes = STATUS.modes || [];
   const avail = modes.filter((m) => m.available);
+  let rmode = "search_only";
+  const startLabel = () => L(RUN_MODES[rmode].start[0], RUN_MODES[rmode].start[1]);
   // Safe default: Claude only when available; otherwise nothing is pre-selected (never silently a costlier option).
   let pmode = avail.some((m) => m.mode === "anthropic_only") ? "anthropic_only" : null;
   app.innerHTML = `<div class="hero">
@@ -288,8 +302,10 @@ async function renderHome() {
       <details style="margin-top:10px"><summary>${t("f_details")} / ${t("f_links")}</summary>
         <label>${t("f_details")}</label><textarea id="f_details"></textarea>
         <label>${t("f_links")}</label><textarea id="f_links" placeholder="https://..."></textarea></details>
+      <div id="analyzeOpts" hidden>
       ${avail.length ? providerChoiceHtml(modes, pmode) : `<div class="callout warn small" style="margin-top:12px"><b>${L("编码模型选择", "Coding-provider selection")}</b>: ${L("服务器没有配置任何模型密钥。研究照常进行，结果留给你手动编码。", "No model key is configured on the server. Research runs as usual and the results are left for manual coding.")}</div>`}
-      ${avail.length ? `<label class="chk" style="margin-top:8px"><input type="checkbox" id="pauseChk" checked style="width:auto"> ${L("研究完成后先暂停，等我批准再开始付费编码", "Pause for my approval after research, before paid coding starts")}</label>` : ""}
+      ${avail.length ? `<label class="chk" style="margin-top:8px"><input type="checkbox" id="pauseChk" style="width:auto"> ${L("可选：研究完成后先暂停，等我批准再开始付费编码", "Optional: pause for my approval after research, before paid coding starts")}</label>` : ""}
+      </div>
       <details style="margin-top:10px"><summary>${t("f_advanced")}</summary>
         <div class="grid3">
           <div><label>${t("s_rounds")}</label><input id="s_rounds" type="number" min="0" value="${st.max_search_rounds}"></div>
@@ -301,7 +317,8 @@ async function renderHome() {
           <div><label>${L("OpenAI 预算（美元）", "OpenAI budget ($)")}</label><input id="s_obudget" class="estIn" type="number" min="0" step="0.5" value="${st.openai_budget_usd}"></div>
         </div></details>
       <div class="panel" style="margin-top:12px" id="estBox" aria-live="polite"><h3 style="margin-top:0">${t("est_title")}</h3><div class="muted">${t("loading")}</div></div>
-      <div class="row" style="margin-top:16px"><button class="primary" id="startBtn" ${avail.length && !pmode ? "disabled" : ""}>${t("start")}</button><span class="spacer"></span></div>
+      ${runModeHtml(rmode)}
+      <div class="row" style="margin-top:16px"><button class="primary" id="startBtn">${esc(startLabel())}</button><span class="spacer"></span></div>
     </div>
     <div>
       <div class="panel"><h3 style="margin-top:0">${t("services")}</h3>${serviceList()}</div>
@@ -309,16 +326,35 @@ async function renderHome() {
   let est = null;
   const formQuery = () => `budget_usd=${encodeURIComponent($("#s_budget").value)}&openai_budget_usd=${encodeURIComponent($("#s_obudget").value)}&max_queries=${encodeURIComponent($("#s_queries").value)}`;
   const refresh = async () => {
-    if (avail.length && !pmode) { $("#estBox").innerHTML = `<h3 style="margin-top:0">${t("est_title")}</h3><p class="muted">${L("请先选择编码模型。", "Choose a coding-provider option first.")}</p>`; return; }
+    if (rmode === "search_only") {  // no model is used: show only the search part of the estimate
+      try {
+        est = await api("GET", `/api/estimate_preview?mode=single&${formQuery()}`);
+        $("#estBox").innerHTML = `<h3 style="margin-top:0">${t("est_title")} · <span class="small">${esc(L("只搜索", "Search only"))}</span></h3>
+          <div class="kv"><div>${L("网页搜索", "Web search")}${est.search_provider ? ` — ${esc(searchName(est.search_provider))}` : ""}</div><div>${!est.search_provider ? L("未配置搜索服务（只用手动添加的资料）", "no search service configured (manual sources only)") : est.search_cost_max != null ? `≤ ${money(est.search_cost_max)} <span class="small muted">(${est.search_queries_max} ${L("次查询上限", "queries max")})</span>` : L("未配置搜索价格", "no search price configured")}</div>
+          <div>${L("编码模型请求", "Coding-model requests")}</div><div>${L("无", "none")} — $0.00</div>
+          <div>${L("本案例总上限", "Case cap")}</div><div>${money(est.budget_usd)}</div></div>
+          <p class="small muted">${L("只做来源查找、去重、相关性检查、排序和读取。相关性检查是按事件名称、地点和年份做文字匹配，不用 AI。之后可以随时在案例里点“继续分析”。", "Only source discovery, de-duplication, relevance check, ranking and retrieval. The relevance check matches the incident name, place and year in the text; it does not use AI. You can continue to analysis later from the case.")}</p>`;
+        $("#startBtn").disabled = false;
+      } catch (err) { $("#estBox").innerHTML = `<div class="callout bad small">${esc(err.message)}</div>`; $("#startBtn").disabled = false; }
+      return;
+    }
+    if (avail.length && !pmode) { $("#estBox").innerHTML = `<h3 style="margin-top:0">${t("est_title")}</h3><p class="muted">${L("请先选择编码模型。", "Choose a coding-provider option first.")}</p>`; $("#startBtn").disabled = true; return; }
     try {
       est = await api("GET", `/api/estimate_preview?mode=${encodeURIComponent(pmode || "single")}&${formQuery()}`);
       $("#estBox").innerHTML = `<h3 style="margin-top:0">${t("est_title")} · <span class="small">${esc(modeText(pmode || "single"))}</span></h3>${avail.length ? estimateHtml(est) : `<p>${t("svc_none_model")}</p>`}`;
       $("#startBtn").disabled = !!(avail.length && (!pmode || est.minimum_check));
     } catch (err) { $("#estBox").innerHTML = `<div class="callout bad small">${esc(err.message)}</div>`; $("#startBtn").disabled = true; }
   };
+  $$("input[name=rmode]").forEach((r) => (r.onchange = () => {
+    rmode = r.value;
+    $$("#runModeChoice .pcard").forEach((c) => c.classList.toggle("on", c.querySelector("input").checked));
+    $("#analyzeOpts").hidden = rmode !== "search_analyze";
+    $("#startBtn").textContent = startLabel();
+    refresh();
+  }));
   $$("input[name=pmode]").forEach((r) => (r.onchange = () => {
     pmode = r.value;
-    $$(".pcard").forEach((c) => c.classList.toggle("on", c.querySelector("input").checked));
+    $$("#providerChoice .pcard").forEach((c) => c.classList.toggle("on", c.querySelector("input").checked));
     refresh();
   }));
   $$(".estIn").forEach((x) => (x.onchange = refresh));
@@ -344,10 +380,11 @@ async function renderHome() {
     const name = $("#f_name").value.trim();
     if (!name) { toast(t("f_name"), true); $("#f_name").focus(); return; }
     $("#startBtn").disabled = true; $("#startBtn").textContent = t("starting");
-    const reset = () => { $("#startBtn").disabled = false; $("#startBtn").textContent = t("start"); };
+    const reset = () => { $("#startBtn").disabled = false; $("#startBtn").textContent = startLabel(); };
+    const analyze = rmode === "search_analyze";
     try {
       let checks = {};
-      if (pmode) {  // free, non-billable availability check before anything is created or searched
+      if (analyze && pmode) {  // free, non-billable availability check before anything is created or searched
         checks = (await api("POST", "/api/providers/check", { mode: pmode })).providers || {};
         const bad = Object.entries(checks).filter(([, v]) => !v.ok);
         if (bad.length) { toast(bad.map(([p, v]) => `${provApi(p)}: ${v.reason}`).join(" · "), true); reset(); return; }
@@ -355,8 +392,8 @@ async function renderHome() {
       }
       const r = await api("POST", "/api/cases", {
         name, location: $("#f_location").value, date_text: $("#f_date").value, aliases: $("#f_aliases").value,
-        details: $("#f_details").value, known_links: $("#f_links").value, start: true,
-        ...(pmode ? { mode: pmode, pause_before_coding: $("#pauseChk").checked } : {}),
+        details: $("#f_details").value, known_links: $("#f_links").value, start: true, run_mode: rmode,
+        ...(analyze && pmode ? { mode: pmode, pause_before_coding: $("#pauseChk").checked } : {}),
         settings: { max_search_rounds: +$("#s_rounds").value, max_queries: +$("#s_queries").value, max_fetch: +$("#s_fetch").value,
           pages_per_query: +$("#s_pages").value, time_limit_minutes: +$("#s_time").value, budget_usd: +$("#s_budget").value,
           openai_budget_usd: +$("#s_obudget").value },
@@ -400,11 +437,14 @@ async function renderCase(id, tab) {
 
 // ------------------------------------------------------------------ progress
 const STAGES = ["identify", "search", "fetch", "gaps", "followup", "coding", "review"];
+const STAGES_SEARCH_ONLY = ["identify", "search", "fetch", "sources"];  // D-045
 async function tabProgress(c, body) {
   const draw = async () => {
     const j = await api("GET", `/api/cases/${c.id}/job`);
     if (!j) { body.innerHTML = `<div class="panel empty-state"><span>${L("这个案例还没有研究记录。", "No research has been run for this case yet.")}</span><button class="primary" id="runBtn">${t("rerun")}</button></div>`; $("#runBtn").onclick = () => startResearch(c.id); return; }
-    const cur = STAGES.indexOf(j.stage);
+    const searchOnly = !!(j.params && j.params.search_only);
+    const stages = searchOnly ? STAGES_SEARCH_ONLY : STAGES;
+    const cur = stages.indexOf(j.stage);
     const st = j.state || {};
     const cov = st.coverage;
     let needs = "";
@@ -452,10 +492,13 @@ async function tabProgress(c, body) {
       needs = `<div class="callout warn"><b>${t("need_sources")}</b><p>${esc(j.message)}</p><a href="#/case/${c.id}/sources">→ ${t("tab_sources")}</a></div>`;
     }
     body.innerHTML = `<div class="panel">
-      <div class="stepper ${j.status === "running" ? "running" : ""}">${STAGES.map((s, i) => `<div class="st ${i < cur || j.status === "done" ? "done" : i === cur ? "cur" : ""}">${t("st_" + s)}</div>`).join("")}</div>
+      <div class="stepper ${j.status === "running" ? "running" : ""}">${stages.map((s, i) => `<div class="st ${i < cur || j.status === "done" ? "done" : i === cur ? "cur" : ""}">${s === "sources" ? esc(L("来源已就绪", "Sources ready")) : t("st_" + s)}</div>`).join("")}</div>
       <div class="bar"><i style="width:${Math.round((j.progress || 0) * 100)}%"></i></div>
       <div class="row" style="margin-top:10px">${statusBadge(j)}<span>${esc(j.message || "")}</span><span class="spacer"></span>
-      ${["running", "queued"].includes(j.status) ? `<button class="danger" id="cancelBtn">${t("cancel")}</button>` : `<button id="rerunBtn">${t("rerun")}</button> <button id="recodeBtn">${t("recode")}</button> <a href="#/case/${c.id}/review"><button class="primary">${t("tab_review")} →</button></a>`}</div>
+      ${["running", "queued"].includes(j.status) ? `<button class="danger" id="cancelBtn">${t("cancel")}</button>`
+        : searchOnly ? `<button id="rerunBtn">${t("rerun")}</button> <button id="recodeBtn">${L("继续分析", "Continue to analysis")}</button> <a href="#/case/${c.id}/sources"><button class="primary">${L("查看来源", "View sources")} →</button></a>`
+        : `<button id="rerunBtn">${t("rerun")}</button> <button id="recodeBtn">${t("recode")}</button> <a href="#/case/${c.id}/review"><button class="primary">${t("tab_review")} →</button></a>`}</div>
+      ${searchOnly && j.status === "done" ? `<div class="callout ok small">${L("只搜索：已完成来源查找、去重、相关性检查、排序和读取。没有运行证据缺口检查、补充搜索或编码分析。可以在“来源”页查看、排除和导出来源；需要时点“继续分析”。", "Search only: source discovery, de-duplication, relevance check, ranking and retrieval are done. No evidence-gap check, follow-up search or coding analysis was run. View, exclude and export sources on the Sources tab; choose Continue to analysis when needed.")}</div>` : ""}
       ${j.error ? `<div class="callout bad">${esc(j.error)}</div>` : ""}${needs}
       ${providerPanel(j)}
       ${cov ? `<h3>${t("coverage")}</h3>${!cov.automatic_search_ran ? `<div class="callout warn">${LANG === "zh" ? "未进行自动网页搜索（未配置搜索服务，或本次只是重新分析）。结果只基于已有或手动补充的资料。" : "No automatic web search in this run (no search provider configured, or this was a re-analysis). Results rest only on existing or manually added sources."}</div>` : cov.research_complete ? `<div class="callout ok">${t("complete_note")}</div>` : `<div class="callout warn">${t("incomplete")}<br><span class="small">${esc((cov.limits_hit || []).join("; "))}</span></div>`}
@@ -467,7 +510,7 @@ async function tabProgress(c, body) {
         <div>${LANG === "zh" ? "重复 / 转载" : "Duplicates / syndicated"}</div><div>${cov.exact_duplicates} / ${cov.near_duplicates}</div>
         <div>${LANG === "zh" ? "无关 / 相关性不确定" : "Irrelevant / uncertain"}</div><div>${cov.irrelevant} / ${cov.uncertain}</div>
         <div>${LANG === "zh" ? "扫描页未识别的来源" : "Sources with unread scanned pages"}</div><div>${cov.ocr_gaps}</div>
-        <div>${LANG === "zh" ? "证据仍薄弱的变量" : "Variables still weak on evidence"}</div><div class="small">${(cov.gaps_remaining || []).length ? `<details class="gap-list"><summary>${cov.gaps_remaining.length} ${L("个变量 — 点击展开", cov.gaps_remaining.length === 1 ? "variable — show" : "variables — show")}</summary><div class="var-chips">${cov.gaps_remaining.map((g) => `<span>${esc(g)}</span>`).join("")}</div></details>` : t("none")}</div></div>` : ""}
+        <div>${LANG === "zh" ? "证据仍薄弱的变量" : "Variables still weak on evidence"}</div><div class="small">${cov.gaps_checked === false ? esc(L("未检查（只搜索）", "not checked (search only)")) : (cov.gaps_remaining || []).length ? `<details class="gap-list"><summary>${cov.gaps_remaining.length} ${L("个变量 — 点击展开", cov.gaps_remaining.length === 1 ? "variable — show" : "variables — show")}</summary><div class="var-chips">${cov.gaps_remaining.map((g) => `<span>${esc(g)}</span>`).join("")}</div></details>` : t("none")}</div></div>` : ""}
       ${st.coding_report ? `<p class="small muted">${LANG === "zh" ? "编码" : "Coding"}${st.coding_report.mode ? ` (${esc(modeText(st.coding_report.mode))})` : ""}: ${st.coding_report.calls} call(s), ${st.coding_report.failed_calls} failed${st.coding_report.cache_hits ? `, ${st.coding_report.cache_hits} ${L("个来自缓存（免费）", "from cache (free)")}` : ""}, ${esc(st.coding_report.semantic_method)}, ${st.coding_report.n_passages_indexed} passages indexed${st.coding_report.not_coded_budget?.length ? `, <b>${st.coding_report.not_coded_budget.length} not coded (limit)</b>` : ""}.
         ${(st.coding_report.providers || []).filter((r) => r.provider).map((r) => `<br>· ${esc(provApi(r.provider))} · <span class="mono">${esc(r.model || "")}</span> — ${r.role === "reviewer" ? esc(interpText("cross_model_review")) : esc(interpText("independent"))}: ${r.calls} call(s), ${r.failed_calls} failed, ${r.cache_hits || 0} cached, ${money(r.spent_usd)}`).join("")}
         ${st.coding_report.comparison && Object.keys(st.coding_report.comparison).length ? `<br>${L("比较", "Comparison")}: ${Object.entries(st.coding_report.comparison).map(([k, v]) => `${esc(compText(k))} ${v}`).join(" · ")} — ${L("模型一致不等于事实已核实。", "agreement is not verification.")}` : ""}</p>` : ""}
@@ -555,18 +598,26 @@ async function startResearch(id, btn, ask = false) {
     if (ask) {  // re-run: show pages already read vs this case's fetch limit, which counts every run (D-044)
       const c = await api("GET", `/api/cases/${id}`);
       const full = c.fetched_count >= c.max_fetch;
-      const v = await askDialog({
+      let rm = (c.settings || {}).run_mode === "search_only" ? "search_only" : "search_analyze";  // older cases: full pipeline
+      const dlg = askDialog({
         title: t("rerun"),
-        body: `<div class="kv"><div>${L("本案例已读取的网页（所有运行）", "Pages already read for this case (all runs)")}</div><div><b>${c.fetched_count}</b></div>
+        body: `${runModeHtml(rm)}<div class="kv" style="margin-top:10px"><div>${L("本案例已读取的网页（所有运行）", "Pages already read for this case (all runs)")}</div><div><b>${c.fetched_count}</b></div>
           <div>${L("本案例的读取上限", "This case's reading limit")}</div><div><b>${c.max_fetch}</b></div></div>
           ${full ? `<div class="callout warn small">${L("已达到读取上限：不提高上限的话，这次运行会搜索，但不会读取新网页。", "The reading limit is reached: without raising it, this run will search but read no new pages.")}</div>` : ""}
           <p class="small muted">${L("新的搜索会用到 Tavily 额度（按每次 $0.016 计入本案例预算）。读取更多网页会让之后的编码费用变高。上限最高 300；每次修改都会记录。", "New searches use Tavily credits (counted at $0.016 each in this case's budget). Reading more pages makes later coding cost more. Maximum 300; every change is recorded.")}</p>`,
         okText: L("开始重新研究", "Start research"), cancelText: L("取消", "Cancel"),
         input: { label: L("读取上限（本案例所有运行合计）", "Reading limit (all runs of this case)"), value: String(full ? Math.min(c.fetched_count + 60, 300) : c.max_fetch) } });
+      $$("#modalRoot input[name=rmode]").forEach((r) => (r.onchange = () => {
+        rm = r.value; $$("#modalRoot .pcard").forEach((x) => x.classList.toggle("on", x.querySelector("input").checked));
+        $("#dlgOk").textContent = rm === "search_only" ? L("开始搜索", "Search sources") : L("开始搜索并分析", "Search & analyze");
+      }));
+      $("#dlgOk").textContent = rm === "search_only" ? L("开始搜索", "Search sources") : L("开始搜索并分析", "Search & analyze");
+      const v = await dlg;
       if (v === null) return;
       const n = parseInt(v, 10);
       if (!(n >= 1 && n <= 300)) { toast(L("读取上限必须是 1–300 之间的整数", "The reading limit must be a whole number from 1 to 300"), true); return; }
       if (n !== c.max_fetch) await api("POST", `/api/cases/${id}/limits`, { limits: { max_fetch: n }, reason: "set before re-running research" });
+      await api("POST", `/api/cases/${id}/research`, { run_mode: rm }); location.hash = `#/case/${id}/progress`; route(); return;
     }
     await api("POST", `/api/cases/${id}/research`, {}); location.hash = `#/case/${id}/progress`; route(); }
   catch (e) { toast(e.message, true); }
@@ -880,6 +931,7 @@ function sortSources(rows, mode) {
   else out.sort((a, b) => a.id - b.id);
   return out;
 }
+const srcLink = (id, fmt, all) => `/api/cases/${id}/export?format=${fmt}&all=${all ? 1 : 0}`;  // D-045 sources-only export
 async function tabSources(c, body) {
   const rows = sortSources(await api("GET", `/api/cases/${c.id}/sources`), SRC_SORT);
   const sortNames = { type: L("类型优先（AAR 在前）", "Type priority (AAR first)"), length: L("篇幅（页数，其次段落数）", "Length (pages, then passages)"), found: L("找到顺序（S 编号）", "Order found (S number)") };
@@ -889,6 +941,11 @@ async function tabSources(c, body) {
     <div class="add-box"><label>${t("add_text")}</label><input id="addTitle" placeholder="${t("src_title")}"><textarea id="addText" style="margin-top:4px"></textarea><button id="addTextBtn" class="add-btn">${t("add")}</button></div></div>
     <p class="small muted">${LANG === "zh" ? "不会绕过登录或付费墙；无法访问的来源可在有合法访问权时手动补充正文。补充后点击“重新分析”。" : "Logins and paywalls are never bypassed; add text manually if you have legitimate access. Re-analyze after adding."}
     <button class="small" id="recodeAll">${t("recode")}</button></p><div id="affBox"></div></div>
+    <div class="panel" style="margin-top:12px" id="srcExport"><h3 style="margin-top:0">${L("导出来源", "Export sources")}</h3>
+      <div class="row" style="align-items:center;gap:8px"><a id="srcXlsx" href="${srcLink(c.id, "sources", false)}"><button class="primary">${L("来源清单（Excel）", "Source list (Excel)")}</button></a>
+        <a id="srcCsv" href="${srcLink(c.id, "sources_csv", false)}"><button>CSV</button></a>
+        <label class="chk small" style="margin:0"><input type="checkbox" id="srcAll" style="width:auto"> ${L("包括已排除的来源", "Include excluded sources")}</label></div>
+      <p class="small muted">${L("不需要先运行编码分析。默认导出你保留的来源（未排除的），按类型优先排序：事后评估报告、政府/监管、立法、学术/技术、新闻、其他。类型优先只是排序方式，不代表来源一定准确。", "No coding analysis needed. By default the export lists the sources you kept (not excluded), in type priority: after-action reports, government / regulatory, legislative, academic / technical, news, other. Type priority is a way to sort, not proof of accuracy.")}</p></div>
     <div class="row" style="margin-top:12px;align-items:center;gap:8px"><label for="srcSort" class="small" style="margin:0">${L("排序", "Sort by")}</label>
       <select id="srcSort" class="small" style="width:auto">${SRC_SORTS.map((x) => `<option value="${x}" ${x === SRC_SORT ? "selected" : ""}>${sortNames[x]}</option>`).join("")}</select>
       <span class="small muted">${L("只改变显示顺序；“类型”是自动判断的，可在下方更正。", "Display order only. Type is assigned automatically and can be corrected below.")}</span></div>
@@ -907,6 +964,7 @@ async function tabSources(c, body) {
         <select class="small" data-rel="${s.id}" style="width:auto"><option value="">relevance…</option><option>relevant</option><option>uncertain</option><option>irrelevant</option></select></div></td></tr>`).join("") || `<tr><td colspan="7" class="muted">${t("none")}</td></tr>`}
     </tbody></table></div>`;
   const add = async (payload) => { try { const s = await api("POST", `/api/cases/${c.id}/sources`, payload); toast(`S${s.id}: ${s.fetch_status}${s.fetch_error ? " — " + s.fetch_error : ""}`, s.fetch_status !== "ok"); tabSources(c, body); } catch (e) { toast(e.message, true); } };
+  $("#srcAll").onchange = (ev) => { $("#srcXlsx").href = srcLink(c.id, "sources", ev.target.checked); $("#srcCsv").href = srcLink(c.id, "sources_csv", ev.target.checked); };
   $("#addUrlBtn").onclick = () => add({ kind: "url", url: $("#addUrl").value.trim() });
   $("#addTextBtn").onclick = () => add({ kind: "text", title: $("#addTitle").value, text: $("#addText").value });
   $("#addFileBtn").onclick = async () => { for (const f of $("#addFile").files) await add({ kind: "file", filename: f.name, data: await fileToB64(f) }); };

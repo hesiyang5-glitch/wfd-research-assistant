@@ -159,6 +159,8 @@ def main():
                 pg.goto(base + "/")
                 pg.evaluate(f"localStorage.setItem('wfd_lang','{lang}')")
                 pg.reload()
+                pg.wait_for_selector("#runModeChoice", timeout=10000)
+                pg.check("input[name=rmode][value=search_analyze]")  # D-045: model choice shows in Search & analyze
                 pg.wait_for_selector("#providerChoice", timeout=10000)
                 pg.wait_for_timeout(600)
                 T[f"{lang}_services"] = pg.locator(".services").locator("xpath=..").inner_text()

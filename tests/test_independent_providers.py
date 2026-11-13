@@ -450,6 +450,8 @@ def main():
                 pg.goto(f"http://127.0.0.1:{port}/")
                 pg.evaluate(f"localStorage.setItem('wfd_lang','{lang}')")
                 pg.reload()
+                pg.wait_for_selector("#runModeChoice", timeout=8000)
+                pg.check("input[name=rmode][value=search_analyze]")  # D-045: model choice shows in Search & analyze
                 pg.wait_for_selector("#providerChoice", timeout=8000)
                 pg.wait_for_timeout(800)
                 txt = pg.inner_text("#app")
@@ -469,9 +471,12 @@ def main():
                     ui_ok["shared_search_line"] = all("Shared web research" in e and "(runs once)" in e for e in ests.values())
             pg.evaluate("localStorage.setItem('wfd_lang','en')")
             pg.reload()
+            pg.wait_for_selector("#runModeChoice")
+            pg.check("input[name=rmode][value=search_analyze]")  # D-045: model choice shows in Search & analyze
             pg.wait_for_selector("#providerChoice")
             pg.wait_for_timeout(600)
             ui_ok["default_claude_only"] = pg.is_checked("input[name=pmode][value=anthropic_only]")
+            ui_ok["pause_after_research_unticked_by_default (D-045)"] = pg.is_visible("#pauseChk") and not pg.is_checked("#pauseChk")
             ui_ok["services_list_has_no_single_language_model_line"] = "Language model" not in pg.inner_text(".services")
             hdr = urllib.request.urlopen(f"http://127.0.0.1:{port}/app.js", timeout=5).headers.get("Cache-Control", "")
             ui_ok["interface_files_not_served_stale (K-16)"] = "no-cache" in hdr
@@ -532,6 +537,8 @@ def main():
             pg.goto(f"http://127.0.0.1:{port + 1}/")
             pg.evaluate("localStorage.setItem('wfd_lang','en')")
             pg.reload()
+            pg.wait_for_selector("#runModeChoice")
+            pg.check("input[name=rmode][value=search_analyze]")  # D-045
             pg.wait_for_selector("#providerChoice")
             pg.wait_for_timeout(600)
             ui_ok["disabled_with_reason"] = (pg.is_disabled("input[name=pmode][value=openai_only]")

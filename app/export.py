@@ -412,3 +412,76 @@ def json_export(case_id: int, include_unreviewed=False) -> dict:
         "usage": db.q("SELECT * FROM usage WHERE case_id=? ORDER BY id", (case_id,)),
         "runs": db.q("SELECT * FROM runs WHERE case_id=? ORDER BY id", (case_id,)),
     }
+
+
+# ----------------------------------------------------------------------------- sources only (D-045)
+SOURCE_TYPE_LABEL = {"aar": "After-action report", "government": "Government / official", "regulatory": "Regulatory",
+                     "legislative": "Legislative", "academic": "Academic", "ngo_technical": "Technical / NGO report",
+                     "media": "News media", "unknown": "Other / unknown"}
+SOURCE_COLUMNS = ["Rank", "Source ID", "Title", "Source type", "Publisher", "Published date", "URL", "Retrieved at",
+                  "Read status", "Read problem", "Pages", "Passages", "Relevance", "Relevance reason",
+                  "Duplicate of", "Near-duplicate of", "Excluded", "Exclusion reason", "Found via"]
+
+
+def ranked_sources(case_id: int, include_all: bool = False) -> list[dict]:
+    """Sources in the same priority order as the Sources tab's default view (D-041): source type (AAR, government /
+    regulatory, legislative, academic / technical, news, other), then length, then order found.
+    Default: the researcher's selection = everything not excluded. include_all adds excluded sources."""
+    from .research import TYPE_PRIORITY
+    rows = db.q("SELECT * FROM sources WHERE case_id=?", (case_id,))
+    if not include_all:
+        rows = [s for s in rows if not s["excluded"]]
+    rows.sort(key=lambda s: (TYPE_PRIORITY.get(s["source_type"], 5), -(s.get("n_pages") or 0), -(s.get("n_passages") or 0), s["id"]))
+    return rows
+
+
+def _source_row(rank: int, s: dict) -> list:
+    when = dt.datetime.fromtimestamp(s["retrieved_at"]).isoformat(timespec="seconds") if s.get("retrieved_at") else ""
+    return [rank, f"S{s['id']}", s.get("title") or "", SOURCE_TYPE_LABEL.get(s.get("source_type"), s.get("source_type") or ""),
+            s.get("publisher") or "", s.get("published_date") or "", s.get("final_url") or s.get("url") or "", when,
+            "read" if s.get("fetch_status") == "ok" else (s.get("fetch_status") or ""), s.get("fetch_error") or "",
+            s.get("n_pages") or "", s.get("n_passages") or 0, s.get("relevance_status") or "", s.get("relevance_reason") or "",
+            f"S{s['duplicate_of']}" if s.get("duplicate_of") else "", f"S{s['near_duplicate_of']}" if s.get("near_duplicate_of") else "",
+            "yes" if s.get("excluded") else "", s.get("exclude_reason") or "", s.get("found_via") or s.get("origin") or ""]
+
+
+def sources_csv(case_id: int, include_all: bool = False) -> str:
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(SOURCE_COLUMNS)
+    for i, s in enumerate(ranked_sources(case_id, include_all), 1):
+        w.writerow(_source_row(i, s))
+    return buf.getvalue()
+
+
+def sources_xlsx(case_id: int, include_all: bool = False) -> bytes:
+    """Sources workbook for source curation without coding (D-045): About, Sources, Search_Log. No coding results."""
+    import openpyxl
+    case = db.q1("SELECT * FROM cases WHERE id=?", (case_id,))
+    rows = ranked_sources(case_id, include_all)
+    wb = openpyxl.Workbook()
+    wa = wb.active
+    wa.title = "About"
+    for k, v in [("Incident", case["name"]), ("Location", case.get("location") or ""), ("Date", case.get("date_text") or ""),
+                 ("Exported", dt.datetime.now().isoformat(timespec="seconds")),
+                 ("Sources in this file", f"{len(rows)} ({'all, including excluded' if include_all else 'excluded sources left out'})"),
+                 ("Order", "Source type priority: after-action reports; government / regulatory; legislative; academic / "
+                           "technical; news media; other. Then length, then order found."),
+                 ("Note", "Source type is assigned automatically from the address and title and can be corrected on the "
+                          "Sources tab. Type priority is a way to sort, not proof that a source is accurate."),
+                 ("Note", "Relevance is an automatic word-match check against the incident name, place and year (no AI)."),
+                 ("Note", "This file lists sources only. It contains no coding suggestions or reviewed values.")]:
+        wa.append([k, v])
+    ws = wb.create_sheet("Sources")
+    ws.append(SOURCE_COLUMNS)
+    for i, s in enumerate(rows, 1):
+        ws.append(_source_row(i, s))
+    wq = wb.create_sheet("Search_Log")
+    wq.append(["Round", "Purpose", "Query", "Page", "Search service", "Status", "Results", "Error", "Time"])
+    for q in db.q("SELECT * FROM search_queries WHERE case_id=? ORDER BY id", (case_id,)):
+        wq.append([q.get("round"), q.get("purpose"), q.get("query"), q.get("page"), q.get("provider"), q.get("status"),
+                   q.get("result_count"), q.get("error") or "",
+                   dt.datetime.fromtimestamp(q["created_at"]).isoformat(timespec="seconds") if q.get("created_at") else ""])
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()

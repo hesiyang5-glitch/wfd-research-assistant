@@ -26,6 +26,17 @@ citations, and leaves every final decision to a human reviewer.
 | Users do not need to collect or upload sources before starting | TESTED (live: Marshall Fire run) |
 | Optional supplements: add URL, upload PDF/HTML/DOCX/TXT, paste text | TESTED (offline) |
 
+## 2a. Run modes (D-045)
+
+| Requirement | Status |
+|---|---|
+| Research form offers **Search only** (default) and **Search & analyze**; start button reads "Search sources" / "Search & analyze" | TESTED offline (browser, `test_search_only`); not deployed |
+| Search only: discovery, de-duplication, relevance screening (word match, no AI), type ranking, retrieval and passages; no codebook gap check, no follow-up search, no model coding, no suggestions | TESTED offline |
+| Sources viewable and exportable (Excel: About / Sources / Search_Log; CSV) without any analysis; excluded sources left out unless requested | TESTED offline |
+| Continue to analysis later on the sources already read, without a new search | TESTED offline (coding replaced by a counter) |
+| Search & analyze continues into analysis with no confirmation after retrieval (pause is opt-in; caps still pause) | TESTED offline; conflicts with D-036 default — owner confirmation pending (K-60) |
+| Cases and API clients from before D-045 keep the full pipeline | TESTED offline |
+
 ## 3. Automatic multi-round source discovery
 
 | Requirement | Status |

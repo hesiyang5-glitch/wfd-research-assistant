@@ -6,6 +6,26 @@ Completed changes, newest first. Commit hashes refer to `hesiyang5-glitch/wfd-re
 
 
 
+## 2026-11-13 — "Search only" and "Search & analyze" (branch `feature/search-only`, built on `feature/case-fetch-limit`; not merged) — D-045
+- Owner request after the AlertHub demonstration: use search and source curation on their own (news, official
+  documents, after-action reports for Country Profiles), with analysis optional.
+- Research form: two options near the start button, **Search only** (default) and **Search & analyze**, with the
+  requested descriptions; the button reads "Search sources" / "Search & analyze". Model choice, the optional pause
+  and the model cost estimate appear only for Search & analyze; Search only shows the search cost and "$0 coding".
+- Search only reuses the existing pipeline and stops after retrieval: identity check, searches (incl. D-043
+  expansion), fetch, extraction, de-duplication, relevance check, type ranking, passages. It does not run the codebook
+  evidence-gap check, follow-up searches or coding. Case status "Sources ready (not analyzed)"; Progress shows
+  "Continue to analysis" and "View sources".
+- Sources tab: "Export sources" (Excel: About / Sources / Search_Log; or CSV), ranked by type priority, excluded
+  sources left out unless "Include excluded sources" is ticked. No coding values in this export.
+- Re-run research dialog shows and can switch the case's run mode.
+- Search & analyze: the "pause after research" box is now **unticked by default** (it was ticked, D-036) so the
+  requested workflow runs straight into analysis; budget and request caps still pause. Needs owner confirmation (K-60).
+- Server: `run_mode` on case creation and re-run (`search_only` / `search_analyze`); missing → full pipeline (older
+  clients and existing cases unchanged); `format=sources` / `sources_csv` on the export route.
+- New `tests/test_search_only.py` (44 checks). `test_ui_flow`, `test_ui_labels` and `test_independent_providers` now
+  choose Search & analyze before using the model choice (+1 check: pause box unticked).
+
 ## 2026-11-13 — Raise the reading (fetch) limit on an existing case (branch `feature/case-fetch-limit`, not merged) — D-044
 - The fetch limit (`max_fetch`, default 60) counts every page read for the case in all runs, so re-running research on
   a case that had reached it searched (using Tavily credits) but read nothing new. There was no way to change it on an
