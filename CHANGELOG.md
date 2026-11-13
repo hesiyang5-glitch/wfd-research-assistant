@@ -6,7 +6,7 @@ Completed changes, newest first. Commit hashes refer to `hesiyang5-glitch/wfd-re
 
 
 
-## 2026-11-13 — Sources tab ordering; wider Review variable column (branch `feat/sources-sort`, not merged, not deployed) — D-041
+## 2026-11-13 — Sources tab ordering; wider Review variable column (merged to `main` 2026-11-13 with owner approval) — D-041
 - Sources tab: "Sort by" — Type priority (default, AAR first; longer first inside a type), Length (pages, then
   passages), Order found (S number, the previous order). Correcting a source's type re-sorts the list. Display only:
   the API, S numbers, stored rows, evidence, prompts, costs and exports are unchanged; the choice stays in the browser.
@@ -22,7 +22,7 @@ Completed changes, newest first. Commit hashes refer to `hesiyang5-glitch/wfd-re
   installs were blocked, so these ran with a temporary stand-in `httpx` kept outside the repository (every network call
   fails as "not sent"). **Not run here:** test_auth (needs real `httpx`), test_providers (needs the `openai` package),
   test_pipeline and test_ui_flow (need the Texas sample PDFs). None of those touch the changed files' behaviour, but they
-  should be run on a normal machine before merging.
+  were not run before the merge (owner approved the merge 2026-11-13); run them on a normal machine when convenient.
 
 ## 2026-11-13 — Missing values: owner decision PI-M4 option (c) (merged to `main` 2026-11-13 with owner approval)
 - For 7 variables the codebook's own "nothing documented" code may be suggested from silence in the passages the model

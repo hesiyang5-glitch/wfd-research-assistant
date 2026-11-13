@@ -369,7 +369,7 @@ change to payloads, settings keys/values, stored data, cache, costs, exports or 
 distinct (never confuse "not run", "no supported value", stopped, failed, invalid); no external fonts or scripts (CSP
 `default-src 'self'`); animation stops under the system "reduce motion" setting. Full list: `docs/visual_polish.md`.
 
-## D-041 · 2026-11-13 · Sources tab ordering and a wider Review variable column — Active (branch `feat/sources-sort`, NOT merged; awaiting owner approval)
+## D-041 · 2026-11-13 · Sources tab ordering and a wider Review variable column — Active (merged to `main` 2026-11-13 with owner approval)
 **Decision.** (owner request 2026-11-13) The Sources tab gets a "Sort by" choice: **Type priority** (default — AAR,
 then government / regulatory, legislative, academic / NGO, media, unknown; longer sources first inside a type),
 **Length** (page count, then passage count for sources without pages — only PDFs have pages), and **Order found**
