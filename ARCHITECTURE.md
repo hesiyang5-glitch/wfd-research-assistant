@@ -82,6 +82,16 @@ prompts or keys) · `schema_migrations` · `suggestions_provider_archive` (used 
    and role → derived/admin fields computed once → provider comparison.
 7. **Review** — humans accept/edit/clear/defer; exports default to reviewed values.
 
+**Run modes (D-045).** `run_mode` in case settings: `search_analyze` (steps 1–7; default for cases and API clients that
+don't send a mode) or `search_only` (steps 1–3, then `research.finish_search_only`: no gap check, no follow-up, no
+coding; case status `sources_ready`). The form defaults to Search only. Analysis can be started later with Re-analyze
+("Analyze selected sources"), which refuses (API 400) and makes no coding call unless usable selected text exists
+(`research.usable_passage_count`: read, selected, not duplicate, not irrelevant — same filter as the evidence snapshot).
+Search and analysis statuses are derived on request (`server.case_statuses`), not stored. A never-analyzed case shows
+review category `not_analyzed`. Sources-only export: `GET /api/cases/{id}/export?format=sources|sources_csv[&all=1]`
+(About / Sources / Usage / Search_Log); counts: `GET /api/cases/{id}/source_counts`. Additive migration
+`2026-11-13-search-only`: `sources.language` (only when a page declares it), `sources.job_id` (search run).
+
 ## Storage and persistence
 
 - Local: `./data/` (SQLite `wfd.sqlite3`, `files/` downloaded sources and uploads, `schemas/` uploaded codebooks/workbooks, `pricing.json` if edited, `.session_secret` if `WFD_SECRET` unset).

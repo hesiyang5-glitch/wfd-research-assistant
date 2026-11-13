@@ -44,8 +44,35 @@ Open the file **`.env`** in the app folder with any text editor (it is created o
 
 ## 3. Use it · 使用流程
 
-1. **研究事件 / Research** page → enter name, location, date → **开始研究 / Start research**. The right-hand panel shows which services are active and a rough cost range.
-2. **进度 / Progress** shows the stages: 确认事件 → 搜索来源 → 获取与去重 → 检查证据缺口 → 补充搜索 → 编码与验证 → 待人工复核. The run pauses and asks you only when:
+### Two ways to run · 两种运行方式（D-045）
+
+Near the start button on the **Research** page, choose one:
+在**研究**页的开始按钮旁边选一种：
+
+| 选项 · Option | 做什么 · What it does | 按钮 · Button |
+|---|---|---|
+| **只搜索 · Search only**（默认 · default） | 查找、读取、去重、检查相关性并排序来源，然后停下；不调用 Claude/GPT，没有模型费用（搜索仍会用 Tavily 额度）。 Finds, reads, de-duplicates, checks relevance and ranks sources, then stops; no Claude/GPT, no model cost (searches still use Tavily credits). | Search sources |
+| **搜索并分析 · Search & analyze** | 上面全部步骤，然后自动编码并进入人工复核（原来的完整流程）。选择编码模型；"研究后先暂停"可选，默认不勾选。 All of the above, then automatic coding and human review (the original full pipeline). Choose the coding provider(s); "pause after research" is optional and unticked by default. | Search & analyze |
+
+**只搜索之后 · After Search only:** 进度页显示"搜索：完成 / 分析：未请求"（这是成功的结果）。可以：
+Progress shows "Search: complete / Analysis: not requested" (a successful outcome). Then you can:
+- **查看来源 · View sources** — 计数（发现 / 已读取 / 相关 / 未能读取 / 已选中 / 可用于分析）、原始链接、域名、语言（网页自己声明时）、搜索运行编号；读取失败的来源标为"不作为证据"。用"选中 / 取消选中"决定哪些来源用于分析（不会删除来源）。
+  Counts (discovered / retrieved / relevant / failed / selected / usable), original link, domain, language (when the page declares it), search run; unread sources are marked "not used as evidence". Select / Deselect decides what analysis uses (never deletes a source).
+- **导出来源清单 · Export source list** — Excel（说明 / 来源 / 用量 / 搜索记录）或 CSV；标明是"来源搜索结果，不是已编码案例"；默认只导出已选中的来源。
+  Excel (About / Sources / Usage / Search_Log) or CSV, labelled as source-search results, not a coded case; selected sources by default.
+- **分析已选来源 · Analyze selected sources** — 选择模型、看费用后开始；使用已保存的正文，不重新搜索；没有可用的已选正文时不会开始。每次分析都记录用到了哪些来源，之后改选择不会影响已完成的分析。
+  Choose the provider(s) and see the cost first; uses the saved text, no new search; won't start without usable selected text. Each analysis records the sources it used; later selection changes don't alter it.
+
+在复核页，还没分析过的案例显示"未分析"——这不等于"证据不足"。
+On the Review page, a case not yet analyzed shows "Not analyzed" — this is not "insufficient evidence".
+
+**重新研究 · Re-run research** 的确认框可以切换这两种方式（选"搜索并分析"时也能选模型），并可调高本案例的读取上限（1–300，所有运行合计）。
+The **Re-run research** dialog can switch between the two (with the provider choice for Search & analyze) and raise this case's reading limit (1–300, all runs combined).
+
+### Steps · 步骤
+
+1. **研究事件 / Research** page → enter name, location, date → choose **Search only** or **Search & analyze** → start. The right-hand panel shows which services are active and a rough cost range.
+2. **进度 / Progress** shows the stages (Search only stops after 获取与去重 / Retrieve & dedupe): 确认事件 → 搜索来源 → 获取与去重 → 检查证据缺口 → 补充搜索 → 编码与验证 → 待人工复核. The run pauses and asks you only when:
    - several incidents share the name (pick the right one), or
    - the precise model-cost estimate exceeds your budget (approve, raise the budget, or code manually), or
    - no source text could be obtained (add sources).
