@@ -6,7 +6,7 @@ Completed changes, newest first. Commit hashes refer to `hesiyang5-glitch/wfd-re
 
 
 
-## 2026-11-13 — Missing values: owner decision PI-M4 option (c) (branch `audit/missingness-m4`; not merged, not deployed)
+## 2026-11-13 — Missing values: owner decision PI-M4 option (c) (merged to `main` 2026-11-13 with owner approval)
 - For 7 variables the codebook's own "nothing documented" code may be suggested from silence in the passages the model
   read: PERCEIVED_TIMELINESS 3, PERCEIVED_MESSAGE_CLARITY 3, TRAINING_AND_PROCEDURAL_CONTEXT 0, MESSAGE_ARCHIVAL_STATUS 0,
   MESSAGE_RECEPTION_DOCUMENTATION 5, COMMUNITY_FEEDBACK_MECHANISM 0, POLICY_OR_ADMINISTRATIVE_ACTIONS 7 (alone) —

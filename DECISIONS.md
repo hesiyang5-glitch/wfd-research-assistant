@@ -350,7 +350,7 @@ workbench and in the Excel export ("-9 reason" columns; Case_Row unchanged). Row
 only). (M3) Historical `-9` and placeholders are kept as recorded; no stored data is changed; the assistant still never
 suggests `-9` where the codebook does not define it. Prompt version `wfd-prompt-2026-11-12` (new analyses do not reuse
 replies cached under earlier prompts).
-**Owner decision 2026-11-13 (final; PI-M4 option c, branch `audit/missingness-m4`).** For 7 variables the codebook's own
+**Owner decision 2026-11-13 (final; PI-M4 option c; merged to `main` 2026-11-13 with owner approval).** For 7 variables the codebook's own
 "nothing documented" code may be suggested from silence in the passages (INSUFFICIENT, no citation, rationale beginning
 "Not documented:", review-only, never exported unreviewed or bulk-confirmable): PERCEIVED_TIMELINESS 3,
 PERCEIVED_MESSAGE_CLARITY 3, TRAINING_AND_PROCEDURAL_CONTEXT 0, MESSAGE_ARCHIVAL_STATUS 0, MESSAGE_RECEPTION_DOCUMENTATION 5,
