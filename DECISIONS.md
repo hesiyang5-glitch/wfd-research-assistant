@@ -317,7 +317,7 @@ change sends new (paid) requests; there is no cache to reuse for the new version
 citations, not whether the inference is sound. Human review remains the safeguard.
 
 
-## D-039 · 2026-10-06 · Missing values: implement only what codebook v1.3 states; the rest goes to the PI team — Proposed (branch `audit/missingness`, not merged, not deployed; PI-M1…M3 decided by the owner 2026-11-12)
+## D-039 · 2026-10-06 · Missing values: implement only what codebook v1.3 states; the rest goes to the PI team — Active (merged to `main` 2026-11-13 with owner approval; PI-M1…M3 decided by the owner 2026-11-12; PI-M4…M11 open)
 **Context.** The benchmark showed disagreement on TRANSMISSION_LATENCY, DELIVERY_COVERAGE, POPULATION_AFFECTED_ESTIMATE,
 HARM_LOSS_INDICATORS, MESSAGE_DISSEMINATION_TIME, END_DATE and INCIDENT_DURATION, and the workbook uses `-9` in many
 variables whose codebook entry does not define it. An audit of all 82 workbook columns against the codebook and the code

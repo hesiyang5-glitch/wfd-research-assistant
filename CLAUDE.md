@@ -36,8 +36,8 @@ If a request conflicts with an established requirement here, point out the confl
 
 - Never invent a code, category, variable or definition. Codes come only from the active codebook entry.
 - `-9` (or any special missing value) is allowed **only** where that variable's codebook entry defines it.
-- Insufficient evidence → blank value or explicit review flag. Blank is the default. (Branch `audit/missingness`,
-  owner decision 2026-11-12, D-039: where `-9` is defined, a model `-9` = Unknown with evidence status INSUFFICIENT is
+- Insufficient evidence → blank value or explicit review flag. Blank is the default. (Owner
+  decision 2026-11-12, D-039: where `-9` is defined, a model `-9` = Unknown with evidence status INSUFFICIENT is
   allowed as a review-only suggestion; every model `-9` must start its rationale with "Unknown:" or "Not applicable:".)
 - Every substantive suggestion must cite real passage IDs with verbatim quotes; the server validates this.
 - Separate the observed failure from its cause. Several possible causes establish none of them; an uncertain

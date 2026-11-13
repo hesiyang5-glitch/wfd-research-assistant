@@ -6,7 +6,7 @@ Completed changes, newest first. Commit hashes refer to `hesiyang5-glitch/wfd-re
 
 
 
-## 2026-11-12 — Missing values: owner decisions PI-M1…M3 (branch `audit/missingness`; not merged, not deployed)
+## 2026-11-12 — Missing values: owner decisions PI-M1…M3 (merged to `main` 2026-11-13 with owner approval, together with the 2026-10-06 D-039 audit below)
 - PI-M1: for the 7 variables whose codebook entry defines `-9`, a model may suggest `-9` = Unknown ("not mentioned in the
   passages read") marked INSUFFICIENT without a citation; it is kept as a review-only suggestion (never exported
   unreviewed, never bulk-confirmable). `-9` = Not applicable needs a cited passage. `-9` stays forbidden elsewhere.
@@ -60,7 +60,7 @@ Completed changes, newest first. Commit hashes refer to `hesiyang5-glitch/wfd-re
 - Tests: `test_ui_labels` 38 (1 new check); wording expectations updated in `test_ui_labels`, `test_export_labels`,
   `test_independent_providers`, `test_providers`. All 14 suites pass offline.
 
-## 2026-10-06 — Missing-value audit and codebook-stated missingness rules (branch `audit/missingness`; not merged, not deployed)
+## 2026-10-06 — Missing-value audit and codebook-stated missingness rules (merged to `main` 2026-11-13 with owner approval)
 - D-039. Audit of all 82 workbook columns: `docs/missingness/missingness_audit.csv` / `.json` (generator
   `tools/missingness_audit.py`) and the proposed PI decision document `docs/missingness/PI_DECISIONS_missingness.md`
   (PI-M1 … PI-M11).
