@@ -1,8 +1,9 @@
 # Proposed PI decisions — missing values (blank, `-9`, N/A, unknown, insufficient evidence)
 
 Status: **proposal for the research team (Hamilton Bean, Katie Dickinson)**, prepared 2026-10-06 for D-039.
-**Decided 2026-11-12 by the project owner (final): PI-M1, PI-M2, PI-M3** — see the "Decision" line under each.
-**PI-M4 … PI-M11 are still open**: the WFD Coding Assistant keeps its current behaviour on those items until the team
+**Decided by the project owner (final): PI-M1, PI-M2, PI-M3 (2026-11-12) and PI-M4 option (c) (2026-11-13)** — see the
+"Decision" line under each. **Still open: the two PI-M4 definitions (ACCESSIBILITY_ATTRIBUTES 0 vs 3, REPORTED_OUTCOMES 7)
+and PI-M5 … PI-M11**: the WFD Coding Assistant keeps its current behaviour on those items until the team
 decides; it does not guess.
 
 Source of facts: `CODEBOOK v1.3` (April 14, 2026; variable text in `reference/CODEBOOK_v1.3_variables.txt`, same wording as
@@ -108,6 +109,18 @@ INTERAGENCY_COORDINATION "0 = Not applicable (single agency)".
 - **Decision needed:** keep (blank + human choice), or let the assistant propose the absence code from silence in its
   passages (always marked INSUFFICIENT / needs review), per variable. Also: ACCESSIBILITY_ATTRIBUTES 0 vs 3 and
   REPORTED_OUTCOMES 7 ("none" and "unclear" in one code) need definitions.
+- **Decision (project owner, 2026-11-13, final): option (c), per variable.**
+  - *Absence code from silence allowed* (evidence status INSUFFICIENT, no citation, rationale beginning "Not
+    documented:", review-only — never exported unreviewed, never bulk-confirmable): PERCEIVED_TIMELINESS 3,
+    PERCEIVED_MESSAGE_CLARITY 3, TRAINING_AND_PROCEDURAL_CONTEXT 0, MESSAGE_ARCHIVAL_STATUS 0,
+    MESSAGE_RECEPTION_DOCUMENTATION 5, COMMUNITY_FEEDBACK_MECHANISM 0, POLICY_OR_ADMINISTRATIVE_ACTIONS 7 (in
+    multi-select variables only on its own).
+  - *Facts about the case — still need a cited passage:* INTERAGENCY_COORDINATION 0, COMMUNICATION_ACCESS_MODE 6,
+    POPULATION_RESPONSE_OBSERVED 6, MEDIA_FRAMING_AND_PUBLIC_RESPONSE 5.
+  - *High risk — stay blank unless cited:* FAILURE_SEVERITY (Material Impact) 0, EQUITY_IMPACT 0,
+    TRUST_AND_LEGITIMACY_IMPACT 0.
+  - *Under owner discussion — stay blank unless cited until defined:* ACCESSIBILITY_ATTRIBUTES 0 vs 3 (difference and
+    when to use each); REPORTED_OUTCOMES 7 (keep "none" and "unclear" in one code for now).
 
 ## PI-M5 — END_DATE when the end of the failure is not documented
 

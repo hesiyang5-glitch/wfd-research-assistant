@@ -51,8 +51,11 @@ Rules you must follow:
      "missing_evidence" what would establish it, and begin "rationale" with "Unknown:".
    - -9 = Not applicable means the variable does not apply to this case (for example, no alert was sent). Cite the
      passage that shows this, and begin "rationale" with "Not applicable:".
-   Every -9 must begin its "rationale" with exactly "Unknown:" or "Not applicable:"; a -9 without one is rejected. Set
-   "rule_unclear" to true only when the codebook rule itself is unclear for this case.
+   Every -9 must begin its "rationale" with exactly "Unknown:" or "Not applicable:"; a -9 without one is rejected.
+   Codes meaning "none / not documented / not discussed" are ordinary codes and need a cited passage like any other,
+   EXCEPT where a variable's rules below name an "Absence code": if no passage discusses that variable, you may give
+   that code with "evidence_status": "INSUFFICIENT", no citation, and a "rationale" beginning with "Not documented:".
+   Set "rule_unclear" to true only when the codebook rule itself is unclear for this case.
 4. Separate what happened (observed failure) from why it happened (cause). An uncertain cause must not stop you from coding a
    well-documented observed failure. A documented failure does not by itself establish a software, human, or organizational
    cause. Generic phrases such as "technical issue", "system error" or "glitch" do not establish a specific technical cause,
@@ -98,7 +101,7 @@ evidence to the codebook definition. "unresolved": open questions, conflicts or 
 STRUCTURED_SYSTEM_PROMPT = PROMPT_RULES + STRUCTURED_REPLY_FORMAT
 
 # Bump when the prompt text, prompt assembly or reply handling changes; part of every cache key.
-PROMPT_VERSION = "wfd-prompt-2026-11-12"  # 2026-11-12: -9 Unknown / Not applicable rules (D-039, owner decisions)
+PROMPT_VERSION = "wfd-prompt-2026-11-13"  # 2026-11-13: PI-M4 absence codes; 2026-11-12: -9 Unknown / Not applicable (D-039)
 EVIDENCE_STATUS_SINCE = "wfd-prompt-2026-10-06"  # results from earlier prompt versions have no evidence status
 EVIDENCE_STATUSES = ("SUPPORTED", "INFERRED", "AMBIGUOUS", "INSUFFICIENT", "CONFLICTING")
 
@@ -164,6 +167,12 @@ def field_spec_text(f: dict) -> str:
                        "with 'Unknown:' or 'Not applicable:')")
     else:
         lines.append("No special missing value is defined for this variable: leave blank when not established.")
+    from .validator import absence_code
+    ab = absence_code(f)
+    if ab:
+        label = next((c["label"] for c in f.get("codes") or [] if str(c["code"]) == ab), "")
+        lines.append(f"Absence code: {ab} = {label}. Only if no passage discusses this variable, give \"{ab}\" alone with "
+                     f"evidence_status INSUFFICIENT, no citation, and a rationale beginning 'Not documented:'.")
     if f.get("format"):
         lines.append(f"Format: {f['format']}")
     if f.get("notes"):
@@ -1157,9 +1166,11 @@ def missing_reason_of(row: dict) -> str:
     """For a -9 model value: 'unknown' / 'not_applicable' (D-039 PI-M2), 'not_stated' for rows saved before the rule;
     '' when the value is not -9. Read-only: nothing stored is changed."""
     from .validator import missing_reason, special_missing_form
+    stored = (row.get("validation") or {}).get("missing_reason") if isinstance(row.get("validation"), dict) else None
+    if stored == "not_documented":  # PI-M4 absence code from silence
+        return stored
     if special_missing_form(str(row.get("value") or "")) is None:
         return ""
-    stored = (row.get("validation") or {}).get("missing_reason") if isinstance(row.get("validation"), dict) else None
     return stored or missing_reason(row.get("rationale")) or "not_stated"
 
 

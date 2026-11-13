@@ -12,8 +12,10 @@ Rules enforced here and in app/agreement.py / app/export.py:
 2. AMBIGUOUS, INSUFFICIENT and CONFLICTING never force a value: INSUFFICIENT stores a blank value; AMBIGUOUS
    and CONFLICTING keep at most the model's best candidate, stored with status "disputed" (human review).
    One exception (owner decision 2026-11-12, D-039 PI-M1): where the variable's codebook entry defines -9, an
-   INSUFFICIENT reply may keep "-9" marked "Unknown" (= not mentioned in the passages the model read). It stays
-   INSUFFICIENT, always needs human review, is never exported unreviewed and is never bulk-confirmable.
+   INSUFFICIENT reply may keep "-9" marked "Unknown" (= not mentioned in the passages the model read); and (owner
+   decision 2026-11-13, PI-M4 option c) for the variables listed in validator.ABSENCE_FROM_SILENCE it may keep the
+   codebook's own "nothing documented" code marked "Not documented". Both stay INSUFFICIENT, always need human review,
+   are never exported unreviewed and are never bulk-confirmable.
 3. A model may name a best candidate while still marking it INFERRED or AMBIGUOUS.
 4. Human-approved final values live in the `reviews` table and are never touched by this module.
 5. Agreement between providers never upgrades an evidence status (agreement is not verification).
@@ -107,8 +109,9 @@ def resolve(field: dict, item: dict, v: dict, passages: dict, validate, *, requi
     es, es_err, es_codes = read_evidence_status(item)
     warnings, codes, errors = [], list(es_codes), list(es_err)
     proposed = item.get("value")
-    keep_unknown = (es == "INSUFFICIENT" and v.get("ok") and v.get("missing_reason") == "unknown"
-                    and is_defined_missing(field, v.get("value")))
+    keep_unknown = (es == "INSUFFICIENT" and v.get("ok") and (
+        (v.get("missing_reason") == "unknown" and is_defined_missing(field, v.get("value")))
+        or (v.get("missing_reason") == "not_documented" and is_absence_code(field, v.get("value")))))
     if es == "INSUFFICIENT" and proposed not in (None, "", []) and not keep_unknown:
         # rule 2: never force a value — the proposed value is reported, not validated or kept
         warnings.append(WARN["value_with_insufficient"])
@@ -141,8 +144,9 @@ def resolve(field: dict, item: dict, v: dict, passages: dict, validate, *, requi
         codes.append("alternative_rejected")
 
     if es == "INSUFFICIENT" and keep_unknown:
-        status = "suggested"  # value "-9" (Unknown), evidence status stays INSUFFICIENT -> human review (PI-M1)
-        codes.append("missing_unknown_from_silence")
+        status = "suggested"  # "-9" Unknown / absence code; evidence status stays INSUFFICIENT -> human review
+        codes.append("missing_unknown_from_silence" if v.get("missing_reason") == "unknown"
+                     else "absence_code_from_silence")
     elif es == "INSUFFICIENT":
         status, value = "insufficient_evidence", ""
         if not missing_evidence:
@@ -219,6 +223,13 @@ def is_defined_missing(field: dict, value) -> bool:
     return bool(sm) and sm in set(field.get("missing_codes") or [])
 
 
+def is_absence_code(field: dict, value) -> bool:
+    """True when `value` is this variable's PI-M4 'nothing documented' code (validator.ABSENCE_FROM_SILENCE)."""
+    from .validator import absence_code
+    ab = absence_code(field)
+    return bool(ab) and str(value or "").strip().upper() == ab.upper()
+
+
 def review_required(row: dict) -> str:
     """Non-empty reason when the evidence status forbids treating this suggestion as a value without a human decision
     (rule 1: INFERRED is never exported or derived from unreviewed; rule 2: no forced value). Rows stored before
@@ -231,4 +242,7 @@ def review_required(row: dict) -> str:
     if es == "INSUFFICIENT" and str(row.get("value") or "").strip() == "-9":
         return ("-9 = Unknown: not found in the passages the model read — needs human review against the sources "
                 "(owner decision D-039)")
+    if es == "INSUFFICIENT" and str(row.get("value") or "").strip():
+        return (f"{row.get('value')} = not documented: nothing about this was found in the passages the model read — "
+                f"needs human review against the sources (owner decision D-039, PI-M4)")
     return f"evidence status {es or 'missing'} — needs human review"

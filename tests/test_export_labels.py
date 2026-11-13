@@ -39,10 +39,10 @@ def _guard(self, addr):
 
 socket.socket.connect = _guard
 PIN_SCHEMA = "5f231bf5a2af2aad"  # computed on main 302a2f2 / 4924f64 (unchanged since)
-# Re-pinned 2026-11-12: the prompt changed DELIBERATELY for D-039 owner decisions (wfd-prompt-2026-11-12); a label-only
+# Re-pinned 2026-11-13 (and 2026-11-12): the prompt changed DELIBERATELY for D-039 owner decisions (wfd-prompt-2026-11-13); a label-only
 # change must still leave these values identical.
-PIN_CACHE = {"anthropic": "llm3:0b3300722fd12c0c1bc32f23792502ba2f80171f88f0b9816adb23d7195a2ae8",
-             "openai": "llm3:efdae2da4aeab26ffa55daf74e12da6240bff7178ea6231f48e1045a4327ac79"}
+PIN_CACHE = {"anthropic": "llm3:4b480f1f335cd5eba1a5c6ebf54a1c8ea821b41cfa78690118f9ca884264b1c8",
+             "openai": "llm3:cbdbf2fcbb60f1891b6c364251943983aa07f10e02018e1754cc5d3d7515a46d"}
 RAW = {"anthropic", "openai", "anthropic+openai", "independent", "cross_model_review", "dual_independent", "anthropic_only",
        "openai_only", "anthropic_primary_openai_review", "single", "tavily", "bulk_independent_agreement",
        "bulk_separate_run_agreement", "matched_version", "cross_version"}

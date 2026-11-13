@@ -43,11 +43,11 @@ socket.socket.connect = _guard
 
 # fingerprints computed on main (302a2f2) with the same synthetic input — must be identical after a label-only change
 PIN_SCHEMA = "5f231bf5a2af2aad"
-# Re-pinned 2026-11-12: the prompt changed DELIBERATELY for D-039 owner decisions (wfd-prompt-2026-11-12); a label-only
+# Re-pinned 2026-11-13 (and 2026-11-12): the prompt changed DELIBERATELY for D-039 owner decisions (wfd-prompt-2026-11-13); a label-only
 # change must still leave these values identical.
-PIN_CACHE = {"anthropic": "llm3:0b3300722fd12c0c1bc32f23792502ba2f80171f88f0b9816adb23d7195a2ae8",
-             "openai": "llm3:efdae2da4aeab26ffa55daf74e12da6240bff7178ea6231f48e1045a4327ac79"}
-PIN_PROMPT = "ef5ad688e5397a61"
+PIN_CACHE = {"anthropic": "llm3:4b480f1f335cd5eba1a5c6ebf54a1c8ea821b41cfa78690118f9ca884264b1c8",
+             "openai": "llm3:cbdbf2fcbb60f1891b6c364251943983aa07f10e02018e1754cc5d3d7515a46d"}
+PIN_PROMPT = "744365c359877c0d"
 NEUTRAL = "Neither provider is labeled as primary or secondary."
 
 

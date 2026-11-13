@@ -149,8 +149,65 @@ def main():
     sp = coding.SYSTEM_PROMPT
     check("6g prompt states the -9 rules (Unknown: / Not applicable:, INSUFFICIENT, only where defined) and the prompt "
           "version changed", "begin \"rationale\" with \"Unknown:\"" in sp and "Not applicable:" in sp
-          and coding.PROMPT_VERSION == "wfd-prompt-2026-11-12"
+          and coding.PROMPT_VERSION == "wfd-prompt-2026-11-13"
           and "begin the rationale with 'Unknown:'" in coding.field_spec_text(F["TRANSMISSION_LATENCY"]))
+
+    print("\n[1c] PI-M4 option (c): 'nothing documented' codes from silence (owner decision 2026-11-13)")
+    from app.validator import ABSENCE_FROM_SILENCE, absence_code
+    ALLOWED = {"PERCEIVED_TIMELINESS": "3", "PERCEIVED_MESSAGE_CLARITY": "3", "TRAINING_AND_PROCEDURAL_CONTEXT": "0",
+               "MESSAGE_ARCHIVAL_STATUS": "0", "MESSAGE_RECEPTION_DOCUMENTATION": "5", "COMMUNITY_FEEDBACK_MECHANISM": "0",
+               "POLICY_OR_ADMINISTRATIVE_ACTIONS": "7"}
+    check("32 exactly the 7 owner-approved variables get an absence code, and each code matches the codebook label",
+          {n: absence_code(f) for n, f in F.items() if absence_code(f)} == ALLOWED and set(ABSENCE_FROM_SILENCE) == set(ALLOWED))
+    ND = "Not documented: no passage discusses this."
+    bad = []
+    for n, code in ALLOWED.items():
+        it = {"value": code, "evidence": [], "options": [], "evidence_status": "INSUFFICIENT", "rationale": ND,
+              "missing_evidence": "an after-action report"}
+        vv = validate(F[n], it, P)
+        rr = es_mod.resolve(F[n], it, vv, P, validate)
+        rq = es_mod.review_required({"validation_status": "valid", "evidence_status": "INSUFFICIENT", "value": code})
+        if not (vv["ok"] and vv["missing_reason"] == "not_documented" and rr["value"] == code and rr["status"] == "suggested"
+                and rr["evidence_status"] == "INSUFFICIENT" and "absence_code_from_silence" in rr["reason_codes"]
+                and "not documented" in rq):
+            bad.append((n, vv["errors"], rr["value"], rr["status"]))
+    check("33 allowed: uncited absence code + INSUFFICIENT + 'Not documented:' → kept as review-only suggestion "
+          "(evidence status stays INSUFFICIENT), all 7", not bad, str(bad)[:400])
+    bad = []
+    for n, code in ALLOWED.items():
+        for es_, rat in (("INSUFFICIENT", "Nothing found."), ("SUPPORTED", ND), ("INFERRED", ND)):
+            it = {"value": code, "evidence": [], "options": [], "evidence_status": es_, "rationale": rat}
+            rr = es_mod.resolve(F[n], it, validate(F[n], it, P), P, validate)
+            if rr["value"]:
+                bad.append((n, es_, rat))
+    check("34 without the 'Not documented:' tag, or not marked INSUFFICIENT → not kept (ordinary rule: a code needs a "
+          "citation), all 7", not bad, str(bad))
+    r = validate(F["POLICY_OR_ADMINISTRATIVE_ACTIONS"], {"value": "7, 2", "evidence": [], "options": [
+        {"code": "2", "evidence": ev}], "evidence_status": "INSUFFICIENT", "rationale": ND}, P)
+    sel = {x["code"]: x for x in r["selections"]}
+    check("35 multi-select: the absence code cannot be mixed with other codes (uncited 7 rejected, cited 2 kept)",
+          r["value"] == "2" and sel["7"]["outcome"] == "rejected", str(r)[:300])
+    EXCLUDED = {"FAILURE_SEVERITY (Material Impact)": "0", "EQUITY_IMPACT": "0", "TRUST_AND_LEGITIMACY_IMPACT": "0",
+                "INTERAGENCY_COORDINATION": "0", "COMMUNICATION_ACCESS_MODE": "6", "POPULATION_RESPONSE_OBSERVED": "6",
+                "MEDIA_FRAMING_AND_PUBLIC_RESPONSE": "5", "ACCESSIBILITY_ATTRIBUTES": "0", "REPORTED_OUTCOMES": "7"}
+    leaked = []
+    for n, code in list(EXCLUDED.items()) + [("ACCESSIBILITY_ATTRIBUTES", "3")]:
+        it = {"value": code, "evidence": [], "options": [], "evidence_status": "INSUFFICIENT", "rationale": ND}
+        if es_mod.resolve(F[n], it, validate(F[n], it, P), P, validate)["value"]:
+            leaked.append(n)
+    check("36 not allowed from silence: high-risk (FAILURE_SEVERITY material 0, EQUITY 0, TRUST 0), facts about the case "
+          "(INTERAGENCY 0, COMMUNICATION_ACCESS 6, POPULATION_RESPONSE 6, MEDIA 5) and definitions under discussion "
+          "(ACCESSIBILITY 0/3, REPORTED_OUTCOMES 7)", not leaked, str(leaked))
+    r = validate(F["INTERAGENCY_COORDINATION"], {"value": "0", "evidence": ev, "evidence_status": "SUPPORTED",
+                                                 "rationale": "Only the county acted."}, P)
+    check("36b a cited 'none' code still works by the ordinary rule (e.g. INTERAGENCY 0 with a passage)", r["ok"])
+    fake = {**F["TRAINING_AND_PROCEDURAL_CONTEXT"], "codes": [{"code": "0", "label": "Something else"}]}
+    check("37 codebook guard: if the code's label changes in a future codebook, the rule does not apply",
+          absence_code(fake) is None)
+    spec_ok = all("Absence code:" in coding.field_spec_text(F[n]) for n in ALLOWED)
+    spec_no = not any("Absence code:" in coding.field_spec_text(F[n]) for n in EXCLUDED)
+    check("38 prompt names the absence code only for the 7 allowed variables, and the general rule says other "
+          "'none' codes need a citation", spec_ok and spec_no and "Not documented:" in coding.SYSTEM_PROMPT)
 
     print("\n[2] Placeholders and the codebook's 'leave blank' rules")
     for n in ("LAT/LONG", "CITY_OR_TOWN", "COUNTY_OR_PARISH"):
@@ -276,13 +333,21 @@ def main():
     wb = openpyxl.load_workbook(io.BytesIO(export.xlsx(cid, include_unreviewed=True)))
     hdr = [c.value for c in wb["Results"][1]]
     res2 = {r[0]: dict(zip(hdr, r)) for r in wb["Results"].iter_rows(min_row=2, values_only=True)}
-    check("30 export (incl. unreviewed): the AI's -9 Unknown is NOT exported as a value; '-9 reason (model)' column says Unknown",
+    check("30 export (incl. unreviewed): the AI's -9 Unknown is NOT exported as a value; reason column says Unknown",
           (res2["MESSAGE_DISSEMINATION_TIME"]["Value"] in (None, "")) and
-          (res2["MESSAGE_DISSEMINATION_TIME"]["-9 reason (model)"] or "").startswith("Unknown"), str(res2["MESSAGE_DISSEMINATION_TIME"])[:300])
+          (res2["MESSAGE_DISSEMINATION_TIME"]["Missing / absence reason (model)"] or "").startswith("Unknown"), str(res2["MESSAGE_DISSEMINATION_TIME"])[:300])
     ph = [c.value for c in wb["Provider_Suggestions"][1]]
-    check("30b Provider_Suggestions has a '-9 reason' column", "-9 reason" in ph)
+    check("30b Provider_Suggestions has a 'Missing / absence reason' column", "Missing / absence reason" in ph)
     check("30c Case_Row (workbook-aligned) still has one column per workbook header",
           len([c.value for c in wb["Case_Row"][1]]) == len(schema["fields"]))
+    coding._store(cid, None, "TRAINING_AND_PROCEDURAL_CONTEXT", "0", "suggested", "Not documented: not discussed.",
+                  validation={"missing_reason": "not_documented"}, meta={"evidence_status": "INSUFFICIENT",
+                                                                           "validation_status": "valid"})
+    wb3 = openpyxl.load_workbook(io.BytesIO(export.xlsx(cid, include_unreviewed=True)))
+    h3 = [c.value for c in wb3["Results"][1]]
+    r3 = {r[0]: dict(zip(h3, r)) for r in wb3["Results"].iter_rows(min_row=2, values_only=True)}["TRAINING_AND_PROCEDURAL_CONTEXT"]
+    check("39 export: an AI absence code from silence is NOT exported unreviewed; reason column says 'Not documented'",
+          r3["Value"] in (None, "") and (r3["Missing / absence reason (model)"] or "").startswith("Not documented"), str(r3)[:300])
     hist = " ".join(F["MESSAGE_CHARACTERISTICS_LENGTH (Char. No Space)"]["issues"])
     check("31 PI-M3: historical -9 noted as kept as recorded (no data changed)", "kept as recorded" in hist, hist[:200])
 

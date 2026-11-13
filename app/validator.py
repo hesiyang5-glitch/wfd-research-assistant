@@ -73,6 +73,36 @@ MISSING_REASONS = {"unknown": "Unknown", "not_applicable": "Not applicable"}
 _REASON_RE = re.compile(r"^\s*[\[(]?\s*(unknown|not[\s-]+applicable|inapplicable|n/a)\s*(?:[\])]|[:\-\u2013\u2014.]|$)", re.I)
 
 
+# Owner decision 2026-11-13 (D-039, PI-M4 option c): for these variables only, the codebook's own "nothing documented"
+# code may be suggested from SILENCE in the passages the model read — evidence status INSUFFICIENT, no citation, rationale
+# beginning "Not documented:", review-only (never exported unreviewed, never bulk-confirmable). The expected label start
+# guards against a codebook revision that renumbers the code (then the rule simply does not apply).
+# Not listed on purpose: "facts about the case" (INTERAGENCY_COORDINATION 0, COMMUNICATION_ACCESS_MODE 6,
+# POPULATION_RESPONSE_OBSERVED 6, MEDIA_FRAMING_AND_PUBLIC_RESPONSE 5) still need a cited passage; high-risk
+# (FAILURE_SEVERITY (Material Impact) 0, EQUITY_IMPACT 0, TRUST_AND_LEGITIMACY_IMPACT 0) and definitions under owner
+# discussion (ACCESSIBILITY_ATTRIBUTES 0/3, REPORTED_OUTCOMES 7) stay blank unless cited.
+ABSENCE_FROM_SILENCE = {
+    "PERCEIVED_TIMELINESS": ("3", "indeterminate"),
+    "PERCEIVED_MESSAGE_CLARITY": ("3", "indeterminate"),
+    "TRAINING_AND_PROCEDURAL_CONTEXT": ("0", "not discussed"),
+    "MESSAGE_ARCHIVAL_STATUS": ("0", "not available"),
+    "MESSAGE_RECEPTION_DOCUMENTATION": ("5", "no documentation"),
+    "COMMUNITY_FEEDBACK_MECHANISM": ("0", "none documented"),
+    "POLICY_OR_ADMINISTRATIVE_ACTIONS": ("7", "none documented"),
+}
+_NOT_DOC_RE = re.compile(r"^\s*[\[(]?\s*not[\s-]+documented\s*(?:[\])]|[:\-\u2013\u2014.]|$)", re.I)
+
+
+def absence_code(field: dict) -> str | None:
+    """The 'nothing documented' code this variable may receive from silence (PI-M4), or None."""
+    rule = ABSENCE_FROM_SILENCE.get(field.get("name", ""))
+    if not rule or field.get("type") != "categorical":
+        return None
+    code, label_start = rule
+    c = next((c for c in field.get("codes") or [] if str(c["code"]) == code), None)
+    return code if c and str(c.get("label", "")).strip().lower().startswith(label_start) else None
+
+
 def missing_reason(text) -> str | None:
     """'Unknown: ...' -> 'unknown'; 'Not applicable — ...' -> 'not_applicable'; anything else -> None."""
     m = _REASON_RE.match(str(text or ""))
@@ -254,6 +284,19 @@ def validate(field: dict, item: dict, passages: dict) -> dict:
                                                                    if why == "not_applicable" else
                                                                    " — the cited sources say the information is unknown; confirm"))
         return finish(not errs, "valid" if not errs else "invalid", value if not errs else "", errs, reasons, top_good)
+
+    ab = absence_code(field)
+    if ab and len(parts) == 1 and parts[0].upper() == ab.upper() and _support_reason(top_good) and not any(
+            str(o.get("code", "")).strip().upper() == ab.upper() and (o.get("evidence") or []) for o in opts_raw):
+        # PI-M4 (owner decision 2026-11-13): the absence code from silence — only uncited, INSUFFICIENT, "Not documented:"
+        es = str(item.get("evidence_status") or "").strip().upper()
+        if es == "INSUFFICIENT" and _NOT_DOC_RE.match(str(item.get("rationale") or "")) and not top_bad:
+            base["missing_reason"] = "not_documented"
+            warnings.append(f"{ab} = not documented: nothing about this was found in the passages the model read — "
+                            f"confirm against the sources before accepting")
+            sel = [{"code": ab, "outcome": "valid", "reasons": [], "evidence": []}] if field.get("multi") else []
+            return finish(True, "valid", ab, [], [], [], [{"code": ab, "evidence": []}], sel)
+        # otherwise the ordinary rules below apply (a code needs a cited supporting passage)
 
     if t == "categorical" and not field.get("multi") and len(parts) > 1:
         return finish(False, "invalid", "", ["several codes given for a single-select variable"],

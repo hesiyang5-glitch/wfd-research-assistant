@@ -68,15 +68,15 @@ function esBadge(es, recorded) {
   return ` <span class="badge ${ES_BADGE[es] || "warn"} es-badge" data-es="${esc(es || "missing")}" title="${esc(ES_HELP[es] ? L(ES_HELP[es][0], ES_HELP[es][1]) : L("回复未给出证据状态", "The reply gave no evidence status"))}">${esc(esText(es))}</span>`;
 }
 // D-039 (owner decisions 2026-11-12): which meaning a model's -9 has
-const MR_TEXT = { unknown: ["未知（所读资料未提及）", "Unknown (not mentioned in the sources read)"], not_applicable: ["不适用", "Not applicable"], not_stated: ["未说明（规则生效前保存）", "not stated (saved before the -9 reason rule)"] };
-const mrBadge = (r) => (r && MR_TEXT[r] ? ` <span class="badge ${r === "not_stated" ? "" : "info"} mr-badge" data-mr="${esc(r)}" title="${esc(L("-9 的含义", "Meaning of -9"))}">${esc(L(MR_TEXT[r][0], MR_TEXT[r][1]))}</span>` : "");
+const MR_TEXT = { unknown: ["未知（所读资料未提及）", "Unknown (not mentioned in the sources read)"], not_applicable: ["不适用", "Not applicable"], not_stated: ["未说明（规则生效前保存）", "not stated (saved before the -9 reason rule)"], not_documented: ["未记录（所读资料未提及）", "Not documented (nothing found in the sources read)"] };
+const mrBadge = (r) => (r && MR_TEXT[r] ? ` <span class="badge ${r === "not_stated" ? "" : "info"} mr-badge" data-mr="${esc(r)}" title="${esc(L("缺失/未记录编码的含义", "Meaning of the missing / absence code"))}">${esc(L(MR_TEXT[r][0], MR_TEXT[r][1]))}</span>` : "");
 function statusLines(m) {
   // evidence status and validation status, always shown as two separate facts
   const alts = (m.alternatives || []);
   return `<div class="small es-lines"><b>${L("证据状态", "Evidence status")}:</b> ${esc(esText(m.evidence_status))}${m.evidence_status && ES_HELP[m.evidence_status] ? ` <span class="muted">— ${esc(L(ES_HELP[m.evidence_status][0], ES_HELP[m.evidence_status][1]))}</span>` : (!m.evidence_recorded ? ` <span class="muted">${L("（此结果早于证据状态功能）", "(result predates evidence statuses)")}</span>` : "")}
     · <b>${L("验证状态", "Validation status")}:</b> ${esc(vsText(m.validation_state))}</div>
     ${alts.length ? `<div class="small"><b>${L("其他候选值", "Alternative values")}:</b> ${alts.map((a) => `<span class="mono">${esc(a.value)}</span>${a.provider ? ` (${esc(PROV[a.provider] || a.provider)})` : ""} [${(a.evidence || []).map((e) => esc(e.id)).join(", ")}]`).join("; ")}</div>` : ""}
-    ${m.missing_reason ? `<div class="small"><b>${L("-9 的含义", "Meaning of -9")}:</b>${mrBadge(m.missing_reason)}</div>` : ""}
+    ${m.missing_reason ? `<div class="small"><b>${L("缺失/未记录编码的含义", "Meaning of the missing / absence code")}:</b>${mrBadge(m.missing_reason)}</div>` : ""}
     ${m.missing_evidence ? `<div class="small"><b>${L("缺少的证据", "Missing evidence")}:</b> ${esc(m.missing_evidence)}</div>` : ""}
     ${m.evidence_review_reason ? `<div class="small muted">${L("不会作为未复核值导出或用于推导字段", "Not exported as an unreviewed value or used for derived fields")}: ${esc(m.evidence_review_reason)}</div>` : ""}`;
 }

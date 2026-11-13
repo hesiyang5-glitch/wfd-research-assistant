@@ -124,11 +124,12 @@ def _cells_out(cells: dict | None) -> dict:
 
 MISSING_REASON_TEXT = {"unknown": "Unknown (not mentioned in the sources read)",
                        "not_applicable": "Not applicable",
-                       "not_stated": "not stated (saved before the -9 reason rule)"}
+                       "not_stated": "not stated (saved before the -9 reason rule)",
+                       "not_documented": "Not documented (nothing found in the sources read; absence code, PI-M4)"}
 
 
 def missing_reason_text(s: dict | None) -> str:
-    """D-039 PI-M2: which meaning a model's -9 has. Blank when the value is not -9."""
+    """D-039 PI-M2 / PI-M4: which meaning a model's -9 or absence code has. Blank otherwise."""
     return MISSING_REASON_TEXT.get((s or {}).get("missing_reason") or "", "")
 
 
@@ -263,7 +264,7 @@ def xlsx(case_id: int, include_unreviewed=False) -> bytes:
     wr = wb.create_sheet("Results")
     wr.append(["Variable", "Value", "Source", "Explanation", "Review status", "Value origin", "Suggestion status",
                "Model comparison", "Accepted from provider", "Agreement status", "Confirmation method",
-               "Evidence status", "Validation status", "Rule checks", "-9 reason (model)"])
+               "Evidence status", "Validation status", "Rule checks", "Missing / absence reason (model)"])
     yellow = PatternFill("solid", fgColor="FFF2CC")
     for row in res["rows"]:
         v, origin = export_value(row, include_unreviewed)
@@ -303,7 +304,7 @@ def xlsx(case_id: int, include_unreviewed=False) -> bytes:
     wp.append(["Variable", "Provider", "Model", "Interpretation", "Suggested value", "Status", "Rationale", "Unresolved",
                "Cache status", "Evidence version", "Analysis version", "Run", "Original run", "Generated at",
                "Comparison", "Human-approved value", "Evidence status", "Validation status", "Alternative values",
-               "Missing evidence", "-9 reason"])
+               "Missing evidence", "Missing / absence reason"])
     for row in res["rows"]:
         rv = row["review"] if (row["review"] and row["review"]["action"] in ("accepted", "edited", "cleared")) else None
         for s in row.get("providers") or []:

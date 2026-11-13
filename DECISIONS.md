@@ -349,7 +349,16 @@ about the case and needs a cited passage. (M2) One `-9` is kept; every model `-9
 workbench and in the Excel export ("-9 reason" columns; Case_Row unchanged). Rows saved earlier show "not stated" (read
 only). (M3) Historical `-9` and placeholders are kept as recorded; no stored data is changed; the assistant still never
 suggests `-9` where the codebook does not define it. Prompt version `wfd-prompt-2026-11-12` (new analyses do not reuse
-replies cached under earlier prompts). PI-M4 … PI-M11 remain open.
+replies cached under earlier prompts).
+**Owner decision 2026-11-13 (final; PI-M4 option c, branch `audit/missingness-m4`).** For 7 variables the codebook's own
+"nothing documented" code may be suggested from silence in the passages (INSUFFICIENT, no citation, rationale beginning
+"Not documented:", review-only, never exported unreviewed or bulk-confirmable): PERCEIVED_TIMELINESS 3,
+PERCEIVED_MESSAGE_CLARITY 3, TRAINING_AND_PROCEDURAL_CONTEXT 0, MESSAGE_ARCHIVAL_STATUS 0, MESSAGE_RECEPTION_DOCUMENTATION 5,
+COMMUNITY_FEEDBACK_MECHANISM 0, POLICY_OR_ADMINISTRATIVE_ACTIONS 7 (alone). Facts about the case (INTERAGENCY 0,
+COMMUNICATION_ACCESS 6, POPULATION_RESPONSE 6, MEDIA 5) still need a citation; high-risk codes (FAILURE_SEVERITY material
+0, EQUITY 0, TRUST 0) and the definitions under discussion (ACCESSIBILITY_ATTRIBUTES 0/3, REPORTED_OUTCOMES 7) stay
+blank unless cited. The list lives in `validator.ABSENCE_FROM_SILENCE`, guarded by the codebook label. Prompt
+`wfd-prompt-2026-11-13`. Still open: those two definitions and PI-M5 … PI-M11.
 
 ## D-040 · 2026-10-29 · Visual polish and "research instrument" theme — Active (merged to `main` 2026-10-29 with owner approval)
 **Decision.** The interface gets a restrained "research instrument / data console" look (owner request 2026-10-29):

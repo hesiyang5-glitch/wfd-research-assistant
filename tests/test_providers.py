@@ -505,8 +505,8 @@ def main():
     # 2026-11-12 (was 64a04116c132078f…, D-038). Changed in D-038
     # (evidence statuses); before that it was 412c9af33b58b92e19703ae229425272d5d170ecd18f490b11267ebf03f1e86f
     check("Claude's system prompt text is pinned (changes only deliberately, with a new prompt version)",
-          __import__("hashlib").sha256(coding.SYSTEM_PROMPT.encode()).hexdigest() == "ef5ad688e5397a61d963c3237a9861a0e4a304615a3a5fdc1e6d1ec9ebbb194e"
-          and coding.PROMPT_VERSION == "wfd-prompt-2026-11-12")  # re-pinned 2026-11-12 (D-039 owner decisions)
+          __import__("hashlib").sha256(coding.SYSTEM_PROMPT.encode()).hexdigest() == "744365c359877c0df11d35b4a49cd8b785451393eb632990891ee5861caf39bc"
+          and coding.PROMPT_VERSION == "wfd-prompt-2026-11-13")  # re-pinned 2026-11-13 (D-039 PI-M4; was ef5ad688… on 11-12)
     # legacy Claude cache (pre-OpenAI key format) still reused, read-only
     cL, stL = new_case("case legacy cache")
     prepL = coding.prepare(case_row(cL), stL, ["SYSTEM_LEVEL"])

@@ -6,6 +6,19 @@ Completed changes, newest first. Commit hashes refer to `hesiyang5-glitch/wfd-re
 
 
 
+## 2026-11-13 — Missing values: owner decision PI-M4 option (c) (branch `audit/missingness-m4`; not merged, not deployed)
+- For 7 variables the codebook's own "nothing documented" code may be suggested from silence in the passages the model
+  read: PERCEIVED_TIMELINESS 3, PERCEIVED_MESSAGE_CLARITY 3, TRAINING_AND_PROCEDURAL_CONTEXT 0, MESSAGE_ARCHIVAL_STATUS 0,
+  MESSAGE_RECEPTION_DOCUMENTATION 5, COMMUNITY_FEEDBACK_MECHANISM 0, POLICY_OR_ADMINISTRATIVE_ACTIONS 7 (alone) —
+  evidence status INSUFFICIENT, no citation, rationale beginning "Not documented:", review-only (never exported
+  unreviewed, never bulk-confirmable). All other "none" codes keep the ordinary rule (a cited passage); the high-risk ones
+  (FAILURE_SEVERITY material 0, EQUITY 0, TRUST 0) and the definitions under owner discussion (ACCESSIBILITY_ATTRIBUTES
+  0/3, REPORTED_OUTCOMES 7) stay blank unless cited.
+- `app/validator.py` (`ABSENCE_FROM_SILENCE`, `absence_code`, guarded by the codebook label), `app/evidence_status.py`,
+  `app/coding.py` (prompt rule + per-variable "Absence code" line; prompt `wfd-prompt-2026-11-13`), `app/export.py`
+  (reason columns renamed "Missing / absence reason"), `web/app.js` ("Not documented" badge).
+- Tests: TEST_RESULTS_PLACEHOLDER
+
 ## 2026-11-12 — Missing values: owner decisions PI-M1…M3 (merged to `main` 2026-11-13 with owner approval, together with the 2026-10-06 D-039 audit below)
 - PI-M1: for the 7 variables whose codebook entry defines `-9`, a model may suggest `-9` = Unknown ("not mentioned in the
   passages read") marked INSUFFICIENT without a citation; it is kept as a review-only suggestion (never exported

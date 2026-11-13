@@ -38,7 +38,9 @@ If a request conflicts with an established requirement here, point out the confl
 - `-9` (or any special missing value) is allowed **only** where that variable's codebook entry defines it.
 - Insufficient evidence → blank value or explicit review flag. Blank is the default. (Owner
   decision 2026-11-12, D-039: where `-9` is defined, a model `-9` = Unknown with evidence status INSUFFICIENT is
-  allowed as a review-only suggestion; every model `-9` must start its rationale with "Unknown:" or "Not applicable:".)
+  allowed as a review-only suggestion; every model `-9` must start its rationale with "Unknown:" or "Not applicable:".
+  PI-M4 option c, 2026-11-13: only the 7 variables in `validator.ABSENCE_FROM_SILENCE` may get their "nothing
+  documented" code from silence, the same way, with a rationale starting "Not documented:".)
 - Every substantive suggestion must cite real passage IDs with verbatim quotes; the server validates this.
 - Separate the observed failure from its cause. Several possible causes establish none of them; an uncertain
   cause must not erase a documented failure. Preserve conflicting evidence.
