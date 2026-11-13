@@ -384,3 +384,17 @@ report is typed `aar` and sorts first until a researcher corrects it in the Type
 table must not scroll sideways on a computer screen; all seven columns stay visible. So the variable column width is a
 preference (240 px) instead of a minimum, long tags inside cells wrap, and between 1001 and 1240 px the detail panel
 sits below the table. Phones keep sideways scrolling with the pinned variable column.
+
+## D-043 · 2026-11-13 · Search expansion without a model: local language and keyword discovery — Active (branch `feature/keyword-discovery`, not merged)
+**Decision (owner, 2026-11-13).** From the name, approximate date and location alone the app should find sources
+beyond the U.S.-oriented templates. (1) Detect the country and language from the location and add local-language,
+official-domain and warning-system queries. (2) Discover keywords statistically (no model; owner chose the free
+option) from first-round results that match the incident and search them automatically (owner chose automatic, shown
+in the log). (3) Search user aliases. (4) Do not quote long descriptive names.
+**Rules kept.** Keywords are search leads only, never evidence (D-007). Query and budget limits unchanged.
+**Why statistical, not Claude.** Free and reproducible; a model step can be added later if results are too thin.
+**Scope limit.** U.S. cases keep exact word matching for relevance, so verified U.S. behaviour does not change except
+that aliases are searched, long names are unquoted, and discovery queries are added.
+**Risks.** Hand-made word lists may be imperfect (only affects what is searched); discovered keywords can drift to a
+neighbouring topic (mitigated: only results that already match the incident, at least two websites); more Tavily
+credits per case.
