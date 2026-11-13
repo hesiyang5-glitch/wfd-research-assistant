@@ -6,7 +6,23 @@ Completed changes, newest first. Commit hashes refer to `hesiyang5-glitch/wfd-re
 
 
 
-## 2026-11-13 — A source that takes the server down is skipped on Resume (branch `fix/skip-source-that-crashed`, not merged) — D-042
+## 2026-11-13 — Find more sources from name + date + location (merged to `main` 2026-11-13 with owner approval) — D-043
+- Owner request: entering only the incident name, approximate date and location should find comprehensive sources and
+  recognise more related keywords. Prompted by case #11 (Ahr valley flood, Germany), where every query was
+  U.S.-oriented (`site:.gov`, WEA/EAS), English-only, and quoted the whole descriptive name.
+- New `app/search/expansion.py`: country/language from the location (22 countries, 10 languages); local-language
+  hazard / warning / inquiry / final-report queries, official-domain (`site:.de` …) and national warning-system queries.
+- Keyword discovery without a model: proper nouns and 2–3-word place names that recur on at least two websites among
+  results matching the incident; two passes; up to 8; logged as "search leads only, not evidence"; searched
+  automatically (owner choice). Incident-anchored keywords (Ahrtal ← Ahr) are saved as automatic aliases.
+- Aliases typed by the user are now also searched (before: relevance only).
+- Long names (more than 3 significant words) are no longer searched as one exact phrase; short names still are.
+- Relevance for non-U.S. cases: compound words (Ahr → Ahrtal), the country's own name (Deutschland) and non-Latin
+  scripts are recognised. U.S. cases keep exact word matching. Words with accents/non-Latin letters are no longer split.
+- More Tavily credits per case (up to ~10–16 extra queries per run, within the 40-query limit). No model calls added.
+- New `tests/test_query_expansion.py` (36 checks).
+
+## 2026-11-13 — A source that takes the server down is skipped on Resume (merged to `main` 2026-11-13 with owner approval) — D-042
 - Incident (owner report, case #11 "Ahr valley disaster flood"): the research job paused repeatedly in `fetch` with
   "Interrupted by a server restart", and paused again right after Resume. Cause in code: the URL being read was not
   recorded before reading, so after a restart Resume ranked the same URL first and read it again. If that URL is what

@@ -385,7 +385,7 @@ table must not scroll sideways on a computer screen; all seven columns stay visi
 preference (240 px) instead of a minimum, long tags inside cells wrap, and between 1001 and 1240 px the detail panel
 sits below the table. Phones keep sideways scrolling with the pinned variable column.
 
-## D-042 · 2026-11-13 · Skip a source that was being read when the server stopped — Active (branch `fix/skip-source-that-crashed`, not merged)
+## D-042 · 2026-11-13 · Skip a source that was being read when the server stopped — Active (merged to `main` 2026-11-13 with owner approval)
 **Decision.** Record the URL being fetched in the job state before reading it. At startup recovery, a job that was
 reading a URL is paused as before (D-033) and that URL is stored as a failed source with a plain reason, so Resume
 does not read it again. It is never retried automatically; the owner can add its text manually.
@@ -394,3 +394,17 @@ A restart from a deploy can also mark an innocent source as skipped; that costs 
 in the run log and Sources tab, against an endless pause loop.
 **Not done here.** Reading PDFs in a separate memory-limited process (so one file cannot stop the server) — larger
 change, proposed only if the crash is confirmed to be memory.
+
+## D-043 · 2026-11-13 · Search expansion without a model: local language and keyword discovery — Active (merged to `main` 2026-11-13 with owner approval)
+**Decision (owner, 2026-11-13).** From the name, approximate date and location alone the app should find sources
+beyond the U.S.-oriented templates. (1) Detect the country and language from the location and add local-language,
+official-domain and warning-system queries. (2) Discover keywords statistically (no model; owner chose the free
+option) from first-round results that match the incident and search them automatically (owner chose automatic, shown
+in the log). (3) Search user aliases. (4) Do not quote long descriptive names.
+**Rules kept.** Keywords are search leads only, never evidence (D-007). Query and budget limits unchanged.
+**Why statistical, not Claude.** Free and reproducible; a model step can be added later if results are too thin.
+**Scope limit.** U.S. cases keep exact word matching for relevance, so verified U.S. behaviour does not change except
+that aliases are searched, long names are unquoted, and discovery queries are added.
+**Risks.** Hand-made word lists may be imperfect (only affects what is searched); discovered keywords can drift to a
+neighbouring topic (mitigated: only results that already match the incident, at least two websites); more Tavily
+credits per case.

@@ -90,6 +90,7 @@ python3 -m tests.test_missingness     # -9 only where defined (all types), place
 python3 -m tools.missingness_audit    # regenerate docs/missingness/missingness_audit.{csv,json}
 python3 -m tests.test_sources_sort   # Sources tab ordering is display only: type priority / length / order found (D-041)
 python3 -m tests.test_visual         # no wrapped button/tab/tag text, hover feedback, theme switch sends nothing, readable status tags
+python3 -m tests.test_query_expansion # country/language queries, keyword discovery, local-name relevance (D-043; TEST-FIXTURE search)
 ```
 
 Tests need the Texas-flood sample PDFs: set `WFD_TEST_PDFS=/path/to/folder` (they are in the claude.ai
@@ -102,6 +103,7 @@ Project under `WFD project/sources/20250704-TX01/`). Tests run fully offline.
 | `app/schema_loader.py` | codebook + workbook → variable dictionary, field mapping, rule-issue flags |
 | `app/research.py` | pipeline: identify → search → fetch → gap check → follow-up → coding; budgets |
 | `app/search/providers.py` | Tavily / Brave / SearXNG adapters; `TEST-FIXTURE` provider for tests only |
+| `app/search/expansion.py` | non-U.S. country/language queries and keyword discovery (search leads only, D-043) |
 | `app/ingest.py` | fetching, HTML/PDF/DOCX extraction, OCR status, passages, dedupe, source typing |
 | `app/retrieval.py` | BM25 + semantic (LSA or embeddings) evidence retrieval |
 | `app/coding.py` | prompt rules, batching, worst-case budget checks, derived/admin fields |

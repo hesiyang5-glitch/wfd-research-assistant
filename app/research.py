@@ -16,6 +16,7 @@ from . import db
 from .config import DEFAULT_SETTINGS, load_pricing
 from .ingest import (FetchError, classify_source, containment, content_hash, extract_file, extract_html,
                      extract_text_plain, fetch_url, make_passages, shingles)
+from .search.expansion import detect_country, discover_keywords, discovery_queries, localized_templates
 from .search.providers import SearchError, get_provider
 
 STAGES = ["identify", "search", "fetch", "gaps", "followup", "coding", "review"]
@@ -33,8 +34,11 @@ class Cancelled(Exception):
 
 
 # ----------------------------------------------------------------------------- identity helpers
+WORD = re.compile(r"[^\W_]+")  # letters/digits in any script (ä, é, 日本 ...), not only a-z
+
+
 def sig_tokens(s: str) -> list[str]:
-    return [t for t in re.findall(r"[a-z0-9]+", (s or "").lower()) if t not in NAME_STOP and len(t) > 1]
+    return [t for t in WORD.findall((s or "").lower()) if t not in NAME_STOP and len(t) > 1]
 
 
 def years_in(s: str) -> list[str]:
@@ -47,17 +51,48 @@ def case_terms(case: dict) -> dict:
     loc_t = [t for t in sig_tokens(case["location"]) if len(t) > 2]
     yrs = sorted(set(years_in(" ".join([case.get("date_text") or "", case.get("date_start") or "", case.get("date_end") or ""]))))
     months = [m for m in MONTHS if m in (case.get("date_text") or "").lower()]
-    return {"name": name_t, "aliases": alias_t, "loc": loc_t, "years": yrs, "months": months}
+    # automatic aliases found by keyword discovery (D-043), e.g. "Ahrtal" for "Ahr valley"; each is one alias
+    try:
+        auto = json.loads(case.get("identity_json") or "{}").get("auto_aliases") or []
+    except (ValueError, AttributeError):
+        auto = []
+    alias_t += [sig_tokens(a) for a in auto if sig_tokens(a)]
+    # the country's own names count as the country (Germany = Deutschland)
+    country = detect_country(case.get("location") or "")
+    loc_alt = {}
+    if country:
+        native = [n for n in country["names"] if n not in loc_t]
+        for t in loc_t:
+            if t in country["names"]:
+                loc_alt[t] = native
+    # compound-word matching only for non-U.S. locations: U.S. relevance scoring stays exactly as verified live
+    return {"name": name_t, "aliases": alias_t, "loc": loc_t, "loc_alt": loc_alt, "years": yrs, "months": months,
+            "compound": bool(country)}
+
+
+def _hit(t: str, toks: set, low: str = "", compound: bool = True) -> bool:
+    """Word match that also accepts compound words that start with the word (Ahr → Ahrtal, Ahrweiler) and, for
+    scripts without spaces (日本語, 中文), the word inside the text."""
+    if t in toks:
+        return True
+    if not compound:
+        return False
+    if not t.isascii():
+        return t in low
+    return len(t) >= 3 and any(x.startswith(t) and len(x) <= len(t) + 10 for x in toks)
 
 
 def identity_score(text: str, terms: dict, published: str = "") -> tuple[float, str]:
     low = (text or "").lower()
-    toks = set(re.findall(r"[a-z0-9]+", low))
-    name_hit = (sum(1 for t in terms["name"] if t in toks) / len(terms["name"])) if terms["name"] else 0
+    toks = set(WORD.findall(low))
+    cp = terms.get("compound", False)
+    name_hit = (sum(1 for t in terms["name"] if _hit(t, toks, low, cp)) / len(terms["name"])) if terms["name"] else 0
     for a in terms["aliases"]:
         if a:
-            name_hit = max(name_hit, sum(1 for t in a if t in toks) / len(a))
-    loc_hit = (sum(1 for t in terms["loc"] if t in toks) / len(terms["loc"])) if terms["loc"] else 0.5
+            name_hit = max(name_hit, sum(1 for t in a if _hit(t, toks, low, cp)) / len(a))
+    alt = terms.get("loc_alt", {})
+    loc_hit = (sum(1 for t in terms["loc"] if _hit(t, toks, low, cp) or any(_hit(n, toks, low, cp) for n in alt.get(t, [])))
+               / len(terms["loc"])) if terms["loc"] else 0.5
     yrs = years_in(low + " " + (published or ""))
     yr_score, why_year = 0.5, "no year stated"
     if terms["years"]:
@@ -77,7 +112,10 @@ def identity_score(text: str, terms: dict, published: str = "") -> tuple[float, 
 def core_query(case: dict, with_year: bool = True) -> str:
     t = case_terms(case)
     yr = f" {t['years'][0]}" if with_year and t["years"] else ""
-    return f"\"{case['name']}\" {case['location']}{yr}".strip()
+    # Short names ("Marshall Fire") are searched as an exact phrase; long descriptive names ("Ahr valley disaster
+    # flood") are not, because few sources use exactly that wording (D-043).
+    name = f"\"{case['name']}\"" if len(sig_tokens(case["name"])) <= 3 else case["name"]
+    return f"{name} {case['location']}{yr}".strip()
 
 
 INITIAL_TEMPLATES = [
@@ -273,7 +311,59 @@ def stage_search(ctx: Ctx):
     links = [l.strip() for l in re.split(r"[\s,;]+", ctx.case.get("known_links") or "") if l.strip().startswith("http")]
     for l in links:
         ctx.state.setdefault("seed_urls", []).append(l)
-    return gather(ctx, INITIAL_TEMPLATES, 0)
+    found = gather(ctx, INITIAL_TEMPLATES, 0)
+    return expand_search(ctx, found)
+
+
+def expand_search(ctx: Ctx, found: list[dict]) -> list[dict]:
+    """D-043: more queries from what the user typed and from the first results, without a model.
+    Aliases → queries; non-U.S. location → local-language / official-domain queries; then keywords that recur across
+    matching results (several websites) → queries. Keywords are search leads only, never evidence."""
+    year = ctx.terms["years"][0] if ctx.terms["years"] else ""
+    country = detect_country(ctx.case.get("location") or "")
+    extra = [(f"alias: {a.strip()}", f"{a.strip()} {year}".strip())
+             for a in (ctx.case.get("aliases") or "").split(";") if a.strip()][:4]
+    loc_q = localized_templates(ctx.case, country, year)
+    if country:
+        ctx.log("info", f"location recognised as {country['code']} (language {country['lang']}, official domain "
+                        f"{country['site']}): adding {len(loc_q)} local queries")
+    found += run_plain(ctx, extra + loc_q, 0)
+    kws: list[dict] = []
+    for _ in range(2):  # second pass: results recognised through the first pass's aliases (e.g. German-only titles)
+        seen = {k["term"].lower() for k in kws}
+        new = [k for k in discover_keywords(found, ctx.terms) if k["term"].lower() not in seen]
+        if not new:
+            break
+        kws = sorted(kws + new, key=lambda d: (-int(d["anchored"]), -d["sites"]))[:8]
+        ctx.terms = {**ctx.terms, "aliases": ctx.terms["aliases"] + [sig_tokens(k["term"]) for k in kws if k["anchored"]]}
+        for r in found:
+            r["identity_score"] = identity_score(f"{r.get('title', '')} {r.get('snippet', '')} {r.get('url', '')}",
+                                                 ctx.terms, r.get("published", ""))[0]
+    if kws:
+        ident = json.loads(db.q1("SELECT identity_json FROM cases WHERE id=?", (ctx.case["id"],))["identity_json"] or "{}")
+        ident["discovered_keywords"] = kws
+        ident["auto_aliases"] = [k["term"] for k in kws if k["anchored"]]
+        db.update("cases", ctx.case["id"], {"identity_json": json.dumps(ident)})
+        ctx.case = db.q1("SELECT * FROM cases WHERE id=?", (ctx.case["id"],))
+        ctx.terms = case_terms(ctx.case)
+        ctx.log("info", "discovered keywords (search leads only, not evidence): " +
+                ", ".join(f"{k['term']} ({k['sites']} sites{', alias' if k['anchored'] else ''})" for k in kws))
+        found += run_plain(ctx, discovery_queries(kws, ctx.case, country, year), 0)
+        # rescore with the new aliases so local-language results (e.g. "Ahrtal") are recognised as this incident
+        for r in found:
+            r["identity_score"], r["identity_why"] = identity_score(
+                f"{r.get('title', '')} {r.get('snippet', '')} {r.get('url', '')}", ctx.terms, r.get("published", ""))
+    return found
+
+
+def run_plain(ctx: Ctx, pairs: list[tuple[str, str]], round_no: int) -> list[dict]:
+    out = []
+    for purpose, q in pairs:
+        try:
+            out += run_query(ctx, q, purpose, round_no)
+        except Budget:
+            break
+    return out
 
 
 # ----------------------------------------------------------------------------- fetching
