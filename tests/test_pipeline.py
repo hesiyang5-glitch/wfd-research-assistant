@@ -184,12 +184,14 @@ def main():
                 if name == "ALERT_APPROVAL_PROCESS":
                     item.update(value="2", status="suggested", evidence_status="SUPPORTED", evidence=[{"id": "S999-P1", "quote": "invented passage id here", "stance": "supports"}])
                 if name == "INTERAGENCY_COORDINATION":
-                    item.update(value="-9", status="suggested", evidence_status="SUPPORTED", evidence=[{"id": ok_id, "quote": ok_q, "stance": "supports"}])
+                    item.update(value="-9", status="suggested", evidence_status="SUPPORTED", evidence=[{"id": ok_id, "quote": ok_q, "stance": "supports"}],
+                                rationale="Unknown: the sources say it could not be determined.")
                 if name == "TRAINING_AND_PROCEDURAL_CONTEXT":
                     item.update(value="", status="disputed", evidence_status="CONFLICTING", evidence=[{"id": ok_id, "quote": ok_q, "stance": "alternative"}],
                                 unresolved="software vs operator explanations conflict")
                 if name == "TRANSMISSION_LATENCY":
-                    item.update(value="-9", status="suggested", evidence_status="SUPPORTED", evidence=[{"id": ok_id, "quote": ok_q, "stance": "supports"}])
+                    item.update(value="-9", status="suggested", evidence_status="SUPPORTED", evidence=[{"id": ok_id, "quote": ok_q, "stance": "supports"}],
+                                rationale="Unknown: the sources say it could not be determined.")
                 res.append(item)
             return {"text": json.dumps({"results": res}), "input_tokens": 1000, "output_tokens": 500}
 

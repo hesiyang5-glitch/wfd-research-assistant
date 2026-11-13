@@ -62,7 +62,8 @@ def answer_for(var: str, prompt: str, policy: dict) -> dict:
         codes = [c.strip() for c in policy[var].split(",") if c.strip()]
         opts = [{"code": c, "evidence": ev} for c in codes] if len(codes) > 1 else []  # multi-select: evidence per code
         return {"variable": var, "value": policy[var], "status": "suggested", "evidence_status": "SUPPORTED", "evidence": ev, "options": opts,
-                "rationale": "test rationale", "unresolved": ""}
+                # D-039 (owner decision 2026-11-12): a -9 must say which meaning it has
+                "rationale": ("Unknown: " if policy[var] == "-9" else "") + "test rationale", "unresolved": ""}
     return {"variable": var, "value": "", "status": "insufficient_evidence", "evidence_status": "INSUFFICIENT", "evidence": [], "options": [],
             "rationale": "", "unresolved": ""}
 
@@ -500,11 +501,12 @@ def main():
           k(o_cli, role="primary") == k(o_cli, role="independent") == base)
     rv_prompt = prompt + coding.review_block(fs0, {f["name"]: {"value": "3", "status": "suggested"} for f in fs0}, "Claude")
     check("15 cross-model context (other model's answers in the prompt) → new key", k(o_cli, prompt=rv_prompt) != base)
-    # pinned: any prompt change must be deliberate (it creates a new analysis version). Changed in D-038
+    # pinned: any prompt change must be deliberate (it creates a new analysis version). Changed in D-039 owner decisions
+    # 2026-11-12 (was 64a04116c132078f…, D-038). Changed in D-038
     # (evidence statuses); before that it was 412c9af33b58b92e19703ae229425272d5d170ecd18f490b11267ebf03f1e86f
     check("Claude's system prompt text is pinned (changes only deliberately, with a new prompt version)",
-          __import__("hashlib").sha256(coding.SYSTEM_PROMPT.encode()).hexdigest() == "64a04116c132078f27113d24971ebb2a0161581700d50ced0acbed53af98e4af"
-          and coding.PROMPT_VERSION == "wfd-prompt-2026-10-06")
+          __import__("hashlib").sha256(coding.SYSTEM_PROMPT.encode()).hexdigest() == "ef5ad688e5397a61d963c3237a9861a0e4a304615a3a5fdc1e6d1ec9ebbb194e"
+          and coding.PROMPT_VERSION == "wfd-prompt-2026-11-12")  # re-pinned 2026-11-12 (D-039 owner decisions)
     # legacy Claude cache (pre-OpenAI key format) still reused, read-only
     cL, stL = new_case("case legacy cache")
     prepL = coding.prepare(case_row(cL), stL, ["SYSTEM_LEVEL"])

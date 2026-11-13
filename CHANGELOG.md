@@ -19,7 +19,14 @@ Completed changes, newest first. Commit hashes refer to `hesiyang5-glitch/wfd-re
 - Files: `app/validator.py`, `app/evidence_status.py`, `app/coding.py`, `app/export.py`, `app/schema_loader.py`,
   `app/missingness.py`, `web/app.js`, `tests/test_missingness.py`, `docs/missingness/PI_DECISIONS_missingness.md`.
 - Branch updated with `main` (863c085) first; docs conflicts resolved by keeping both sides.
-- Tests: TEST_RESULTS_PLACEHOLDER
+- Tests (offline, 2026-11-12, this branch; no network, no paid calls): test_missingness 75/75 (17 new checks),
+  test_pipeline 44, test_costs 32, test_auth 24, test_ui_flow PASS, test_providers 141, test_legacy_migration 18,
+  test_bulk_agreement 67, test_resilience 31, test_independent_providers 68, test_cross_version 27,
+  test_export_labels 23, test_ui_labels 38, test_evidence_status 59, test_multiselect_validation 24, test_visual 21 —
+  all 16 suites pass. Updated to the new rule: simulated model replies that give `-9` now start the rationale with
+  "Unknown:" (test_pipeline, test_providers; old-style replies are now rejected and therefore not cached), and the
+  pinned prompt / cache-key fingerprints were re-pinned (test_ui_labels, test_export_labels, test_providers) because
+  the prompt changed deliberately. OpenAI SDK v3.41.0 was loaded from its GitHub source (package registry unreachable).
 
 ## 2026-10-29 — Visual polish and "research instrument" theme (merged to `main` 2026-10-29 with owner approval)
 - Presentation only (owner request 2026-10-29: items 1–22 visual polish + items 1–10 tech-style elements). Button,
