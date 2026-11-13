@@ -181,7 +181,7 @@ td.actions { white-space: nowrap; width: 1%; }
 .callout.ok { background: var(--ok-soft); border-color: var(--ok-line); }
 
 /* ------------------------------------------------------------ review workbench */
-.workbench { display: grid; grid-template-columns: minmax(0, 1.75fr) minmax(360px, 1fr); gap: 14px; align-items: start; }
+.workbench { display: grid; grid-template-columns: minmax(0, 2.2fr) minmax(340px, 1fr); gap: 14px; align-items: start; }
 .wb-table { max-height: calc(100vh - 270px); overflow: auto; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--panel); box-shadow: var(--shadow); }
 .wb-detail { position: sticky; top: 66px; max-height: calc(100vh - 120px); overflow: auto; }
 .wb-tools { align-items: flex-start; }
@@ -219,6 +219,10 @@ td.human-final { background: var(--final-bg); }
 #wbTable td b.mono { font-size: 12px; }
 #wbTable .pc-anthropic, #wbTable .pc-openai { min-width: 112px; }
 #wbTable td.ag-cell { min-width: 112px; max-width: 170px; }
+/* Variable column: wide enough that most names stay on one line (owner request 2026-11-13). Desktop only — on narrow
+   screens the column is pinned while the table scrolls sideways, so it keeps its natural width there. The width follows
+   the room the table has (the table side of .workbench is 2.2fr), so the table does not start scrolling sideways. */
+@media (min-width: 1001px) { #wbTable th:nth-child(2), #wbTable td:nth-child(2) { min-width: clamp(120px, calc(68vw - 700px), 300px); } }
 
 /* ------------------------------------------------------------ coding-provider choice (native radio group as cards) */
 fieldset.pchoice { border: 0; padding: 0; margin: 14px 0 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }

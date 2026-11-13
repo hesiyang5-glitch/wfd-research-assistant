@@ -368,3 +368,15 @@ easier to read on light; the dark choice is stored only in the browser. **Constr
 change to payloads, settings keys/values, stored data, cache, costs, exports or coding rules; result-state colours stay
 distinct (never confuse "not run", "no supported value", stopped, failed, invalid); no external fonts or scripts (CSP
 `default-src 'self'`); animation stops under the system "reduce motion" setting. Full list: `docs/visual_polish.md`.
+
+## D-041 · 2026-11-13 · Sources tab ordering and a wider Review variable column — Active (branch `feat/sources-sort`, NOT merged; awaiting owner approval)
+**Decision.** (owner request 2026-11-13) The Sources tab gets a "Sort by" choice: **Type priority** (default — AAR,
+then government / regulatory, legislative, academic / NGO, media, unknown; longer sources first inside a type),
+**Length** (page count, then passage count for sources without pages — only PDFs have pages), and **Order found**
+(the previous order, by S number). The type order mirrors `research.TYPE_PRIORITY`. On the Review page the variable
+column is wider on desktop screens and the table side of the workbench takes more of the width (2.2 : 1 instead of
+1.75 : 1), so most variable names stay on one line. **Constraints kept:** display only — the API still returns sources
+by id; S numbers, stored rows, evidence retrieval, prompts, cache keys, costs and exports are unchanged; the sort choice
+is stored only in the browser (`localStorage` `wfd_src_sort`). Variable names still break only after an underscore
+(D-040). **Not changed:** the automatic source type. It is a keyword rule, so a news article *about* an after-action
+report is typed `aar` and sorts first until a researcher corrects it in the Type box (K-57).

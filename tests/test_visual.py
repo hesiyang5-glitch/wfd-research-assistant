@@ -130,6 +130,12 @@ def main():
             html = pg.inner_html("tr[data-v='GEOCODE_SPECIFICITY'] .var-name")
             check("5 variable names may break only after an underscore", html.startswith("GEOCODE_<wbr>SPECIFICITY"), html)
             check("5b the visible text of the variable name is unchanged", pg.inner_text("tr[data-v='GEOCODE_SPECIFICITY'] .var-name") == "GEOCODE_SPECIFICITY")
+            m = pg.evaluate("""() => { const td = document.querySelector('#wbTable tbody td:nth-child(2)'); const w = document.querySelector('.wb-table');
+              let multi = 0; for (const el of document.querySelectorAll('#wbTable .var-name')) { const r = document.createRange(); r.selectNodeContents(el);
+                if (new Set([...r.getClientRects()].map((x) => Math.round(x.top))).size > 1) multi++; }
+              return { col: td.getBoundingClientRect().width, scrolls: w.scrollWidth > w.clientWidth + 1, multi, n: document.querySelectorAll('#wbTable .var-name').length }; }""")
+            check("5d the variable column is wide enough that few names wrap (1400 px; owner request 2026-11-13)", m["col"] >= 240 and m["multi"] <= m["n"] * 0.15, m)
+            check("5e the wider variable column does not make the review table scroll sideways", not m["scrolls"], m)
             pg.goto(U + "#/case/1/progress"); pg.wait_for_timeout(800)
             check("5c progress page with no run shows a sentence, not 'none'", "No research has been run for this case yet." in pg.inner_text("#tabBody"))
 

@@ -849,15 +849,33 @@ async function openSource(sid, pid) {
 
 // ------------------------------------------------------------------ sources
 const TYPES = ["aar", "government", "regulatory", "legislative", "academic", "ngo_technical", "media", "unknown"];
+// Display order only (D-041): the S numbers, the stored rows, evidence, coding and exports are not affected.
+// Type order mirrors research.TYPE_PRIORITY (AAR, then official, academic / NGO, media); the choice stays in this browser.
+const SRC_TYPE_RANK = { aar: 0, government: 1, regulatory: 1, legislative: 2, academic: 3, ngo_technical: 3, media: 4 };
+const SRC_SORTS = ["type", "length", "found"];
+let SRC_SORT = (() => { try { const v = localStorage.getItem("wfd_src_sort"); return SRC_SORTS.includes(v) ? v : "type"; } catch (e) { return "type"; } })();
+function sortSources(rows, mode) {
+  const rank = (s) => (s.source_type in SRC_TYPE_RANK ? SRC_TYPE_RANK[s.source_type] : 5);
+  const len = (a, b) => (b.n_pages || 0) - (a.n_pages || 0) || (b.n_passages || 0) - (a.n_passages || 0);
+  const out = rows.slice();
+  if (mode === "type") out.sort((a, b) => rank(a) - rank(b) || len(a, b) || a.id - b.id);
+  else if (mode === "length") out.sort((a, b) => len(a, b) || a.id - b.id);
+  else out.sort((a, b) => a.id - b.id);
+  return out;
+}
 async function tabSources(c, body) {
-  const rows = await api("GET", `/api/cases/${c.id}/sources`);
+  const rows = sortSources(await api("GET", `/api/cases/${c.id}/sources`), SRC_SORT);
+  const sortNames = { type: L("类型优先（AAR 在前）", "Type priority (AAR first)"), length: L("篇幅（页数，其次段落数）", "Length (pages, then passages)"), found: L("找到顺序（S 编号）", "Order found (S number)") };
   body.innerHTML = `<div class="panel"><h3 style="margin-top:0">${t("src_add")}</h3>
     <div class="grid3"><div class="add-box"><label>${t("add_url")}</label><input id="addUrl" placeholder="https://"><button id="addUrlBtn" class="add-btn">${t("add")}</button></div>
     <div class="add-box"><label>${t("add_file")} (PDF, HTML, DOCX, TXT)</label><input id="addFile" type="file" multiple><button id="addFileBtn" class="add-btn">${t("add")}</button></div>
     <div class="add-box"><label>${t("add_text")}</label><input id="addTitle" placeholder="${t("src_title")}"><textarea id="addText" style="margin-top:4px"></textarea><button id="addTextBtn" class="add-btn">${t("add")}</button></div></div>
     <p class="small muted">${LANG === "zh" ? "不会绕过登录或付费墙；无法访问的来源可在有合法访问权时手动补充正文。补充后点击“重新分析”。" : "Logins and paywalls are never bypassed; add text manually if you have legitimate access. Re-analyze after adding."}
     <button class="small" id="recodeAll">${t("recode")}</button></p><div id="affBox"></div></div>
-    <div class="panel" style="padding:0;margin-top:12px"><table><thead><tr><th>#</th><th>${t("src_title")}</th><th>${t("src_type")}</th><th>${t("src_rel")}</th><th>${t("src_status")}</th><th>${t("src_flags")}</th><th></th></tr></thead><tbody>
+    <div class="row" style="margin-top:12px;align-items:center;gap:8px"><label for="srcSort" class="small" style="margin:0">${L("排序", "Sort by")}</label>
+      <select id="srcSort" class="small" style="width:auto">${SRC_SORTS.map((x) => `<option value="${x}" ${x === SRC_SORT ? "selected" : ""}>${sortNames[x]}</option>`).join("")}</select>
+      <span class="small muted">${L("只改变显示顺序；“类型”是自动判断的，可在下方更正。", "Display order only. Type is assigned automatically and can be corrected below.")}</span></div>
+    <div class="panel" style="padding:0;margin-top:8px"><table id="srcTable"><thead><tr><th>#</th><th>${t("src_title")}</th><th>${t("src_type")}</th><th>${t("src_rel")}</th><th>${t("src_status")}</th><th>${t("src_flags")}</th><th></th></tr></thead><tbody>
     ${rows.map((s) => `<tr><td class="mono small">S${s.id}</td><td><b>${esc((s.title || s.url || "").slice(0, 110))}</b>
       <div class="small muted">${esc(s.publisher || "")} ${esc(s.published_date || "")} · ${esc(s.found_via || s.origin)}</div>
       ${s.url ? `<div class="small"><a href="${esc(s.final_url || s.url)}" target="_blank" rel="noopener">${esc((s.final_url || s.url).slice(0, 90))}</a></div>` : ""}</td>
@@ -876,6 +894,7 @@ async function tabSources(c, body) {
   $("#addTextBtn").onclick = () => add({ kind: "text", title: $("#addTitle").value, text: $("#addText").value });
   $("#addFileBtn").onclick = async () => { for (const f of $("#addFile").files) await add({ kind: "file", filename: f.name, data: await fileToB64(f) }); };
   $("#recodeAll").onclick = (ev) => startRecode(c.id, null, ev.currentTarget);
+  $("#srcSort").onchange = (ev) => { SRC_SORT = ev.target.value; try { localStorage.setItem("wfd_src_sort", SRC_SORT); } catch (e) {} tabSources(c, body); };
   $$("[data-open]", body).forEach((b) => (b.onclick = () => openSource(+b.dataset.open)));
   const showAffected = (r) => { if (r.affected_variables && r.affected_variables.length) { $("#affBox").innerHTML = `<div class="callout warn">${t("affected")}: <span class="mono">${esc(r.affected_variables.join(", "))}</span> <button class="small" id="reAff">${t("reanalyze_affected")}</button></div>`; $("#reAff").onclick = () => startRecode(c.id, r.affected_variables); } };
   $$("[data-excl]", body).forEach((b) => (b.onclick = async () => {
@@ -889,7 +908,7 @@ async function tabSources(c, body) {
     await tabSources(c, body); showAffected(r);
   }));
   $$("[data-rel]", body).forEach((s) => (s.onchange = async () => { if (!s.value) return; const r = await api("PATCH", `/api/sources/${s.dataset.rel}`, { relevance_status: s.value }); await tabSources(c, body); showAffected(r); }));
-  $$("[data-type]", body).forEach((s) => (s.onchange = async () => { await api("PATCH", `/api/sources/${s.dataset.type}`, { source_type: s.value }); toast(t("saved")); }));
+  $$("[data-type]", body).forEach((s) => (s.onchange = async () => { await api("PATCH", `/api/sources/${s.dataset.type}`, { source_type: s.value }); toast(t("saved")); if (SRC_SORT === "type") await tabSources(c, body); }));
 }
 
 // ------------------------------------------------------------------ search log

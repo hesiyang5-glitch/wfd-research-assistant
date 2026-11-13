@@ -6,6 +6,24 @@ Completed changes, newest first. Commit hashes refer to `hesiyang5-glitch/wfd-re
 
 
 
+## 2026-11-13 — Sources tab ordering; wider Review variable column (branch `feat/sources-sort`, not merged, not deployed) — D-041
+- Sources tab: "Sort by" — Type priority (default, AAR first; longer first inside a type), Length (pages, then
+  passages), Order found (S number, the previous order). Correcting a source's type re-sorts the list. Display only:
+  the API, S numbers, stored rows, evidence, prompts, costs and exports are unchanged; the choice stays in the browser.
+- Review page: the variable column is wider on desktop (up to 300 px, following the room available) and the table side
+  of the workbench is 2.2 : 1 (was 1.75 : 1; the detail panel is correspondingly narrower, minimum 340 px). On the
+  fixture case at 1640 px, variable names on more than one line went from 31 of 82 (up to 3 lines) to 2 of 82 (2 lines);
+  at 1280 px from 57 to 36 (little room there). Phone layout unchanged.
+- Files: `web/app.js`, `web/styles.css`, `tests/test_sources_sort.py` (new), `tests/test_visual.py` (2 new checks).
+- Tests (offline, 2026-11-13, this branch, cloud sandbox; no network, no paid calls): test_sources_sort 13/13 (new),
+  test_visual 23/23, test_ui_labels 38, test_legacy_migration 18, test_export_labels 23, test_missingness 84,
+  test_evidence_status 59, test_multiselect_validation 24, test_bulk_agreement 67, test_cross_version 27,
+  test_independent_providers 68, test_costs 32, test_resilience 31 — pass. The sandbox had no `httpx` package and
+  installs were blocked, so these ran with a temporary stand-in `httpx` kept outside the repository (every network call
+  fails as "not sent"). **Not run here:** test_auth (needs real `httpx`), test_providers (needs the `openai` package),
+  test_pipeline and test_ui_flow (need the Texas sample PDFs). None of those touch the changed files' behaviour, but they
+  should be run on a normal machine before merging.
+
 ## 2026-11-13 — Missing values: owner decision PI-M4 option (c) (merged to `main` 2026-11-13 with owner approval)
 - For 7 variables the codebook's own "nothing documented" code may be suggested from silence in the passages the model
   read: PERCEIVED_TIMELINESS 3, PERCEIVED_MESSAGE_CLARITY 3, TRAINING_AND_PROCEDURAL_CONTEXT 0, MESSAGE_ARCHIVAL_STATUS 0,

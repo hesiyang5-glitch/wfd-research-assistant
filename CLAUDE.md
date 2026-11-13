@@ -88,6 +88,7 @@ python3 -m tests.test_evidence_status # five evidence statuses x both providers,
 python3 -m tests.test_multiselect_validation  # per-selection multi-select validation, partially valid, reason codes (D-037)
 python3 -m tests.test_missingness     # -9 only where defined (all types), placeholders, consistency flags, audit table (D-039)
 python3 -m tools.missingness_audit    # regenerate docs/missingness/missingness_audit.{csv,json}
+python3 -m tests.test_sources_sort   # Sources tab ordering is display only: type priority / length / order found (D-041)
 python3 -m tests.test_visual         # no wrapped button/tab/tag text, hover feedback, theme switch sends nothing, readable status tags
 ```
 

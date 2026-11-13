@@ -66,6 +66,7 @@ Last reviewed: 2026-10-01 (commit `33a0c5e`). Severity: **High** (blocks correct
 | K-13 | Free-text fields: quotes are validated, the model's prose is not. | Medium |
 | K-14 | Prompt-injection resistance (source text treated as data) is a prompt rule only; no adversarial test. | Medium |
 | K-15 | `WFD_ID` sequence uses IDs in the active workbook, not the master database. | Low |
+| K-57 | Source type is assigned by a keyword rule (`ingest.classify_source`): any title, URL or opening text containing "after-action", "AAR" or "improvement plan" is typed `aar`, so a news article *about* an after-action report is typed `aar` (seen 2026-11-13: an NBC Los Angeles article in the Palisades Fire case). With the Sources tab sorted by type (D-041) such articles appear first until a researcher corrects the Type box. The same type also feeds fetch priority. Not changed yet — changing the rule affects research behaviour and needs an owner decision. | Medium |
 
 ## Codebook / workbook issues (need PI decisions; app flags them, never guesses)
 
