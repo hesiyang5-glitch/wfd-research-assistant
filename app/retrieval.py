@@ -184,6 +184,8 @@ def load_case_passages(case_id: int, include_excluded: bool = False) -> list[dic
              WHERE p.case_id=? AND s.fetch_status='ok' AND s.duplicate_of IS NULL"""
     if not include_excluded:
         sql += " AND s.excluded=0 AND s.relevance_status!='irrelevant'"
+    # D-046: error pages / placeholders are never evidence (sources assessed before D-046 have no status: unchanged)
+    sql += " AND COALESCE(s.content_status,'full_text') IN ('full_text','partial')"
     sql += " ORDER BY p.source_id, p.seq"
     return db.q(sql, (case_id,))
 

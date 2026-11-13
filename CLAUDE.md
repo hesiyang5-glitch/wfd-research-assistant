@@ -95,6 +95,8 @@ python3 -m tests.test_visual         # no wrapped button/tab/tag text, hover fee
 python3 -m tests.test_query_expansion # country/language queries, keyword discovery, local-name relevance (D-043; TEST-FIXTURE search)
 python3 -m tests.test_fetch_limit     # per-case reading limit counts all runs; raise on an existing case (1–300, logged) (D-044)
 python3 -m tests.test_search_only     # Search only vs Search & analyze: stop after retrieval, sources export, continue later (D-045)
+python3 -m tests.test_source_review   # content validity, relevance tiers, type precedence, dry run / apply / history (D-046; no network)
+python3 -m tests.test_sources_page    # grouped Sources page, view-only filters, reassessment preview and apply in the browser (D-046)
 ```
 
 Tests need the Texas-flood sample PDFs: set `WFD_TEST_PDFS=/path/to/folder` (they are in the claude.ai
@@ -108,6 +110,7 @@ Project under `WFD project/sources/20250704-TX01/`). Tests run fully offline.
 | `app/research.py` | pipeline: identify → search → fetch → gap check → follow-up → coding; budgets; Search only stops after fetch (D-045) |
 | `app/search/providers.py` | Tavily / Brave / SearXNG adapters; `TEST-FIXTURE` provider for tests only |
 | `app/search/expansion.py` | non-U.S. country/language queries and keyword discovery (search leads only, D-043) |
+| `app/source_review.py` | local source reassessment: content validity, relevance tier, document type, history (D-046) |
 | `app/ingest.py` | fetching, HTML/PDF/DOCX extraction, OCR status, passages, dedupe, source typing |
 | `app/retrieval.py` | BM25 + semantic (LSA or embeddings) evidence retrieval |
 | `app/coding.py` | prompt rules, batching, worst-case budget checks, derived/admin fields |

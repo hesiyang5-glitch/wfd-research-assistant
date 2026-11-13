@@ -941,75 +941,191 @@ async function openSource(sid, pid) {
   if (pid) setTimeout(() => { const el = document.getElementById("p-" + pid); if (el) el.scrollIntoView({ block: "center" }); }, 50);
 }
 
-// ------------------------------------------------------------------ sources
+// ------------------------------------------------------------------ sources (D-046: grouped by the project's source-priority convention)
 const TYPES = ["aar", "government", "regulatory", "legislative", "academic", "ngo_technical", "media", "unknown"];
-// Display order only (D-041): the S numbers, the stored rows, evidence, coding and exports are not affected.
-// Type order mirrors research.TYPE_PRIORITY (AAR, then official, academic / NGO, media); the choice stays in this browser.
+const TYPE_TEXT = { aar: ["事后评估报告", "After-action report"], government: ["政府", "Government"], regulatory: ["监管", "Regulatory"], legislative: ["立法", "Legislative"],
+  academic: ["学术", "Academic"], ngo_technical: ["技术报告", "Technical report"], media: ["新闻", "News media"], unknown: ["其他 / 未分类", "Other / unclassified"] };
+const SRC_GROUPS = [["aar", ["事后评估报告", "After-action reports"], ["aar"]], ["gov", ["政府与监管文件", "Government and regulatory documents"], ["government", "regulatory"]],
+  ["legis", ["立法文件", "Legislative documents"], ["legislative"]], ["acad", ["学术与技术报告", "Academic and technical reports"], ["academic", "ngo_technical"]],
+  ["media", ["新闻媒体", "News media"], ["media"]], ["other", ["其他来源 / 未分类", "Other sources / unclassified"], []]];
+// Kept for the D-041 test: type rank (AAR, official, legislative, academic / technical, news, other)
 const SRC_TYPE_RANK = { aar: 0, government: 1, regulatory: 1, legislative: 2, academic: 3, ngo_technical: 3, media: 4 };
-const SRC_SORTS = ["type", "length", "found"];
+const REL_RANK = { relevant: 0, background: 1, uncertain: 2, unchecked: 2, irrelevant: 3 };
+const REL_TEXT = { relevant: ["直接相关", "Directly relevant", "neutral"], background: ["背景资料", "Background", "neutral"], uncertain: ["需要复核", "Needs review", "warn"],
+  unchecked: ["未评估", "Not assessed", "warn"], irrelevant: ["无关", "Irrelevant", "neutral"] };  // relevance is never green/red: it is a topic match, not accuracy
+const CONTENT_TEXT = { full_text: ["有文档正文", "Document text available", "ok"], partial: ["部分内容 / 摘要", "Partial content / abstract", "info"],
+  no_usable_text: ["没有可用的文档正文", "No usable document text", "bad"], not_retrieved: ["未读取", "Not retrieved", "bad"], interrupted: ["读取未完成", "Retrieval incomplete", "bad"] };
+const SRC_SORTS = ["type", "length", "found"];  // "type" = within-group default: relevance tier, usable text first, length
 let SRC_SORT = (() => { try { const v = localStorage.getItem("wfd_src_sort"); return SRC_SORTS.includes(v) ? v : "type"; } catch (e) { return "type"; } })();
+const SRC_FILTER = { type: "", rel: "", content: "", lang: "", sel: "", run: "", q: "" };
+const SRC_OPEN = {};  // collapsed groups / expanded version lists, this page view only
+const contentOf = (s) => s.content_status || (s.fetch_status === "ok" ? "" : "not_retrieved");
+const usableText = (s) => s.fetch_status === "ok" && ["full_text", "partial", ""].includes(contentOf(s));
+const groupOf = (s) => (SRC_GROUPS.find((g) => g[2].includes(s.source_type)) || SRC_GROUPS[5])[0];
 function sortSources(rows, mode) {
+  // Authority group order is always kept (D-046); the mode only orders sources INSIDE each group.
   const rank = (s) => (s.source_type in SRC_TYPE_RANK ? SRC_TYPE_RANK[s.source_type] : 5);
   const len = (a, b) => (b.n_pages || 0) - (a.n_pages || 0) || (b.n_passages || 0) - (a.n_passages || 0);
-  const out = rows.slice();
-  if (mode === "type") out.sort((a, b) => rank(a) - rank(b) || len(a, b) || a.id - b.id);
-  else if (mode === "length") out.sort((a, b) => len(a, b) || a.id - b.id);
-  else out.sort((a, b) => a.id - b.id);
-  return out;
+  const inner = mode === "length" ? (a, b) => len(a, b) || a.id - b.id
+    : mode === "found" ? (a, b) => a.id - b.id
+    : (a, b) => (REL_RANK[a.relevance_status] ?? 2) - (REL_RANK[b.relevance_status] ?? 2) || (usableText(a) ? 0 : 1) - (usableText(b) ? 0 : 1) || len(a, b) || a.id - b.id;
+  return rows.slice().sort((a, b) => rank(a) - rank(b) || inner(a, b));
 }
 const srcLink = (id, fmt, all) => `/api/cases/${id}/export?format=${fmt}&all=${all ? 1 : 0}`;  // D-045 sources-only export
+function srcPassesFilter(s, f) {
+  if (f.type && groupOf(s) !== f.type) return false;
+  if (f.rel && (s.relevance_status || "unchecked") !== f.rel) return false;
+  if (f.content && (contentOf(s) || "unchecked") !== f.content) return false;
+  if (f.lang && (s.language || "?") !== f.lang) return false;
+  if (f.sel === "selected" && s.excluded) return false;
+  if (f.sel === "not_selected" && !s.excluded) return false;
+  if (f.sel === "eligible" && !s.eligible) return false;
+  if (f.sel === "not_eligible" && s.eligible) return false;
+  if (f.run && String(s.job_id || "manual") !== f.run) return false;
+  if (f.q) { const q = f.q.toLowerCase(); if (!`${s.title || ""} ${s.publisher || ""} ${s.url || ""}`.toLowerCase().includes(q)) return false; }
+  return true;
+}
 async function tabSources(c, body) {
-  const rows = sortSources(await api("GET", `/api/cases/${c.id}/sources`), SRC_SORT);
-  const cnt = await api("GET", `/api/cases/${c.id}/source_counts`);
+  const all = await api("GET", `/api/cases/${c.id}/sources`);
+  const cnt = await api("GET", `/api/cases/${c.id}/source_counts${SRC_FILTER.run && SRC_FILTER.run !== "manual" ? "?run=" + encodeURIComponent(SRC_FILTER.run) : ""}`);
   const job = await api("GET", `/api/cases/${c.id}/job`);
   const busyJob = job && ["running", "queued"].includes(job.status);
   const host = (u) => { try { return new URL(u).hostname.replace(/^www\./, ""); } catch (e) { return ""; } };
-  const sortNames = { type: L("类型优先（AAR 在前）", "Type priority (AAR first)"), length: L("篇幅（页数，其次段落数）", "Length (pages, then passages)"), found: L("找到顺序（S 编号）", "Order found (S number)") };
-  body.innerHTML = `<div class="panel"><h3 style="margin-top:0">${t("src_add")}</h3>
-    <div class="grid3"><div class="add-box"><label>${t("add_url")}</label><input id="addUrl" placeholder="https://"><button id="addUrlBtn" class="add-btn">${t("add")}</button></div>
-    <div class="add-box"><label>${t("add_file")} (PDF, HTML, DOCX, TXT)</label><input id="addFile" type="file" multiple><button id="addFileBtn" class="add-btn">${t("add")}</button></div>
-    <div class="add-box"><label>${t("add_text")}</label><input id="addTitle" placeholder="${t("src_title")}"><textarea id="addText" style="margin-top:4px"></textarea><button id="addTextBtn" class="add-btn">${t("add")}</button></div></div>
-    <p class="small muted">${LANG === "zh" ? "不会绕过登录或付费墙；无法访问的来源可在有合法访问权时手动补充正文。" : "Logins and paywalls are never bypassed; add text manually if you have legitimate access."}</p><div id="affBox"></div></div>
-    <div class="panel" style="margin-top:12px" id="srcCounts"><div class="row" style="align-items:center;gap:6px;flex-wrap:wrap">
-      ${[["discovered", L("搜索发现", "Discovered")], ["retrieved", L("已读取", "Retrieved")], ["relevant", L("相关", "Relevant")], ["failed", L("未能读取 / 被拒", "Failed / blocked")], ["selected", L("已选中", "Selected")], ["usable_for_analysis", L("可用于分析", "Usable for analysis")]].map(([k, lab]) => `<span class="badge" data-count="${k}">${esc(lab)} <b>${cnt[k]}</b></span>`).join(" ")}
-      <span class="spacer"></span><button class="small" id="srcRefresh">${L("刷新", "Refresh")}</button>
-      <button class="small primary" id="recodeAll" ${cnt.usable_for_analysis ? "" : "disabled"} title="${esc(L("用已保存的已选来源正文做编码分析，不会重新搜索", "Code the saved text of the selected sources; no new search"))}">${L("分析已选来源", "Analyze selected sources")}</button></div>
-      <p class="small muted" style="margin:6px 0 0">${L("“搜索发现”= 搜索结果里的不同网址；“已读取”= 成功取得正文；“可用于分析”= 已读取、已选中、不是重复、未标为无关。来源一读取就会保存。", "Discovered = distinct addresses in search results; Retrieved = text obtained; Usable for analysis = retrieved, selected, not a duplicate, not marked irrelevant. Each source is saved as soon as it is read.")}
-      ${busyJob ? `<b>${L("任务正在运行：这里显示的是到目前为止已保存的来源，不会自动更新，请点“刷新”。", "A task is running: this shows the sources saved so far; it does not update by itself — use Refresh.")}</b>` : ""}</p></div>
-    <div class="panel" style="margin-top:12px" id="srcExport"><h3 style="margin-top:0">${L("导出来源", "Export sources")}</h3>
-      <div class="row" style="align-items:center;gap:8px"><a id="srcXlsx" href="${srcLink(c.id, "sources", false)}"><button class="primary">${L("来源清单（Excel）", "Source list (Excel)")}</button></a>
-        <a id="srcCsv" href="${srcLink(c.id, "sources_csv", false)}"><button>CSV</button></a>
-        <label class="chk small" style="margin:0"><input type="checkbox" id="srcAll" style="width:auto"> ${L("包括已取消选中的来源", "Include deselected sources")}</label></div>
-      <p class="small muted">${L("不需要先运行编码分析。默认导出已选中的来源，按类型优先排序：事后评估报告、政府/监管、立法、学术/技术、新闻、其他。类型优先只是排序方式，不代表来源一定准确。", "No coding analysis needed. By default the export lists the selected sources, in type priority: after-action reports, government / regulatory, legislative, academic / technical, news, other. Type priority is a way to sort, not proof of accuracy.")}</p></div>
-    <div class="row" style="margin-top:12px;align-items:center;gap:8px"><label for="srcSort" class="small" style="margin:0">${L("排序", "Sort by")}</label>
-      <select id="srcSort" class="small" style="width:auto">${SRC_SORTS.map((x) => `<option value="${x}" ${x === SRC_SORT ? "selected" : ""}>${sortNames[x]}</option>`).join("")}</select>
-      <span class="small muted">${L("只改变显示顺序；“类型”是自动判断的，可在下方更正。", "Display order only. Type is assigned automatically and can be corrected below.")}</span></div>
-    <div class="panel" style="padding:0;margin-top:8px"><table id="srcTable"><thead><tr><th>#</th><th>${t("src_title")}</th><th>${t("src_type")}</th><th>${t("src_rel")}</th><th>${t("src_status")}</th><th>${t("src_flags")}</th><th></th></tr></thead><tbody>
-    ${rows.map((s) => `<tr><td class="mono small">S${s.id}</td><td><b>${esc((s.title || s.url || "").slice(0, 110))}</b>
-      <div class="small muted">${esc(s.publisher || "")} ${esc(s.published_date || "")} · ${esc(s.found_via || s.origin)}</div>
-      <div class="small muted">${host(s.url || s.final_url) ? esc(host(s.url || s.final_url)) + " · " : ""}${s.language ? esc(L("语言", "language")) + " " + esc(s.language) + " · " : ""}${s.job_id ? esc(L("搜索运行", "search run")) + " " + s.job_id : esc(s.origin && s.origin !== "search" ? L("用户添加", "added by user") : "")}</div>
-      ${s.url ? `<div class="small">${L("原始链接", "Original link")}: <a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.url.slice(0, 90))}</a></div>` : ""}
-      ${s.final_url && s.final_url !== s.url ? `<div class="small muted">${L("跳转到", "Redirected to")}: ${esc(s.final_url.slice(0, 90))}</div>` : ""}
-      ${s.fetch_status !== "ok" && s.snippet ? `<div class="small"><span class="badge">${L("搜索结果摘要 — 不是读取到的正文", "Search-result snippet — not retrieved text")}</span> <span class="muted">${esc(s.snippet.slice(0, 220))}</span></div>` : ""}</td>
-      <td><select data-type="${s.id}" style="width:auto">${TYPES.map((x) => `<option ${x === s.source_type ? "selected" : ""}>${x}</option>`).join("")}</select></td>
-      <td><span class="badge ${s.relevance_status === "relevant" ? "ok" : s.relevance_status === "irrelevant" ? "bad" : "warn"}">${esc(s.relevance_status)}</span>
-        <div class="small muted">${esc(s.relevance_reason || "")}</div></td>
-      <td>${s.fetch_status === "ok" ? `<span class="badge ok">${L("已读取", "retrieved")}</span><div class="small muted">${s.n_pages ? s.n_pages + " pp · " : ""}${s.n_passages || 0} passages</div>` : `<span class="badge bad">${L("未读取", "not retrieved")}</span><div class="small">${esc(s.fetch_error || s.fetch_status)}</div><div class="small muted">${L("不作为证据使用", "not used as evidence")}</div>`}</td>
-      <td class="small">${s.duplicate_of ? `<span class="badge bad">${t("dup_of")} S${s.duplicate_of}</span> ` : ""}${s.near_duplicate_of ? `<span class="badge warn">${t("near_of")} S${s.near_duplicate_of} (${Math.round((s.similarity || 0) * 100)}%)</span> ` : ""}${s.excluded ? `<span class="badge bad">${L("未选中", "not selected")}</span> ${esc(s.exclude_reason || "")}` : ""}
-        ${s.ocr_status && !["not_needed", "not_applicable"].includes(s.ocr_status) ? `<div class="muted">${esc(s.ocr_status)}</div>` : ""}</td>
-      <td class="actions"><div class="row">${s.fetch_status === "ok" ? `<button class="small" data-open="${s.id}">${t("view")}</button>` : ""}
-        <button class="small" data-excl="${s.id}" data-on="${s.excluded ? 0 : 1}" title="${esc(L("只改变是否用于分析；不会删除来源，也不会改动搜索记录或已完成的分析", "Only changes whether it is used in analysis; never deletes the source, the search record or a finished analysis"))}">${s.excluded ? L("选中", "Select") : L("取消选中", "Deselect")}</button>
-        <select class="small" data-rel="${s.id}" style="width:auto"><option value="">relevance…</option><option>relevant</option><option>uncertain</option><option>irrelevant</option></select></div></td></tr>`).join("") || `<tr><td colspan="7" class="muted">${t("none")}</td></tr>`}
-    </tbody></table></div>`;
-  const add = async (payload) => { try { const s = await api("POST", `/api/cases/${c.id}/sources`, payload); toast(`S${s.id}: ${s.fetch_status}${s.fetch_error ? " — " + s.fetch_error : ""}`, s.fetch_status !== "ok"); tabSources(c, body); } catch (e) { toast(e.message, true); } };
-  $("#srcAll").onchange = (ev) => { $("#srcXlsx").href = srcLink(c.id, "sources", ev.target.checked); $("#srcCsv").href = srcLink(c.id, "sources_csv", ev.target.checked); };
+  const shown = sortSources(all.filter((s) => srcPassesFilter(s, SRC_FILTER)), SRC_SORT);
+  // document groups: one representative row (usable text first, then type priority) with the other versions under it
+  const byGroup = {};
+  shown.forEach((s) => { if (s.doc_group) (byGroup[s.doc_group] = byGroup[s.doc_group] || []).push(s); });
+  const repOf = {};
+  Object.values(byGroup).forEach((ms) => { const rep = ms.slice().sort((a, b) => (usableText(a) ? 0 : 1) - (usableText(b) ? 0 : 1) || (b.n_passages || 0) - (a.n_passages || 0) || a.id - b.id)[0]; ms.forEach((m) => (repOf[m.id] = rep.id)); });
+  const sortNames = { type: L("相关性优先（默认）", "Relevance first (default)"), length: L("篇幅（页数，其次段落数）", "Length (pages, then passages)"), found: L("找到顺序（S 编号）", "Order found (S number)") };
+  const langs = [...new Set(all.map((s) => s.language || "?"))].sort();
+  const runs = [...new Set(all.map((s) => String(s.job_id || "manual")))].sort((a, b) => (a === "manual") - (b === "manual") || +a - +b);
+  const shownStats = { n: shown.length, text: shown.filter(usableText).length, rel: shown.filter((s) => s.relevance_status === "relevant").length, eligible: shown.filter((s) => s.eligible).length };
+  const runCnt = cnt.run || null;
+  const scopeRow = (label, k, fmt) => `<tr><td>${label}</td><td><b>${fmt(cnt)}</b></td><td>${runCnt ? `<b>${fmt(runCnt)}</b>` : "—"}</td></tr>`;
+  const badge = (map, k) => { const m = map[k] || [k, k, ""]; return `<span class="badge ${m[2]}">${esc(L(m[0], m[1]))}</span>`; };
+  const row = (s, alt) => {
+    const cs = contentOf(s);
+    const others = !alt && s.doc_group ? byGroup[s.doc_group].filter((m) => m.id !== s.id) : [];
+    return `<tr data-sid="${s.id}" class="${alt ? "alt-version" : ""}" ${alt && !SRC_OPEN["v" + repOf[s.id]] ? "hidden" : ""}>
+      <td class="mono small">S${s.id}</td>
+      <td><b>${esc(s.title || s.url || "")}</b>${alt ? ` <span class="badge neutral">${L("另一版本", "other version")}</span>` : ""}
+        <div class="small muted">${[s.publisher || host(s.url || s.final_url), s.published_date && (L("发布 ", "published ") + s.published_date), s.language && (L("语言 ", "language ") + s.language)].filter(Boolean).map(esc).join(" · ")}</div>
+        <div class="small">${s.url ? `<a href="${esc(s.url)}" target="_blank" rel="noopener">${L("原始链接", "Original link")}</a>` : ""}${s.fetch_status === "ok" && s.n_passages ? ` · <a href="#" data-open="${s.id}">${L("查看保存的正文", "View saved text")}</a>` : ""}
+          ${(JSON.parse(s.topic_tags || "[]")).map((x) => `<span class="badge neutral" title="${esc(L("主题提示，仅供参考，不是编码", "Topic hint only — not coding"))}">${esc(x.replace(/_/g, " "))}</span>`).join(" ")}</div>
+        ${others.length ? `<button class="small linkish" data-vers="${s.id}">${SRC_OPEN["v" + s.id] ? "▾" : "▸"} ${L("同一文档的其他版本", "Other versions of this document")} (${others.length})</button>` : ""}
+        <details class="small"><summary>${L("细节", "Details")}</summary>
+          <div class="muted">${L("发现方式", "Found via")}: ${esc(s.found_via || s.origin || "")}${s.job_id ? ` · ${L("搜索运行", "search run")} ${s.job_id}` : ` · ${L("用户添加", "added by user")}`}</div>
+          ${s.final_url && s.final_url !== s.url ? `<div class="muted">${L("跳转到", "Redirected to")}: ${esc(s.final_url)}</div>` : ""}
+          ${s.type_reason ? `<div class="muted">${L("类型依据", "Type basis")}: ${esc(s.type_reason)}</div>` : ""}
+          ${s.relevance_reason ? `<div class="muted">${L("相关性依据", "Relevance basis")}: ${esc(s.relevance_reason)}</div>` : ""}
+          ${s.content_reason ? `<div class="muted">${L("内容检查", "Content check")}: ${esc(s.content_reason)}</div>` : ""}
+          ${s.fetch_error ? `<div class="muted">${L("读取记录", "Retrieval record")}: ${esc(s.fetch_error)}</div>` : ""}
+          ${s.ocr_status && !["not_needed", "not_applicable"].includes(s.ocr_status) ? `<div class="muted">${esc(s.ocr_status)}</div>` : ""}
+          ${s.fetch_status !== "ok" && s.snippet ? `<div><span class="badge neutral">${L("搜索结果摘要 — 不是读取到的正文", "Search-result snippet — not retrieved text")}</span> <span class="muted">${esc(s.snippet.slice(0, 300))}</span></div>` : ""}
+          ${s.duplicate_of ? `<div class="muted">${t("dup_of")} S${s.duplicate_of}</div>` : ""}${s.near_duplicate_of ? `<div class="muted">${t("near_of")} S${s.near_duplicate_of} (${Math.round((s.similarity || 0) * 100)}%)</div>` : ""}
+          <div class="muted">${L("规则版本", "Rule version")}: ${esc(s.rule_version || L("较早的规则", "earlier rules"))} · <a href="#" data-hist="${s.id}">${L("修改记录", "Change history")}</a></div>
+        </details></td>
+      <td><select data-type="${s.id}" style="width:auto" aria-label="${esc(L("文档类型", "Document type"))}">${TYPES.map((x) => `<option value="${x}" ${x === s.source_type ? "selected" : ""}>${esc(L(TYPE_TEXT[x][0], TYPE_TEXT[x][1]))}</option>`).join("")}</select>
+        <div class="small muted">${s.type_subtype ? esc(s.type_subtype.replace(/_/g, " ")) + " · " : ""}${s.type_basis === "human" ? L("人工确认", "human-confirmed") : L("自动判断", "automatic")}</div></td>
+      <td>${badge(REL_TEXT, s.relevance_status || "unchecked")}<div class="small muted">${s.relevance_basis === "human" ? L("人工确认", "human-confirmed") : L("自动判断", "automatic")} · ${esc((s.relevance_reason || "").split(";")[0].slice(0, 120))}</div></td>
+      <td>${cs ? badge(CONTENT_TEXT, cs) : `<span class="badge neutral">${L("已保存正文 — 尚未按新规则检查", "Text saved — not yet checked by current rules")}</span>`}
+        <div class="small muted">${s.fetch_status === "ok" ? `${s.n_pages ? s.n_pages + " pp · " : ""}${s.n_passages || 0} passages` : ""}</div></td>
+      <td class="small">${s.excluded ? `<span class="badge neutral">${L("未选中", "Not selected")}</span>` : `<span class="badge info">${L("已选中", "Selected")}</span>`}
+        <div>${s.eligible ? `<span class="badge ok">${L("可用于分析", "Eligible for analysis")}</span>` : `<span class="muted">${L("不会用于分析", "Not used in analysis")}</span>`}</div></td>
+      <td class="actions"><div class="row"><button class="small" data-excl="${s.id}" data-on="${s.excluded ? 0 : 1}" title="${esc(L("只改变是否用于分析；不会删除来源，也不会改动搜索记录或已完成的分析", "Only changes whether it is used in analysis; never deletes the source, the search record or a finished analysis"))}">${s.excluded ? L("选中", "Select") : L("取消选中", "Deselect")}</button>
+        <select class="small" data-rel="${s.id}" style="width:auto" aria-label="${esc(L("更正相关性", "Correct relevance"))}"><option value="">${L("更正相关性…", "relevance…")}</option>${["relevant", "background", "uncertain", "irrelevant"].map((x) => `<option value="${x}">${esc(L(REL_TEXT[x][0], REL_TEXT[x][1]))}</option>`).join("")}</select></div></td></tr>`;
+  };
+  const groupsHtml = SRC_GROUPS.map(([gk, gl]) => {
+    const members = shown.filter((s) => groupOf(s) === gk);
+    const reps = members.filter((s) => !s.doc_group || repOf[s.id] === s.id);
+    const total = all.filter((s) => groupOf(s) === gk).length;
+    const open = SRC_OPEN["g" + gk] !== false;
+    return `<tbody class="src-group" data-group="${gk}"><tr class="grp-h"><td colspan="7"><button class="linkish" data-grp="${gk}">${open ? "▾" : "▸"} <b>${esc(L(gl[0], gl[1]))}</b></button>
+        <span class="small muted">${members.length}${members.length !== total ? ` ${L("条（筛选后）/ 共", "shown /")} ${total}` : ""}</span></td></tr>
+      ${open ? reps.map((s) => row(s, false) + (s.doc_group ? byGroup[s.doc_group].filter((m) => m.id !== s.id).map((m) => row(m, true)).join("") : "")).join("") : ""}</tbody>`;
+  }).join("");
+  const sel = (id, label, opts) => `<label class="small" style="margin:0">${label}<select id="${id}" class="small" style="width:auto;display:block">${opts}</select></label>`;
+  const opt = (v, label, cur) => `<option value="${esc(v)}" ${String(cur) === String(v) ? "selected" : ""}>${esc(label)}</option>`;
+  body.innerHTML = `
+    <div class="panel" id="srcHead"><div class="row" style="align-items:center;gap:10px;flex-wrap:wrap">
+      <b>${esc(c.name)}</b><span class="small muted">${L("来源范围", "Scope")}: ${L("本案例全部搜索运行累计", "all search runs of this case, cumulative")} (${all.length} ${L("条已保存", "saved")}, ${(cnt.runs || []).length} ${L("次搜索运行", "search runs")})</span>
+      <span class="spacer"></span>${sel("fRun", L("搜索运行", "Search run"), opt("", L("全部运行", "All runs"), SRC_FILTER.run) + runs.map((r) => opt(r, r === "manual" ? L("用户添加", "Added by user") : L("运行 ", "Run ") + r, SRC_FILTER.run)).join(""))}</div></div>
+    <div class="panel" style="margin-top:12px" id="srcCounts"><h3 style="margin-top:0">${L("来源与读取质量", "Sources and retrieval quality")}</h3>
+      <table class="small" style="width:auto"><thead><tr><th></th><th>${L("全案例（所有运行）", "Case-wide (all runs)")}</th><th>${SRC_FILTER.run && SRC_FILTER.run !== "manual" ? L("所选运行 ", "Run ") + esc(SRC_FILTER.run) : L("所选运行", "Selected run")}</th></tr></thead><tbody>
+        ${scopeRow(L("搜索发现（不同网址）", "Discovered (distinct addresses in results)"), "d", (x) => x.discovered)}
+        ${scopeRow(L("已保存的来源", "Saved sources"), "s", (x) => x.stored)}
+        ${scopeRow(L("有文档正文（全文或部分）", "Document text available (full or partial)"), "t", (x) => x.text_available)}
+        ${scopeRow(L("没有可用的文档正文", "No usable document text"), "n", (x) => x.no_usable_text)}
+        ${scopeRow(L("未读取 / 被拒 / 未完成", "Not retrieved / blocked / incomplete"), "f", (x) => x.failed)}
+        ${scopeRow(L("直接相关 · 背景 · 无关", "Directly relevant · background · irrelevant"), "r", (x) => `${x.relevant} · ${x.background} · ${x.irrelevant}`)}
+        ${scopeRow(L("已选中 · 可用于分析", "Selected · eligible for analysis"), "e", (x) => `${x.selected} · ${x.usable_for_analysis}`)}
+      </tbody></table>
+      <p class="small muted" style="margin:6px 0 0">${L("这几行的分母不同，不是一条漏斗：“搜索发现”数的是搜索结果里的网址；其余数的是已保存的来源。“有文档正文”不代表内容准确或完整；“可用于分析”= 已读取、有可用正文、已选中、不是重复、未标为无关。当前显示：", "These rows have different denominators and are not one funnel: Discovered counts addresses in search results; the others count saved sources. Text available does not mean accurate or complete; Eligible = retrieved, usable text, selected, not a duplicate, not irrelevant. Shown now: ")}<b>${shownStats.n}</b> ${L("条（文本可用", "(text available")} ${shownStats.text} · ${L("直接相关", "directly relevant")} ${shownStats.rel} · ${L("可用于分析", "eligible")} ${shownStats.eligible})</p>
+      ${busyJob ? `<p class="small"><b>${L("任务正在运行：这里显示的是到目前为止已保存的来源，不会自动更新，请点“刷新”。", "A task is running: this shows the sources saved so far; it does not update by itself — use Refresh.")}</b></p>` : ""}
+      ${cnt.not_on_current_rules ? `<div class="callout warn small" style="margin-top:8px">${cnt.not_on_current_rules} ${L("条来源还没有用当前规则检查内容、相关性和类型。", "source(s) have not been checked with the current content, relevance and type rules.")} <button class="small" id="srPreview">${L("预览重新评估（不会改动任何内容）", "Preview reassessment (changes nothing)")}</button></div>` : `<p class="small muted">${L("所有来源都已按当前规则", "All sources are on the current rules")} (${esc(cnt.rule_version_current || "")}) ${L("检查。", "")}</p>`}</div>
+    <div class="panel" style="margin-top:12px" id="srcTools">
+      <div class="row" style="gap:8px;flex-wrap:wrap;align-items:flex-end">
+        ${sel("fType", L("文档类型", "Document type"), opt("", L("全部", "All"), SRC_FILTER.type) + SRC_GROUPS.map(([k, l]) => opt(k, L(l[0], l[1]), SRC_FILTER.type)).join(""))}
+        ${sel("fRel", L("相关性", "Incident relevance"), opt("", L("全部", "All"), SRC_FILTER.rel) + ["relevant", "background", "uncertain", "irrelevant", "unchecked"].map((k) => opt(k, L(REL_TEXT[k][0], REL_TEXT[k][1]), SRC_FILTER.rel)).join(""))}
+        ${sel("fContent", L("读取质量", "Retrieval quality"), opt("", L("全部", "All"), SRC_FILTER.content) + Object.keys(CONTENT_TEXT).map((k) => opt(k, L(CONTENT_TEXT[k][0], CONTENT_TEXT[k][1]), SRC_FILTER.content)).join("") + opt("unchecked", L("尚未检查", "Not yet checked"), SRC_FILTER.content))}
+        ${sel("fLang", L("语言", "Language"), opt("", L("全部", "All"), SRC_FILTER.lang) + langs.map((l) => opt(l, l === "?" ? L("未知", "unknown") : l, SRC_FILTER.lang)).join(""))}
+        ${sel("fSel", L("选择 / 分析", "Selection / analysis"), opt("", L("全部", "All"), SRC_FILTER.sel) + [["selected", L("已选中", "Selected")], ["not_selected", L("未选中", "Not selected")], ["eligible", L("可用于分析", "Eligible for analysis")], ["not_eligible", L("不会用于分析", "Not used in analysis")]].map(([k, l]) => opt(k, l, SRC_FILTER.sel)).join(""))}
+        <label class="small" style="margin:0">${L("标题 / 发布者关键词", "Title or publisher keyword")}<input id="fQ" class="small" value="${esc(SRC_FILTER.q)}" style="display:block;width:200px"></label>
+        ${sel("srcSort", L("组内排序", "Order within groups"), SRC_SORTS.map((x) => opt(x, sortNames[x], SRC_SORT)).join(""))}
+        <button class="small" id="fClear">${L("清除筛选", "Clear filters")}</button><button class="small" id="srcRefresh">${L("刷新", "Refresh")}</button></div>
+      <p class="small muted" style="margin:6px 0 0">${L("筛选和排序只改变显示，不会改变选择、分析输入或导出。分组顺序是本项目的来源优先约定（事后评估报告、政府/监管、立法、学术/技术、新闻、其他），不是对可信度的独立排名。", "Filters and sorting change the view only — never selections, analysis inputs or exports. Group order is the project's source-priority convention (after-action reports, government / regulatory, legislative, academic / technical, news, other), not an independent ranking of truthfulness.")}</p>
+      <div class="row" style="gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap" id="srcExport">
+        <a id="srcXlsx" href="${srcLink(c.id, "sources", false)}"><button class="small">${L("导出来源清单（Excel）", "Export source list (Excel)")}</button></a><a id="srcCsv" href="${srcLink(c.id, "sources_csv", false)}"><button class="small">CSV</button></a>
+        <label class="chk small" style="margin:0"><input type="checkbox" id="srcAll" style="width:auto"> ${L("包括未选中的来源", "Include deselected sources")}</label>
+        <span class="small muted" id="srcExpNote">${L("导出内容：全部已选中的来源（不受上面的筛选影响）。", "Export contains: all selected sources (filters above do not apply).")}</span>
+        <span class="spacer"></span><button class="small primary" id="recodeAll" ${cnt.usable_for_analysis ? "" : "disabled"} title="${esc(L("用已保存的已选来源正文做编码分析，不会重新搜索", "Code the saved text of the selected sources; no new search"))}">${L("分析已选来源", "Analyze selected sources")}</button></div>
+      <div id="affBox"></div></div>
+    <div class="panel" style="padding:0;margin-top:12px"><table id="srcTable"><thead><tr><th>#</th><th>${L("文档", "Document")}</th><th>${L("文档类型", "Document type")}</th><th>${L("事件相关性", "Incident relevance")}</th><th>${L("内容 / 读取", "Content / retrieval")}</th><th>${L("选择 / 分析", "Selected / analysis")}</th><th></th></tr></thead>
+      ${shown.length ? groupsHtml : `<tbody><tr><td colspan="7" class="muted">${all.length ? L("没有符合筛选条件的来源。", "No sources match the filters.") : t("none")}</td></tr></tbody>`}</table></div>
+    <details class="panel" style="margin-top:12px" id="srcAdd"><summary><b>${t("src_add")}</b> <span class="small muted">${L("（可选，手动补充）", "(optional, manual)")}</span></summary>
+      <div class="grid3" style="margin-top:8px"><div class="add-box"><label>${t("add_url")}</label><input id="addUrl" placeholder="https://"><button id="addUrlBtn" class="add-btn">${t("add")}</button></div>
+      <div class="add-box"><label>${t("add_file")} (PDF, HTML, DOCX, TXT)</label><input id="addFile" type="file" multiple><button id="addFileBtn" class="add-btn">${t("add")}</button></div>
+      <div class="add-box"><label>${t("add_text")}</label><input id="addTitle" placeholder="${t("src_title")}"><textarea id="addText" style="margin-top:4px"></textarea><button id="addTextBtn" class="add-btn">${t("add")}</button></div></div>
+      <p class="small muted">${LANG === "zh" ? "不会绕过登录或付费墙；无法访问的来源可在有合法访问权时手动补充正文。" : "Logins and paywalls are never bypassed; add text manually if you have legitimate access."}</p></details>`;
+  const rerender = () => tabSources(c, body);
+  const add = async (payload) => { try { const s = await api("POST", `/api/cases/${c.id}/sources`, payload); toast(`S${s.id}: ${s.fetch_status}${s.fetch_error ? " — " + s.fetch_error : ""}`, s.fetch_status !== "ok"); rerender(); } catch (e) { toast(e.message, true); } };
+  $("#srcAll").onchange = (ev) => { $("#srcXlsx").href = srcLink(c.id, "sources", ev.target.checked); $("#srcCsv").href = srcLink(c.id, "sources_csv", ev.target.checked);
+    $("#srcExpNote").textContent = ev.target.checked ? L("导出内容：全部来源，包括未选中的（不受上面的筛选影响）。", "Export contains: all sources, including deselected ones (filters above do not apply).") : L("导出内容：全部已选中的来源（不受上面的筛选影响）。", "Export contains: all selected sources (filters above do not apply)."); };
   $("#addUrlBtn").onclick = () => add({ kind: "url", url: $("#addUrl").value.trim() });
   $("#addTextBtn").onclick = () => add({ kind: "text", title: $("#addTitle").value, text: $("#addText").value });
   $("#addFileBtn").onclick = async () => { for (const f of $("#addFile").files) await add({ kind: "file", filename: f.name, data: await fileToB64(f) }); };
   $("#recodeAll").onclick = (ev) => startRecode(c.id, null, ev.currentTarget);
-  $("#srcRefresh").onclick = () => tabSources(c, body);
-  $("#srcSort").onchange = (ev) => { SRC_SORT = ev.target.value; try { localStorage.setItem("wfd_src_sort", SRC_SORT); } catch (e) {} tabSources(c, body); };
-  $$("[data-open]", body).forEach((b) => (b.onclick = () => openSource(+b.dataset.open)));
+  $("#srcRefresh").onclick = rerender;
+  $("#srcSort").onchange = (ev) => { SRC_SORT = ev.target.value; try { localStorage.setItem("wfd_src_sort", SRC_SORT); } catch (e) {} rerender(); };
+  [["fType", "type"], ["fRel", "rel"], ["fContent", "content"], ["fLang", "lang"], ["fSel", "sel"], ["fRun", "run"]].forEach(([id, k]) => ($("#" + id).onchange = (ev) => { SRC_FILTER[k] = ev.target.value; rerender(); }));
+  $("#fQ").onchange = (ev) => { SRC_FILTER.q = ev.target.value.trim(); rerender(); };
+  $("#fClear").onclick = () => { Object.keys(SRC_FILTER).forEach((k) => (SRC_FILTER[k] = "")); rerender(); };
+  $$("[data-grp]", body).forEach((b) => (b.onclick = () => { SRC_OPEN["g" + b.dataset.grp] = SRC_OPEN["g" + b.dataset.grp] === false; rerender(); }));
+  $$("[data-vers]", body).forEach((b) => (b.onclick = () => { SRC_OPEN["v" + b.dataset.vers] = !SRC_OPEN["v" + b.dataset.vers]; rerender(); }));
+  $$("[data-open]", body).forEach((b) => (b.onclick = (ev) => { ev.preventDefault(); openSource(+b.dataset.open); }));
+  $$("[data-hist]", body).forEach((b) => (b.onclick = async (ev) => {
+    ev.preventDefault();
+    const h = await api("GET", `/api/sources/${b.dataset.hist}/history`);
+    await askDialog({ title: `S${b.dataset.hist} — ${L("修改记录", "Change history")}`, okText: t("close"), cancelText: t("close"),
+      body: h.length ? `<table class="small"><thead><tr><th>${L("时间", "When")}</th><th>${L("字段", "Field")}</th><th>${L("原值", "Before")}</th><th>${L("新值", "After")}</th><th>${L("方式", "By")}</th><th>${L("原因", "Reason")}</th></tr></thead><tbody>${h.map((x) => `<tr><td>${fmtTime(x.at)}</td><td>${esc(x.field)}</td><td>${esc(x.old_value ?? "—")}</td><td>${esc(x.new_value ?? "—")}</td><td>${esc(x.basis === "human" ? (x.changed_by || L("复核者", "reviewer")) : L("规则 ", "rule ") + (x.rule_version || "") + (x.changed_by ? " · " + x.changed_by : ""))}</td><td>${esc(x.reason || "")}</td></tr>`).join("")}</tbody></table>` : `<p class="small muted">${L("还没有修改记录。", "No changes recorded yet.")}</p>` });
+  }));
+  if ($("#srPreview")) $("#srPreview").onclick = async (ev) => {
+    const btn = ev.currentTarget;  // currentTarget is null after an await
+    busy(btn, true, L("正在计算…", "Calculating…"));
+    let d;
+    try { d = await api("GET", `/api/cases/${c.id}/source_review`); } catch (e) { toast(e.message, true); busy(btn, false); return; }
+    busy(btn, false);
+    const ex = Object.entries(d.examples || {}).map(([k, xs]) => `<div style="margin-top:6px"><b>${esc(k)}</b>${xs.map((x) => `<div class="small">${esc(x.source)} ${esc(x.title)}: <span class="muted">${esc(String(x.before ?? "—"))}</span> → <b>${esc(String(x.after ?? "—"))}</b>${x.reason ? `<div class="muted">${esc(x.reason)}</div>` : ""}</div>`).join("")}</div>`).join("");
+    const ok = await askDialog({ title: L("重新评估已保存的来源 — 预览", "Reassess saved sources — preview"), okText: L("应用这些修改", "Apply these changes"), cancelText: L("取消", "Cancel"),
+      body: `<p class="small">${esc(d.note)}</p><p class="small">${L("规则版本", "Rule version")} ${esc(d.rule_version)} · ${d.sources_changing} / ${d.sources} ${L("条来源会改变", "sources would change")} · ${L("保留的人工标签", "human labels kept")}: ${L("类型", "type")} ${d.human_labels_kept.type}, ${L("相关性", "relevance")} ${d.human_labels_kept.relevance}</p>
+        <ul class="small">${Object.entries(d.changes).map(([k, n]) => `<li>${esc(k)}: <b>${n}</b></li>`).join("") || `<li>${L("没有需要修改的", "Nothing to change")}</li>`}</ul>
+        ${d.analyses_to_review.length ? `<div class="callout warn small">${L("这些已完成的分析用到了现在被判定为“没有可用正文”的来源，请复核（不会重新运行，也不会改动结论）：", "These finished analyses used sources now found to have no usable text — please review them (they are not rerun or rewritten):")} ${d.analyses_to_review.map((f) => `run ${f.run} (${esc(f.sources.join(", "))})`).join("; ")}</div>` : ""}
+        <div style="max-height:320px;overflow:auto">${ex}</div>` });
+    if (!ok) return;
+    try { const r = await api("POST", `/api/cases/${c.id}/source_review`, { confirm: true }); toast(L("已应用；每处修改都已记录。", "Applied; every change was recorded.") + ` (${r.sources_changing})`); rerender(); }
+    catch (e) { toast(e.message, true); }
+  };
   const showAffected = (r) => { if (r.affected_variables && r.affected_variables.length) { $("#affBox").innerHTML = `<div class="callout warn">${t("affected")}: <span class="mono">${esc(r.affected_variables.join(", "))}</span> <button class="small" id="reAff">${t("reanalyze_affected")}</button></div>`; $("#reAff").onclick = () => startRecode(c.id, r.affected_variables); } };
   $$("[data-excl]", body).forEach((b) => (b.onclick = async () => {
     let reason = "";
@@ -1019,10 +1135,10 @@ async function tabSources(c, body) {
       if (reason === null) return;
     }
     const r = await api("PATCH", `/api/sources/${b.dataset.excl}`, { excluded: b.dataset.on === "1", reason });
-    await tabSources(c, body); showAffected(r);
+    await rerender(); showAffected(r);
   }));
-  $$("[data-rel]", body).forEach((s) => (s.onchange = async () => { if (!s.value) return; const r = await api("PATCH", `/api/sources/${s.dataset.rel}`, { relevance_status: s.value }); await tabSources(c, body); showAffected(r); }));
-  $$("[data-type]", body).forEach((s) => (s.onchange = async () => { await api("PATCH", `/api/sources/${s.dataset.type}`, { source_type: s.value }); toast(t("saved")); if (SRC_SORT === "type") await tabSources(c, body); }));
+  $$("[data-rel]", body).forEach((s) => (s.onchange = async () => { if (!s.value) return; const r = await api("PATCH", `/api/sources/${s.dataset.rel}`, { relevance_status: s.value }); await rerender(); showAffected(r); }));
+  $$("[data-type]", body).forEach((s) => (s.onchange = async () => { await api("PATCH", `/api/sources/${s.dataset.type}`, { source_type: s.value }); toast(t("saved")); await rerender(); }));
 }
 
 // ------------------------------------------------------------------ search log

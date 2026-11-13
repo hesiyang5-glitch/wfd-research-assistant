@@ -1,4 +1,5 @@
-"""Sources-tab ordering (D-041, 2026-11-13, display only). Run:  python3 -m tests.test_sources_sort
+"""Sources-tab ordering (D-041, 2026-11-13, display only; D-046: always grouped by document type, the order choice only
+orders sources INSIDE each group). Run:  python3 -m tests.test_sources_sort
 
 Uses a COPY of the legacy fixture database with seven extra source rows written straight into the copy, fake keys and a
 dead proxy, so nothing can leave the machine and nothing is billed. Checks:
@@ -33,8 +34,9 @@ FAILS: list[str] = []
 EXTRA = [("media", None, 140, "ok"), ("government", 12, 40, "ok"), ("aar", 80, 300, "ok"), ("government", None, 26, "ok"),
          ("academic", 5, 10, "ok"), ("unknown", None, 500, "ok"), ("media", None, 0, "failed")]
 BY_TYPE = [4, 1, 3, 5, 6, 2, 8, 7]
-BY_LENGTH = [4, 3, 6, 7, 2, 5, 1, 8]
-BY_FOUND = [1, 2, 3, 4, 5, 6, 7, 8]
+BY_LENGTH = [4, 1, 3, 5, 6, 2, 8, 7]  # D-046: within each type group (was across all sources)
+BY_FOUND = [1, 4, 3, 5, 6, 2, 8, 7]  # D-046: S-number order inside each group
+API_ORDER = [1, 2, 3, 4, 5, 6, 7, 8]
 AFTER_RETYPE = [4, 3, 5, 6, 2, 1, 8, 7]  # S1 changed from aar to media
 
 
@@ -45,7 +47,7 @@ def check(name, cond, detail=""):
 
 
 def order(pg):
-    return [int(x[1:]) for x in pg.eval_on_selector_all("#srcTable tbody tr td:first-child", "els => els.map(e => e.innerText.trim())")]
+    return [int(x[1:]) for x in pg.eval_on_selector_all("#srcTable tr[data-sid] td:first-child", "els => els.map(e => e.innerText.trim())")]
 
 
 def main():
@@ -86,20 +88,20 @@ def main():
             print("\n[1-3] The three orders")
             check("1 default is type priority: AAR first, longer first inside a type", pg.input_value("#srcSort") == "type" and order(pg) == BY_TYPE, order(pg))
             pg.select_option("#srcSort", "length"); pg.wait_for_timeout(500)
-            check("2 length: page count, then passage count; failed source last", order(pg) == BY_LENGTH, order(pg))
+            check("2 length: page count, then passage count, inside each type group", order(pg) == BY_LENGTH, order(pg))
             pg.select_option("#srcSort", "found"); pg.wait_for_timeout(500)
-            check("3 order found is the S-number order", order(pg) == BY_FOUND, order(pg))
+            check("3 order found is the S-number order inside each type group", order(pg) == BY_FOUND, order(pg))
 
             print("\n[4-5] Display only")
             check("4 changing the order sent no write request", not writes, writes)
             pg.select_option("#srcSort", "length"); pg.wait_for_timeout(400)
             pg.reload(); pg.wait_for_selector("#srcSort"); pg.wait_for_timeout(400)
             check("4b the choice persists in this browser after reload", pg.input_value("#srcSort") == "length" and order(pg) == BY_LENGTH, order(pg))
-            check("5 the API still returns sources by id", api_ids() == BY_FOUND, api_ids())
+            check("5 the API still returns sources by id", api_ids() == API_ORDER, api_ids())
             con = sqlite3.connect(d / "wfd.sqlite3")
             now = con.execute("SELECT id, source_type, n_pages, n_passages FROM sources ORDER BY id").fetchall(); con.close()
             check("5b stored rows are unchanged by sorting", now == base + [(i, e[0], e[1], e[2]) for i, e in enumerate(EXTRA, start=2)], now)
-            check("5c every row keeps its own S number and title", pg.inner_text("#srcTable tbody tr:first-child td:nth-child(2) b") == "Sort test source 4")
+            check("5c every row keeps its own S number and title", pg.inner_text("#srcTable tr[data-sid] >> nth=0 >> td:nth-child(2) b") == "Sort test source 4")
 
             print("\n[6] Correcting a type re-sorts")
             pg.select_option("#srcSort", "type"); pg.wait_for_timeout(500)
@@ -111,7 +113,7 @@ def main():
             print("\n[7] Chinese labels; no errors")
             pg.evaluate("localStorage.setItem('wfd_lang','zh')"); pg.reload(); pg.wait_for_selector("#srcSort"); pg.wait_for_timeout(400)
             txt = pg.inner_text("#srcSort")
-            check("7 the sort options are shown in Chinese", "类型优先" in txt and "篇幅" in txt and "找到顺序" in txt, txt)
+            check("7 the sort options are shown in Chinese", "相关性优先" in txt and "篇幅" in txt and "找到顺序" in txt, txt)
             check("7b no JavaScript errors", not errors, errors)
             ctx.close(); b.close()
     finally:

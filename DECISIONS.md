@@ -449,3 +449,55 @@ the run's evidence is unchanged.
 the coding provider(s), validated like the first form.
 **Usable evidence.** Analysis requires at least one passage from a read, selected, non-duplicate, non-irrelevant source;
 otherwise no job (API) and no coding call (pipeline).
+
+## D-046 · 2026-11-13 · Source review: content validity, relevance tiers, document type, grouped Sources page — Proposed (branch `feature/source-review`, not merged)
+**Scope (owner spec).** Reorganise and reassess sources ALREADY SAVED. No search, no query change, no fetch or
+download, no external model or service (also not for classification), no coding run, no deletion of a source, no change
+to human corrections, historical snapshots or approved values. Rules are local and deterministic (`app/source_review.py`,
+rule version `SR-2026-11-13.1`).
+**Three separate labels.** (1) *Content* — is the saved text a usable document? `full_text` (≥700 words, or ≥3 pages and
+≥400 words), `partial` (a usable excerpt, abstract or short page), `no_usable_text` (the saved paragraphs are mostly
+loading errors, JavaScript / bot checks, login / subscription / cookie walls, 404 / 403 pages — English, German,
+French, Spanish markers — or fewer than 12 substantive words), `not_retrieved`, `interrupted` (retrieval stopped; the
+recorded reason is kept verbatim). (2) *Incident relevance* — Directly relevant / Background / Needs review /
+Irrelevant. (3) *Document type* — by the nature of the document, not by its domain.
+**Content rules.** `no_usable_text` sources are excluded from evidence (`retrieval.load_case_passages`,
+`research.usable_passage_count`) and from exact / near de-duplication, so identical error pages are no longer
+"duplicates" of each other or of a real document. Their relevance is "Needs review" (never "Irrelevant"); a title or
+search-snippet hint is labelled *preliminary*.
+**Relevance rules.** Place tokens come from the case location (country names and generic words such as valley / county
+removed) plus automatic aliases that start with a place word; hazard terms from the hazard word lists (incl. local
+languages). Directly relevant: place and hazard in the same passage at least twice AND (incident year mentioned or ≥4
+such passages), or once with the year and ≥3 hazard mentions. Background: place and hazard both present but not
+enough co-occurrence, or a general topic document. Irrelevant: no place word in ≥150 words, or place words but no hazard
+word in ≥200 words (e.g. a tourism page). Otherwise Needs review. A publication date is never treated as the incident
+date; a place-name match alone is never "relevant". Genuinely irrelevant sources stay irrelevant. Reasons state the
+counts ("keyword match: place 2/2, hazard terms 14, incident year yes, together in 5 passages").
+**Type precedence (first match wins).** Academic & technical (DOI, journal / repository hosts and markers such as
+treesearch or publishup, "journal of", "proceedings", article structure; subtypes journal article / preprint / thesis
+/ technical report / repository copy / research paper) → social media → news (known news hosts) → after-action report
+(AAR wording in the TITLE only) → legislative → regulatory → government (official hosts) → NGO / international
+technical bodies → Other / unclassified (encyclopedia, tourism, anything else). Unknown hosts are no longer "media" by
+default. Group order on the page is the project's source-priority convention, not a ranking of truthfulness.
+**Topic tags** (warning, evacuation, forecast, damage, …) are hints for browsing only; never coding.
+**Human labels win.** A type or relevance set by a reviewer (`type_basis` / `relevance_basis` = human, or a reason
+starting "set by reviewer") is never changed. A stored type that the old automatic rule cannot reproduce from the saved
+URL / title / text is treated as a probable earlier human correction and kept (recorded as such) — this may keep some
+old automatic labels too; the reviewer can change them.
+**Bulk changes need a dry run.** `GET /api/cases/{id}/source_review` returns affected counts and before / after examples
+and lists finished analyses whose evidence snapshot used a source now judged unusable (flag only; nothing is rerun or
+rewritten). `POST` with `{"confirm": true}` applies (refused while a job runs). Every change is written to
+`source_label_history` with old value, new value, rule version, reason and who applied it. Selections (`excluded`) are
+never changed. New sources saved by later searches get the same assessment at save time.
+**Sources page.** Header with count scope and run selector; summary table separating case-wide counts, the selected
+run and what is shown (different denominators explained); filters (type group, relevance, retrieval quality, language,
+selected / eligible, run, title / publisher keyword) and in-group order change the VIEW only; export always states
+"all selected sources" or "all sources incl. deselected" and ignores filters (export semantics unchanged); collapsible
+type groups with counts, within-group order relevance tier → usable text → length; document versions (same DOI, same
+long title, or same usable text) shown under one representative row; "Selected" shown separately from "Eligible for
+analysis"; diagnostics (found via, run, redirect, reasons, OCR, snippet, history) in an expandable Details. Red = a
+retrieval problem, never "irrelevant"; relevance badges are neutral (a topic match is not accuracy); green "Document
+text available" does not mean accurate or complete.
+**Migration.** Additive `2026-11-13-source-review`: nine nullable `sources` columns and table `source_label_history`.
+Existing rows keep their values until a reviewer applies the reassessment; the page shows "not yet checked by current
+rules" until then.

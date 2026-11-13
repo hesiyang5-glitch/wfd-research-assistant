@@ -423,13 +423,14 @@ def main():
             pg.click("#dlgCancel")
             pg.click("text=View sources")
             pg.wait_for_selector("#srcExport")
-            check("Sources tab offers the export", "Source list (Excel)" in pg.inner_text("#srcExport"))
+            check("Sources tab offers the export", "source list (Excel)" in pg.inner_text("#srcExport"))  # D-046 wording
             ctext = pg.inner_text("#srcCounts")
             check("Sources tab shows discovered / retrieved / relevant / failed / selected / usable counts",
-                  all(x in ctext for x in ("Discovered", "Retrieved", "Relevant", "Failed / blocked", "Selected", "Usable for analysis")), ctext)
+                  all(x in ctext for x in ("Discovered", "Saved sources", "Document text available", "Not retrieved / blocked", "Directly relevant", "Selected · eligible for analysis")), ctext)
+            pg.eval_on_selector_all("#srcTable details", "els => els.forEach(e => e.open = true)")  # D-046: diagnostics are in expandable details
             stext = pg.inner_text("#srcTable")
             check("blocked source visible, marked not retrieved / not evidence, snippet labelled as snippet",
-                  "not retrieved" in stext and "not used as evidence" in stext and "Search-result snippet — not retrieved text" in stext)
+                  "Not retrieved" in stext and "Not used in analysis" in stext and "Search-result snippet — not retrieved text" in stext)
             check("original link and search run shown", "Original link" in stext and "search run" in stext)
             with pg.expect_download() as dl:
                 pg.click("#srcXlsx button")

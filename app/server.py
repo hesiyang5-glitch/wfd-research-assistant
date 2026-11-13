@@ -718,16 +718,58 @@ def api_estimate_preview(h, query, **_):
 
 # ----------------------------------------------------------------------------- sources
 @route("GET", "/api/cases/{cid}/source_counts")
-def api_source_counts(h, cid, **_):
+def api_source_counts(h, cid, query=None, **_):
     """D-045: discovered (distinct result addresses from searches), retrieved, relevant / uncertain / irrelevant,
-    failed or blocked, selected (not deselected) and usable for analysis. Read-only: never starts search or analysis."""
+    failed or blocked, selected (not deselected) and usable for analysis. Read-only: never starts search or analysis.
+    D-046: ?run=<job id> gives the same counts for one search run; the case-wide counts are always included."""
     from .export import source_counts
-    return source_counts(int(cid))
+    run = ((query or {}).get("run") or [None])[0]
+    out = {**source_counts(int(cid)), "scope": "case"}
+    if run and str(run).isdigit():
+        out["run"] = {**source_counts(int(cid), int(run)), "scope": f"run {run}"}
+    out["runs"] = [r["job_id"] for r in db.q("SELECT DISTINCT job_id FROM sources WHERE case_id=? AND job_id IS NOT NULL ORDER BY job_id",
+                                              (int(cid),))]
+    out["rule_version_current"] = __import__("app.source_review", fromlist=["x"]).RULE_VERSION
+    out["not_on_current_rules"] = db.q1("SELECT COUNT(*) n FROM sources WHERE case_id=? AND COALESCE(rule_version,'')!=?",
+                                        (int(cid), out["rule_version_current"]))["n"]
+    return out
 
 
 @route("GET", "/api/cases/{cid}/sources")
 def api_sources(h, cid, **_):
-    return db.q("SELECT * FROM sources WHERE case_id=? ORDER BY id", (int(cid),))
+    """Read-only. Adds `eligible` (would be used by the next analysis: read, usable text, selected, not a duplicate,
+    not irrelevant, has passages) so the page never has to guess it (D-046)."""
+    rows = db.q("SELECT * FROM sources WHERE case_id=? ORDER BY id", (int(cid),))
+    for s in rows:
+        s["eligible"] = bool(s["fetch_status"] == "ok" and not s["excluded"] and not s["duplicate_of"]
+                             and s["relevance_status"] != "irrelevant" and (s.get("n_passages") or 0) > 0
+                             and (s.get("content_status") or "full_text") in ("full_text", "partial"))
+    return rows
+
+
+@route("GET", "/api/cases/{cid}/source_review")
+def api_source_review_preview(h, cid, **_):
+    """D-046 dry run: what the current rules would change for this case's saved sources. Changes nothing."""
+    from .source_review import reassess_case
+    return reassess_case(int(cid), apply=False)
+
+
+@route("POST", "/api/cases/{cid}/source_review")
+def api_source_review_apply(h, cid, body, **_):
+    """D-046 apply (after a dry run): automatic labels only; human labels, selections and analyses untouched;
+    every change recorded in source_label_history."""
+    if not body.get("confirm"):
+        raise ApiError(400, "Run the preview first and confirm to apply.")
+    active = db.q1("SELECT id FROM jobs WHERE case_id=? AND status IN ('queued','running')", (int(cid),))
+    if active:
+        raise ApiError(409, "A task is running for this case; apply the reassessment when it has finished.")
+    from .source_review import reassess_case
+    return reassess_case(int(cid), apply=True, actor=getattr(h, "user", "") or "")
+
+
+@route("GET", "/api/sources/{sid}/history")
+def api_source_history(h, sid, **_):
+    return db.q("SELECT * FROM source_label_history WHERE source_id=? ORDER BY id", (int(sid),))
 
 
 @route("POST", "/api/cases/{cid}/sources")
@@ -752,11 +794,19 @@ def api_patch_source(h, sid, body, **_):
     if "excluded" in body:
         upd["excluded"] = 1 if body["excluded"] else 0
         upd["exclude_reason"] = body.get("reason", "")
-    if body.get("relevance_status") in ("relevant", "uncertain", "irrelevant"):
+    from .source_review import record_human
+    if body.get("relevance_status") in ("relevant", "background", "uncertain", "irrelevant"):
         upd["relevance_status"] = body["relevance_status"]
         upd["relevance_reason"] = f"set by reviewer: {body.get('reason','')}".strip()
+        upd["relevance_basis"] = "human"  # D-046: rules never change it again
+        record_human(int(sid), "relevance_status", body["relevance_status"], getattr(h, "user", ""), body.get("reason", ""))
     if body.get("source_type"):
         upd["source_type"] = body["source_type"]
+        upd["type_basis"] = "human"
+        upd["type_reason"] = f"set by reviewer{(': ' + body['reason']) if body.get('reason') else ''}"
+        record_human(int(sid), "source_type", body["source_type"], getattr(h, "user", ""), body.get("reason", ""))
+    if "excluded" in upd:
+        record_human(int(sid), "excluded", upd["excluded"], getattr(h, "user", ""), upd.get("exclude_reason", ""))
     db.update("sources", int(sid), upd)
     affected = []
     if upd.get("excluded") == 1 or upd.get("relevance_status") == "irrelevant":

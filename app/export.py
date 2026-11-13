@@ -426,26 +426,43 @@ def json_export(case_id: int, include_unreviewed=False) -> dict:
 SOURCE_TYPE_LABEL = {"aar": "After-action report", "government": "Government / official", "regulatory": "Regulatory",
                      "legislative": "Legislative", "academic": "Academic", "ngo_technical": "Technical / NGO report",
                      "media": "News media", "unknown": "Other / unknown"}
-SOURCE_COLUMNS = ["Rank", "Source ID", "Title", "Source type", "Publisher", "Domain", "Published date", "Language",
-                  "Original URL", "Final URL", "Retrieved at", "Retrieval status", "Retrieval problem", "Pages", "Passages",
-                  "Relevance", "Relevance reason", "Duplicate of", "Near-duplicate of", "Selected for analysis",
-                  "Deselection reason", "Usable for analysis", "Search run", "Found via"]
+SOURCE_COLUMNS = ["Rank", "Source ID", "Title", "Source type", "Document subtype", "Type set by", "Publisher", "Domain",
+                  "Published date", "Language", "Original URL", "Final URL", "Retrieved at", "Retrieval status",
+                  "Retrieval problem", "Content", "Content note", "Pages", "Passages", "Relevance", "Relevance set by",
+                  "Relevance reason", "Topic tags (non-authoritative)", "Document group", "Duplicate of", "Near-duplicate of",
+                  "Selected for analysis", "Deselection reason", "Usable for analysis", "Search run", "Found via"]
+CONTENT_LABEL = {"full_text": "document text available", "partial": "partial content / abstract or short text",
+                 "no_usable_text": "no usable document text", "not_retrieved": "not retrieved", "interrupted": "retrieval incomplete"}
+RELEVANCE_LABEL = {"relevant": "directly relevant", "background": "background", "uncertain": "needs review",
+                   "irrelevant": "irrelevant", "unchecked": "not assessed"}
 
 
-def source_counts(case_id: int) -> dict:
+def _eligible(s: dict) -> bool:
+    return bool(s.get("fetch_status") == "ok" and not s.get("excluded") and not s.get("duplicate_of")
+                and s.get("relevance_status") != "irrelevant" and (s.get("n_passages") or 0) > 0
+                and (s.get("content_status") or "full_text") in ("full_text", "partial"))
+
+
+def source_counts(case_id: int, job_id: int | None = None) -> dict:
     from .research import usable_passage_count
-    srcs = db.q("SELECT fetch_status, relevance_status, excluded, duplicate_of, n_passages FROM sources WHERE case_id=?", (case_id,))
+    srcs = db.q("SELECT fetch_status, relevance_status, excluded, duplicate_of, n_passages, content_status FROM sources "
+                "WHERE case_id=?" + (" AND job_id=?" if job_id else ""), (case_id, job_id) if job_id else (case_id,))
     ok = [s for s in srcs if s["fetch_status"] == "ok"]
-    usable = [s for s in ok if not s["excluded"] and not s["duplicate_of"] and s["relevance_status"] != "irrelevant"
-              and (s["n_passages"] or 0) > 0]
-    return {"discovered": db.q1("SELECT COUNT(DISTINCT url) n FROM search_results WHERE case_id=?", (case_id,))["n"],
+    usable = [s for s in srcs if _eligible(s)]
+    disc = (db.q1("SELECT COUNT(DISTINCT r.url) n FROM search_results r JOIN search_queries q ON q.id=r.query_id "
+                  "WHERE r.case_id=? AND q.job_id=?", (case_id, job_id)) if job_id else
+            db.q1("SELECT COUNT(DISTINCT url) n FROM search_results WHERE case_id=?", (case_id,)))["n"]
+    return {"discovered": disc,
             "stored": len(srcs), "retrieved": len(ok), "failed": len(srcs) - len(ok),
             "relevant": sum(1 for s in ok if s["relevance_status"] == "relevant"),
             "uncertain": sum(1 for s in ok if s["relevance_status"] == "uncertain"),
             "irrelevant": sum(1 for s in ok if s["relevance_status"] == "irrelevant"),
             "duplicates": sum(1 for s in ok if s["duplicate_of"]),
             "selected": sum(1 for s in srcs if not s["excluded"]), "usable_for_analysis": len(usable),
-            "usable_passages": usable_passage_count(case_id)}
+            "background": sum(1 for s in ok if s["relevance_status"] == "background"),
+            "text_available": sum(1 for s in ok if (s["content_status"] or "full_text") in ("full_text", "partial")),
+            "no_usable_text": sum(1 for s in ok if s["content_status"] == "no_usable_text"),
+            "usable_passages": usable_passage_count(case_id) if not job_id else None}
 
 
 def ranked_sources(case_id: int, include_all: bool = False) -> list[dict]:
@@ -456,7 +473,10 @@ def ranked_sources(case_id: int, include_all: bool = False) -> list[dict]:
     rows = db.q("SELECT * FROM sources WHERE case_id=?", (case_id,))
     if not include_all:
         rows = [s for s in rows if not s["excluded"]]
-    rows.sort(key=lambda s: (TYPE_PRIORITY.get(s["source_type"], 5), -(s.get("n_pages") or 0), -(s.get("n_passages") or 0), s["id"]))
+    rel = {"relevant": 0, "background": 1, "uncertain": 2, "unchecked": 2, "irrelevant": 3}  # D-046 within-group order
+    usable = lambda s: 0 if (s.get("fetch_status") == "ok" and (s.get("content_status") or "full_text") in ("full_text", "partial")) else 1
+    rows.sort(key=lambda s: (TYPE_PRIORITY.get(s["source_type"], 5), rel.get(s.get("relevance_status"), 2), usable(s),
+                             -(s.get("n_pages") or 0), -(s.get("n_passages") or 0), s["id"]))
     return rows
 
 
@@ -464,14 +484,20 @@ def _source_row(rank: int, s: dict) -> list:
     from urllib.parse import urlparse
     when = dt.datetime.fromtimestamp(s["retrieved_at"]).isoformat(timespec="seconds") if s.get("retrieved_at") else ""
     ok = s.get("fetch_status") == "ok"
-    usable = ok and not s.get("excluded") and not s.get("duplicate_of") and s.get("relevance_status") != "irrelevant" \
-        and (s.get("n_passages") or 0) > 0
+    usable = _eligible(s)
+    tags = ", ".join(json.loads(s.get("topic_tags") or "[]")).replace("_", " ")
+    cs = s.get("content_status") or ("full_text" if ok else "not_retrieved")
     return [rank, f"S{s['id']}", s.get("title") or "", SOURCE_TYPE_LABEL.get(s.get("source_type"), s.get("source_type") or ""),
+            (s.get("type_subtype") or "").replace("_", " "), {"human": "reviewer", "auto": "automatic"}.get(s.get("type_basis"), "automatic (earlier rule)"),
             s.get("publisher") or "", urlparse(s.get("url") or s.get("final_url") or "").netloc.removeprefix("www."),
             s.get("published_date") or "", s.get("language") or "",
             s.get("url") or "", s.get("final_url") if s.get("final_url") and s.get("final_url") != s.get("url") else "", when,
             "retrieved" if ok else f"not retrieved ({s.get('fetch_status') or 'unknown'})", s.get("fetch_error") or "",
-            s.get("n_pages") or "", s.get("n_passages") or 0, s.get("relevance_status") or "", s.get("relevance_reason") or "",
+            CONTENT_LABEL.get(cs, cs) + ("" if s.get("content_status") else " (not yet checked by content rules)"), s.get("content_reason") or "",
+            s.get("n_pages") or "", s.get("n_passages") or 0,
+            RELEVANCE_LABEL.get(s.get("relevance_status"), s.get("relevance_status") or ""),
+            {"human": "reviewer", "auto": "automatic"}.get(s.get("relevance_basis"), "automatic (earlier rule)"),
+            s.get("relevance_reason") or "", tags, s.get("doc_group") or "",
             f"S{s['duplicate_of']}" if s.get("duplicate_of") else "", f"S{s['near_duplicate_of']}" if s.get("near_duplicate_of") else "",
             "no" if s.get("excluded") else "yes", s.get("exclude_reason") or "", "yes" if usable else "no",
             f"run {s['job_id']}" if s.get("job_id") else ("added by user" if s.get("origin") in ("manual_url", "upload", "text") else ""),
@@ -524,11 +550,17 @@ def sources_xlsx(case_id: int, include_all: bool = False) -> bytes:
                  ("Counts", f"discovered {counts['discovered']} · retrieved {counts['retrieved']} · relevant {counts['relevant']} · "
                             f"failed/blocked {counts['failed']} · selected {counts['selected']} · usable for analysis "
                             f"{counts['usable_for_analysis']}"),
-                 ("Order", "Source type priority: after-action reports; government / regulatory; legislative; academic / "
-                           "technical; news media; other. Then length, then order found."),
+                 ("Order", "Project source-priority convention: after-action reports; government / regulatory; legislative; "
+                           "academic / technical; news media; other / unclassified. Within each: directly relevant, background, "
+                           "needs review, irrelevant; then sources with usable text; then length; then order found."),
                  ("Note", "Source type is assigned automatically from the address and title and can be corrected on the "
                           "Sources tab. Type priority is a way to sort, not proof that a source is accurate."),
-                 ("Note", "Relevance is an automatic word-match check against the incident name, place and year (no AI)."),
+                 ("Note", "Relevance (directly relevant / background / needs review / irrelevant) is an automatic local check of "
+                          "the saved text for the incident's place, hazard and year (no AI); it is only assessed when usable "
+                          "document text was saved. Keyword counts are match measures, not confidence scores."),
+                 ("Note", "Content: 'no usable document text' means the saved text was a site message (loading error, login, "
+                          "bot check) or empty — the original document may still be relevant."),
+                 ("Note", "Source types follow the project's source-priority convention; they are not a ranking of truthfulness."),
                  ("Note", "Language is filled only when the web page declares it."),
                  ("Note", "This file lists sources only. It contains no coding suggestions or reviewed values.")]:
         wa.append([k, v])

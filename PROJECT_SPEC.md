@@ -42,6 +42,19 @@ citations, and leaves every final decision to a human reviewer.
 | Analyze selected sources: usable-content check, saved text, no new search, frozen evidence snapshot per run, new run for a new selection, no duplicate jobs, failure keeps search results | TESTED offline (manual-mode coding, no model) |
 | Sources export labelled as source-search results; selection, run id, language, domain; usage split search vs coding with unknown ≠ $0 | TESTED offline |
 
+## 2b. Source review and Sources page (D-046)
+
+| Requirement | Status |
+|---|---|
+| Content validity, incident relevance and document type are separate labels | TESTED offline |
+| Error / login / bot-check pages → "No usable document text", needs review, out of evidence and dedup | TESTED offline |
+| Relevance tiers with stated reasons; publication date ≠ incident date; place name alone not relevant | TESTED offline |
+| Type by document nature (AAR, government / regulatory, legislative, academic & technical with subtypes, news, other); no media default | TESTED offline |
+| Human corrections never overwritten; automatic vs human shown | TESTED offline |
+| Bulk reassessment only after a dry run with counts and examples; changes recorded with old values and reasons | TESTED offline; not yet run on live data |
+| Grouped Sources page, view-only filters, Selected vs Eligible, export states what it contains | TESTED offline (browser) |
+| No search, retrieval, external service or model call in any of the above | TESTED offline (sockets blocked) |
+
 ## 3. Automatic multi-round source discovery
 
 | Requirement | Status |

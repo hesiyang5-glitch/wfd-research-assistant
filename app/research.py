@@ -401,8 +401,12 @@ def save_source(ctx_case_id: int, meta: dict, extracted: dict | None, fetch_stat
         row["fetch_status"] = "failed"
         row["fetch_error"] = "no extractable text" + (f" ({extracted.get('ocr_status')})" if extracted.get("ocr_status") else "")
         return db.insert("sources", row)
-    # exact duplicate?
-    dup = db.q1("SELECT id FROM sources WHERE case_id=? AND content_hash=? AND duplicate_of IS NULL", (ctx_case_id, row["content_hash"]))
+    # exact duplicate? (D-046: only between sources whose saved text is usable — never through shared error pages)
+    from .source_review import USABLE_CONTENT, content_quality
+    q_new, _ = content_quality({**row, "fetch_status": "ok"}, [p for pg in extracted["pages"] for p in pg["paragraphs"]])
+    dup = None if q_new not in USABLE_CONTENT else db.q1(
+        "SELECT id FROM sources WHERE case_id=? AND content_hash=? AND duplicate_of IS NULL "
+        "AND COALESCE(content_status,'full_text') IN ('full_text','partial')", (ctx_case_id, row["content_hash"]))
     if dup:
         row["duplicate_of"] = dup["id"]
     sid = db.insert("sources", row)
@@ -414,9 +418,11 @@ def save_source(ctx_case_id: int, meta: dict, extracted: dict | None, fetch_stat
     dropped = passages[0].get("dropped_boilerplate", 0) if passages else 0
     db.update("sources", sid, {"n_passages": len(passages),
                                "ocr_status": (row.get("ocr_status") or "") + (f"; {dropped} boilerplate passage(s) (ads/navigation) not indexed" if dropped else "")})
-    if not dup:
+    if not dup and q_new in USABLE_CONTENT:
         mark_near_duplicates(ctx_case_id, sid, full)
     assess_relevance(ctx_case_id, sid, full, terms)
+    from .source_review import assess_new_source
+    assess_new_source(sid, ctx_case_id, terms)  # D-046 rules: content validity, relevance, document type (local only)
     return sid
 
 
@@ -437,7 +443,7 @@ def mark_near_duplicates(case_id: int, sid: int, full: str):
     _shingle_cache[sid] = mine
     best, best_id = 0.0, None
     for o in db.q("SELECT id FROM sources WHERE case_id=? AND id<>? AND fetch_status='ok' AND duplicate_of IS NULL "
-                  "AND near_duplicate_of IS NULL", (case_id, sid)):
+                  "AND near_duplicate_of IS NULL AND COALESCE(content_status,'full_text') IN ('full_text','partial')", (case_id, sid)):
         c = containment(mine, source_shingles(o["id"]))
         if c > best:
             best, best_id = c, o["id"]
@@ -842,7 +848,8 @@ def usable_passage_count(case_id: int) -> int:
     Same filter as retrieval.load_case_passages, which builds the evidence snapshot."""
     return db.q1("""SELECT COUNT(*) n FROM passages p JOIN sources s ON s.id=p.source_id
                     WHERE p.case_id=? AND s.fetch_status='ok' AND s.duplicate_of IS NULL AND s.excluded=0
-                    AND s.relevance_status!='irrelevant'""", (case_id,))["n"]
+                    AND s.relevance_status!='irrelevant'
+                    AND COALESCE(s.content_status,'full_text') IN ('full_text','partial')""", (case_id,))["n"]
 
 
 def finish_search_only(ctx: Ctx):

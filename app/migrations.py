@@ -20,6 +20,14 @@ MIGRATION_ID_2 = "2026-10-05-independent-providers"  # D-036: equal providers, e
 MIGRATION_ID_3 = "2026-10-06-evidence-status"  # D-038: provider-neutral evidence status, separate validation status
 MIGRATION_ID_4 = "2026-11-13-search-only"  # D-045: source language (when declared) and the search run that found it
 ADD_COLUMNS_4 = {"sources": [("language", "TEXT"), ("job_id", "INTEGER")]}
+MIGRATION_ID_5 = "2026-11-13-source-review"  # D-046: content validity, typed/relevance basis, rule version, groups, history
+ADD_COLUMNS_5 = {"sources": [("content_status", "TEXT"), ("content_reason", "TEXT"), ("type_subtype", "TEXT"),
+                             ("type_basis", "TEXT"), ("type_reason", "TEXT"), ("relevance_basis", "TEXT"),
+                             ("rule_version", "TEXT"), ("topic_tags", "TEXT"), ("doc_group", "TEXT")]}
+SOURCE_HISTORY_TABLE = """CREATE TABLE IF NOT EXISTS source_label_history (
+  id INTEGER PRIMARY KEY, source_id INTEGER, case_id INTEGER, field TEXT, old_value TEXT, new_value TEXT, basis TEXT,
+  rule_version TEXT, reason TEXT, changed_by TEXT, at REAL);
+CREATE INDEX IF NOT EXISTS ix_slh_source ON source_label_history(source_id);"""
 
 ADD_COLUMNS = {
     "runs": [("provider", "TEXT"), ("role", "TEXT"), ("group_id", "TEXT"), ("coding_mode", "TEXT"),
@@ -122,7 +130,16 @@ def migrate(c: sqlite3.Connection) -> list[str]:
             if name not in have:
                 c.execute(f"ALTER TABLE {table} ADD COLUMN {name} {typ}")
                 done.append(f"{table}.{name}")
-    for mid, n in ((MIGRATION_ID, n1), (MIGRATION_ID_2, n2 - n1), (MIGRATION_ID_3, n3 - n2), (MIGRATION_ID_4, len(done) - n3)):
+    n4 = len(done)
+    c.executescript(SOURCE_HISTORY_TABLE)
+    for table, cols in ADD_COLUMNS_5.items():
+        have = _cols(c, table)
+        for name, typ in cols:
+            if name not in have:
+                c.execute(f"ALTER TABLE {table} ADD COLUMN {name} {typ}")
+                done.append(f"{table}.{name}")
+    for mid, n in ((MIGRATION_ID, n1), (MIGRATION_ID_2, n2 - n1), (MIGRATION_ID_3, n3 - n2), (MIGRATION_ID_4, n4 - n3),
+                   (MIGRATION_ID_5, len(done) - n4)):
         row = c.execute("SELECT status FROM schema_migrations WHERE id=?", (mid,)).fetchone()
         if not row:
             c.execute("INSERT INTO schema_migrations (id, applied_at, status, note) VALUES (?,?,?,?)",

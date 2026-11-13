@@ -82,6 +82,14 @@ prompts or keys) · `schema_migrations` · `suggestions_provider_archive` (used 
    and role → derived/admin fields computed once → provider comparison.
 7. **Review** — humans accept/edit/clear/defer; exports default to reviewed values.
 
+**Source review (D-046).** `app/source_review.py` assesses each saved source with local rules only: content validity
+(`content_status`), relevance tier, document type + subtype, topic tags, document group. Run at save time for new sources
+and, for existing ones, via `GET/POST /api/cases/{id}/source_review` (dry run / apply with confirm), which writes
+`source_label_history`. Human labels (`type_basis` / `relevance_basis` = human) are never changed. Evidence
+(`retrieval.load_case_passages`, `research.usable_passage_count`) and de-duplication use only `full_text` / `partial`
+content (NULL = not yet checked, treated as before). The Sources page (`tabSources`) groups by type and filters in the
+browser only.
+
 **Run modes (D-045).** `run_mode` in case settings: `search_analyze` (steps 1–7; default for cases and API clients that
 don't send a mode) or `search_only` (steps 1–3, then `research.finish_search_only`: no gap check, no follow-up, no
 coding; case status `sources_ready`). The form defaults to Search only. Analysis can be started later with Re-analyze

@@ -6,6 +6,22 @@ Completed changes, newest first. Commit hashes refer to `hesiyang5-glitch/wfd-re
 
 
 
+## 2026-11-13 — Source review and grouped Sources page (branch `feature/source-review`, not merged) — D-046
+- Content validity separated from relevance and type: saved error / login / bot-check pages become "No usable document
+  text" (needs review, not irrelevant), are left out of evidence and of duplicate detection.
+- Relevance tiers Directly relevant / Background / Needs review / Irrelevant from local word rules with stated counts;
+  publication date not used as incident date; place name alone not enough.
+- Document type by document nature with subtypes; academic / repository copies before government; unknown hosts no
+  longer default to news media; human corrections kept and shown as "human-confirmed".
+- Reassessment of existing sources: dry run (counts, before / after examples, analyses to review) then explicit Apply;
+  every change recorded in `source_label_history` (old / new / rule version / reason / who). Selections untouched.
+- Sources page rebuilt: scope header and run selector, case-wide vs run vs shown counts, view-only filters, collapsible
+  authority groups, document versions, Selected vs Eligible, expandable details and change history; export note states
+  what the file contains.
+- Export: new columns (subtype, set by, content, content note, relevance set by, topic tags, document group).
+- Tests: new `tests/test_source_review.py` (65) and `tests/test_sources_page.py` (38 browser checks);
+  `test_sources_sort` expectations now within groups; `test_search_only` UI wording; schema pins updated.
+
 ## 2026-11-13 — Paused time no longer counts toward the time limit (branch `fix/keyword-quality`, not merged)
 - Live case #12: the job paused at 12:25 after a server restart; Resume at 1:16 stopped at once with "time limit
   (20 min)" after reading 1 source, because the limit counted from the first start, including the pause.

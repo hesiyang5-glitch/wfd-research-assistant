@@ -304,3 +304,10 @@ details summary:hover { color: var(--ink); }
   *, *::before, *::after { transition: none !important; animation: none !important; }
   button:hover:not(:disabled), .chip:hover, .pcard:hover:not(.off) { transform: none; }
 }
+/* D-046 Sources page: collapsible type groups and document versions */
+button.linkish { background: none; border: 0; padding: 2px 0; color: var(--accent); cursor: pointer; font: inherit; box-shadow: none; }
+button.linkish:hover { text-decoration: underline; }
+#srcTable tr.grp-h td { background: var(--soft); border-top: 2px solid var(--line, #ddd); }
+#srcTable tr.alt-version td { opacity: .85; }
+#srcTable tr.alt-version td:nth-child(2) { padding-left: 22px; }
+.callout.warn.small button { margin-left: 6px; }
