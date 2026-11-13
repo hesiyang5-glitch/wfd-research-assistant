@@ -151,6 +151,8 @@ class Ctx:
         self.search_unit = (pr.get(self.provider.name, {}) if self.provider else {}).get("usd_per_1000_queries")
 
     def save(self, **kw):
+        # last moment this job was actually working; Resume uses it so paused time is not counted (2026-11-13)
+        self.state["last_active"] = time.time()
         kw.setdefault("state_json", json.dumps(self.state))
         kw["updated_at"] = time.time()
         db.update("jobs", self.id, kw)
@@ -169,7 +171,9 @@ class Ctx:
             raise Cancelled()
 
     def elapsed_min(self) -> float:
-        return (time.time() - self.state["started"]) / 60
+        """Working time of this job: time while paused (server restart, approvals, identity choice) is not counted
+        (live case #12, 2026-11-13: a Resume 50 minutes after a pause hit the 20-minute limit at once)."""
+        return (float(self.state.get("active_before", 0)) + time.time() - self.state["started"]) / 60
 
     def spent(self) -> float:
         """Spend for the whole case, across every run (the budget is per case, not per run)."""

@@ -6,6 +6,13 @@ Completed changes, newest first. Commit hashes refer to `hesiyang5-glitch/wfd-re
 
 
 
+## 2026-11-13 — Paused time no longer counts toward the time limit (branch `fix/keyword-quality`, not merged)
+- Live case #12: the job paused at 12:25 after a server restart; Resume at 1:16 stopped at once with "time limit
+  (20 min)" after reading 1 source, because the limit counted from the first start, including the pause.
+- Every job save records when it last worked; Resume carries over only the working time (`state.active_before`) and
+  restarts the clock. Applies to every pause (restart, budget approval, identity choice, approval before coding).
+- `tests/test_resilience.py` [4c]: +3 checks (41).
+
 ## 2026-11-13 — Keyword discovery quality (branch `fix/keyword-quality`, not merged; with the README guide)
 - Live Ahr run (case #12) produced keywords made only of words the user had typed ("Ahr Valley", "Germany Ahr",
   "Germany Ahr Valley", "Ahr Valley Germany") and a plural ("Disasters"), several wrongly marked as aliases.

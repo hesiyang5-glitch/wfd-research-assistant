@@ -244,6 +244,28 @@ def main():
           "fetch_in_progress" not in json.loads(db.q1("SELECT state_json FROM jobs WHERE id=?", (fjid,))["state_json"]))
     db.update("jobs", fjid, {"status": "done"})
 
+    print("\n[4c] Time while paused does not count toward the time limit (live case #12, 2026-11-13)")
+    now = time.time()
+    st = {"started": now - 3600, "last_active": now - 3480, "done": ["identify", "search"], "awaiting": "interrupted"}
+    pj = db.insert("jobs", {"case_id": cid, "kind": "research", "stage": "fetch", "status": "needs_input", "progress": 0.4,
+                            "message": "", "params_json": "{}", "state_json": json.dumps(st),
+                            "created_at": now - 3600, "updated_at": now - 3480})
+    jobs.resume(pj, {})
+    pctx = research.Ctx(db.q1("SELECT * FROM jobs WHERE id=?", (pj,)))
+    check("after Resume only the 2 working minutes count, not the 58-minute pause",
+          1.9 < pctx.elapsed_min() < 2.5, f"{pctx.elapsed_min():.2f} min")
+    st2 = json.loads(db.q1("SELECT state_json FROM jobs WHERE id=?", (pj,))["state_json"])
+    st2["last_active"] = st2["started"] + 60  # worked one more minute, then paused again for an hour
+    st2["started"] -= 3600
+    st2["last_active"] -= 3600
+    db.update("jobs", pj, {"state_json": json.dumps(st2), "status": "needs_input"})
+    jobs.resume(pj, {})
+    p2 = research.Ctx(db.q1("SELECT * FROM jobs WHERE id=?", (pj,)))
+    check("…two pauses: 2 + 1 working minutes counted", 2.9 < p2.elapsed_min() < 3.5, f"{p2.elapsed_min():.2f} min")
+    fresh = research.Ctx({**db.q1("SELECT * FROM jobs WHERE id=?", (pj,)), "state_json": "{}"})
+    check("a job that never paused counts from its start as before", fresh.elapsed_min() < 0.1)
+    db.update("jobs", pj, {"status": "done"})
+
     print("\n[5] Worker thread runs at lower CPU priority")
     if sys.platform.startswith("linux"):
         r = {}

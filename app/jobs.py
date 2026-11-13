@@ -35,6 +35,11 @@ def resume(job_id: int, params_update: dict) -> None:
     params = {**json.loads(j["params_json"] or "{}"), **params_update}
     state = json.loads(j["state_json"] or "{}")
     state.pop("awaiting", None)
+    if "started" in state:  # carry over only the time the job was working; the pause itself does not count
+        worked = max(0.0, float(state.get("last_active", state["started"])) - float(state["started"]))
+        state["active_before"] = float(state.get("active_before", 0)) + worked
+        state["started"] = time.time()
+        state["last_active"] = state["started"]
     db.update("jobs", job_id, {"params_json": json.dumps(params), "state_json": json.dumps(state), "status": "queued",
                                "message": "Resuming", "updated_at": time.time()})
     _wake.set()
