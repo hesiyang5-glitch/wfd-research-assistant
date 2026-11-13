@@ -6,6 +6,66 @@ Completed changes, newest first. Commit hashes refer to `hesiyang5-glitch/wfd-re
 
 
 
+## 2026-11-13 — "Search only" and "Search & analyze" (merged to `main` 2026-11-13 with owner approval, together with D-044) — D-045
+- K-61 fixed before merge (owner request): the Re-run research dialog shows the coding-provider choice (Claude only /
+  GPT only / Claude + GPT) whenever Search & analyze is selected; the server checks it exactly like the first form
+  (option exists and is available, free availability check, caps cover one worst-case request given this case's spend)
+  and refuses before anything starts; the choice is saved as the case's coding mode. Cards stacked in the narrow dialog.
+  Browser-checked by hand with models shown as configured (no request sent to any model).
+- Owner request after the AlertHub demonstration: use search and source curation on their own (news, official
+  documents, after-action reports for Country Profiles), with analysis optional.
+- Research form: two options near the start button, **Search only** (default) and **Search & analyze**, with the
+  requested descriptions; the button reads "Search sources" / "Search & analyze". Model choice, the optional pause
+  and the model cost estimate appear only for Search & analyze; Search only shows the search cost and "$0 coding".
+- Search only reuses the existing pipeline and stops after retrieval: identity check, searches (incl. D-043
+  expansion), fetch, extraction, de-duplication, relevance check, type ranking, passages. It does not run the codebook
+  evidence-gap check, follow-up searches or coding. Case status "Sources ready (not analyzed)"; Progress shows
+  "Continue to analysis" and "View sources".
+- Sources tab: "Export sources" (Excel: About / Sources / Search_Log; or CSV), ranked by type priority, excluded
+  sources left out unless "Include excluded sources" is ticked. No coding values in this export.
+- Re-run research dialog shows and can switch the case's run mode.
+- Search & analyze: the "pause after research" box is now **unticked by default** (it was ticked, D-036) so the
+  requested workflow runs straight into analysis; budget and request caps still pause. Needs owner confirmation (K-60).
+- Server: `run_mode` on case creation and re-run (`search_only` / `search_analyze`); missing → full pipeline (older
+  clients and existing cases unchanged); `format=sources` / `sources_csv` on the export route.
+- Second half of the specification (sections 5–12, received later the same day):
+  - Separate **Search** and **Analysis** statuses (derived from existing jobs/sources/runs, nothing new stored):
+    Search not started / running / waiting / complete / partial retrieval / no usable content / failed / stopped;
+    Analysis not requested / waiting for search / running / waiting / complete / failed / stopped / not run (no usable
+    content). Shown on Progress and the case list, with "Saved automatically".
+  - Review: a case never analyzed shows every variable as **Not analyzed** (new category and filter, banner) — not
+    "Insufficient evidence", validation failure, disagreement or completed coding. Coded exports say so per row.
+  - Analysis needs usable selected text (read, selected, not a duplicate, not irrelevant): "Analyze selected sources"
+    is refused before any job or request when there is none (explains missing saved text), and the pipeline makes no
+    coding call without it. The existing evidence snapshot (D-036) records which sources each run used; later
+    (de)selection never changes a finished or running run; a different selection gets a new run and snapshot.
+  - Sources tab: counts (discovered / retrieved / relevant / failed or blocked / selected / usable for analysis),
+    Refresh (no simulated live updates), original link + redirect, domain, language (only when the page declares it),
+    search run, failed sources marked "not retrieved — not used as evidence" with any search snippet labelled as a
+    snippet, Select / Deselect wording (deselecting never deletes the source or the search record).
+  - Progress after Search only: View sources, Export source list, Analyze selected sources.
+  - Sources export: labelled "SOURCE-SEARCH RESULTS — not a completed coded WFD case"; adds domain, language, original
+    and final URL, selection status, usable-for-analysis, search run; About counts and search runs; Usage sheet separating
+    search from coding with measured / estimated / unknown basis (unknown is never shown as $0).
+  - Additive migration `2026-11-13-search-only`: `sources.language`, `sources.job_id`. Older cases keep working (their
+    sources simply have no language / run id).
+- New `tests/test_search_only.py` (68 checks). `test_ui_flow`, `test_ui_labels` and `test_independent_providers` now
+  choose Search & analyze before using the model choice (+1 check: pause box unticked); schema fingerprints in
+  `test_export_labels` / `test_ui_labels` updated for the two new columns; `test_visual` reads the first status badge.
+
+## 2026-11-13 — Raise the reading (fetch) limit on an existing case (merged to `main` 2026-11-13 with owner approval, with D-045) — D-044
+- The fetch limit (`max_fetch`, default 60) counts every page read for the case in all runs, so re-running research on
+  a case that had reached it searched (using Tavily credits) but read nothing new. There was no way to change it on an
+  existing case.
+- **Re-run research** now opens a dialog first: pages already read for this case, the case's reading limit, a warning
+  when it is reached, and a field to set a new limit (whole number 1–300). The first research run of a new case is
+  unchanged.
+- `max_fetch` added to the per-case limits API (`POST /api/cases/{id}/limits`); each change is recorded in
+  `limit_changes` with who and why. Ceiling 300 protects the 512 MB server (K-17).
+- `GET /api/cases/{id}` reports `fetched_count` and `max_fetch`. The limit message now says it counts all runs and
+  where to raise it.
+- New `tests/test_fetch_limit.py` (15 checks); browser check of the dialog done by hand (screenshot), not automated.
+
 ## 2026-11-13 — Find more sources from name + date + location (merged to `main` 2026-11-13 with owner approval) — D-043
 - Owner request: entering only the incident name, approximate date and location should find comprehensive sources and
   recognise more related keywords. Prompted by case #11 (Ahr valley flood, Germany), where every query was

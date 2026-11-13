@@ -58,6 +58,9 @@ def case_results(case_id: int) -> dict:
     # D-039: codebook-stated missing-value / consistency rules, checked on human-final values only (never changes them)
     rule_flags = consistency_flags({v: r["value"] for v, r in reviews.items() if r["action"] in FINAL_ACTIONS},
                                    {f["name"]: f for f in schema["fields"]})
+    # D-045: a case with no analysis run at all is "not analyzed" — never "insufficient evidence", a validation failure,
+    # a disagreement or completed coding
+    analyzed = db.q1("SELECT COUNT(*) n FROM runs WHERE case_id=?", (case_id,))["n"] > 0
     rows = []
     for f in schema["fields"]:
         ss = sets.get(f["name"]) or {}
@@ -71,6 +74,8 @@ def case_results(case_id: int) -> dict:
                              "interpretation_label": INTERPRETATION_LABELS.get(interpretation_of(m), "")}
                             for m in ss.get("members", []) if m.get("provider")], key=lambda m: m["provider"])
         cat = review_category(f, s, r)
+        if cat == "insufficient" and s is None and not analyzed:
+            cat = "not_analyzed"
         if comp and cat not in ("confirmed", "rule_missing") and comp["status"] not in (
                 "model_agreement", "both_insufficient", "evidence_disagreement"):
             cat = "disputed"  # providers disagree (or one output is invalid): route to human review
@@ -91,7 +96,8 @@ def case_results(case_id: int) -> dict:
             "agreement": assess(case_id, f, ss, r), "rule_flags": rule_flags.get(f["name"], []),
             "system": ss.get("system") if not providers else None,
         })
-    return {"case": case, "schema_label": schema.get("label"), "schema_id": schema.get("id"), "rows": rows, "sources": srcs}
+    return {"case": case, "schema_label": schema.get("label"), "schema_id": schema.get("id"), "rows": rows, "sources": srcs,
+            "analyzed": analyzed}
 
 
 CELL_LABELS = {"not_run": "Not run", "suggested": "Suggested", "disputed": "Disputed", "partially_valid": "Partially valid",
@@ -195,6 +201,8 @@ def explanation_cell(row: dict, origin: str) -> str:
         parts.append(f"Reviewer: {r['reason']}")
     for fl in row.get("rule_flags") or []:
         parts.append(f"[rule check: {fl}]")
+    if not s and row.get("category") == "not_analyzed":
+        parts.append("[not analyzed: no coding analysis has been run for this case — not a finding of insufficient evidence]")
     if s:
         if s.get("rationale"):
             parts.append(s["rationale"])
@@ -412,3 +420,132 @@ def json_export(case_id: int, include_unreviewed=False) -> dict:
         "usage": db.q("SELECT * FROM usage WHERE case_id=? ORDER BY id", (case_id,)),
         "runs": db.q("SELECT * FROM runs WHERE case_id=? ORDER BY id", (case_id,)),
     }
+
+
+# ----------------------------------------------------------------------------- sources only (D-045)
+SOURCE_TYPE_LABEL = {"aar": "After-action report", "government": "Government / official", "regulatory": "Regulatory",
+                     "legislative": "Legislative", "academic": "Academic", "ngo_technical": "Technical / NGO report",
+                     "media": "News media", "unknown": "Other / unknown"}
+SOURCE_COLUMNS = ["Rank", "Source ID", "Title", "Source type", "Publisher", "Domain", "Published date", "Language",
+                  "Original URL", "Final URL", "Retrieved at", "Retrieval status", "Retrieval problem", "Pages", "Passages",
+                  "Relevance", "Relevance reason", "Duplicate of", "Near-duplicate of", "Selected for analysis",
+                  "Deselection reason", "Usable for analysis", "Search run", "Found via"]
+
+
+def source_counts(case_id: int) -> dict:
+    from .research import usable_passage_count
+    srcs = db.q("SELECT fetch_status, relevance_status, excluded, duplicate_of, n_passages FROM sources WHERE case_id=?", (case_id,))
+    ok = [s for s in srcs if s["fetch_status"] == "ok"]
+    usable = [s for s in ok if not s["excluded"] and not s["duplicate_of"] and s["relevance_status"] != "irrelevant"
+              and (s["n_passages"] or 0) > 0]
+    return {"discovered": db.q1("SELECT COUNT(DISTINCT url) n FROM search_results WHERE case_id=?", (case_id,))["n"],
+            "stored": len(srcs), "retrieved": len(ok), "failed": len(srcs) - len(ok),
+            "relevant": sum(1 for s in ok if s["relevance_status"] == "relevant"),
+            "uncertain": sum(1 for s in ok if s["relevance_status"] == "uncertain"),
+            "irrelevant": sum(1 for s in ok if s["relevance_status"] == "irrelevant"),
+            "duplicates": sum(1 for s in ok if s["duplicate_of"]),
+            "selected": sum(1 for s in srcs if not s["excluded"]), "usable_for_analysis": len(usable),
+            "usable_passages": usable_passage_count(case_id)}
+
+
+def ranked_sources(case_id: int, include_all: bool = False) -> list[dict]:
+    """Sources in the same priority order as the Sources tab's default view (D-041): source type (AAR, government /
+    regulatory, legislative, academic / technical, news, other), then length, then order found.
+    Default: the researcher's selection = everything not excluded. include_all adds excluded sources."""
+    from .research import TYPE_PRIORITY
+    rows = db.q("SELECT * FROM sources WHERE case_id=?", (case_id,))
+    if not include_all:
+        rows = [s for s in rows if not s["excluded"]]
+    rows.sort(key=lambda s: (TYPE_PRIORITY.get(s["source_type"], 5), -(s.get("n_pages") or 0), -(s.get("n_passages") or 0), s["id"]))
+    return rows
+
+
+def _source_row(rank: int, s: dict) -> list:
+    from urllib.parse import urlparse
+    when = dt.datetime.fromtimestamp(s["retrieved_at"]).isoformat(timespec="seconds") if s.get("retrieved_at") else ""
+    ok = s.get("fetch_status") == "ok"
+    usable = ok and not s.get("excluded") and not s.get("duplicate_of") and s.get("relevance_status") != "irrelevant" \
+        and (s.get("n_passages") or 0) > 0
+    return [rank, f"S{s['id']}", s.get("title") or "", SOURCE_TYPE_LABEL.get(s.get("source_type"), s.get("source_type") or ""),
+            s.get("publisher") or "", urlparse(s.get("url") or s.get("final_url") or "").netloc.removeprefix("www."),
+            s.get("published_date") or "", s.get("language") or "",
+            s.get("url") or "", s.get("final_url") if s.get("final_url") and s.get("final_url") != s.get("url") else "", when,
+            "retrieved" if ok else f"not retrieved ({s.get('fetch_status') or 'unknown'})", s.get("fetch_error") or "",
+            s.get("n_pages") or "", s.get("n_passages") or 0, s.get("relevance_status") or "", s.get("relevance_reason") or "",
+            f"S{s['duplicate_of']}" if s.get("duplicate_of") else "", f"S{s['near_duplicate_of']}" if s.get("near_duplicate_of") else "",
+            "no" if s.get("excluded") else "yes", s.get("exclude_reason") or "", "yes" if usable else "no",
+            f"run {s['job_id']}" if s.get("job_id") else ("added by user" if s.get("origin") in ("manual_url", "upload", "text") else ""),
+            s.get("found_via") or s.get("origin") or ""]
+
+
+def usage_summary(case_id: int) -> list[list]:
+    """Rows: kind, requests, cost, cost basis. Unknown prices stay 'unknown', never $0 (D-045)."""
+    out = []
+    for kind, label in (("search", "Web search (source discovery)"), ("model", "Coding analysis (model requests)")):
+        rows = db.q("SELECT cost_usd, estimated FROM usage WHERE case_id=? AND kind=?", (case_id, kind))
+        if not rows:
+            out.append([label, 0, 0.0, "none used"])
+            continue
+        unknown = sum(1 for r in rows if r["cost_usd"] is None)
+        cost = round(sum(r["cost_usd"] or 0 for r in rows), 4)
+        basis = ("unknown (no price configured)" if unknown == len(rows) else
+                 f"partly unknown: {unknown} request(s) without a price; known part shown" if unknown else
+                 "estimated (worst-case or list price)" if any(r["estimated"] for r in rows) else "measured (provider-reported usage)")
+        out.append([label, len(rows), None if unknown == len(rows) else cost, basis])
+    out.append(["Page retrieval, de-duplication, relevance check", "", 0.0,
+                "no paid service (runs on this server; no AI)"])
+    return out
+
+
+def sources_csv(case_id: int, include_all: bool = False) -> str:
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(SOURCE_COLUMNS)
+    for i, s in enumerate(ranked_sources(case_id, include_all), 1):
+        w.writerow(_source_row(i, s))
+    return buf.getvalue()
+
+
+def sources_xlsx(case_id: int, include_all: bool = False) -> bytes:
+    """Sources workbook for source curation without coding (D-045): About, Sources, Search_Log. No coding results."""
+    import openpyxl
+    case = db.q1("SELECT * FROM cases WHERE id=?", (case_id,))
+    rows = ranked_sources(case_id, include_all)
+    wb = openpyxl.Workbook()
+    wa = wb.active
+    wa.title = "About"
+    runs = sorted({s["job_id"] for s in db.q("SELECT job_id FROM sources WHERE case_id=? AND job_id IS NOT NULL", (case_id,))})
+    counts = source_counts(case_id)
+    for k, v in [("What this is", "SOURCE-SEARCH RESULTS — not a completed coded WFD case"),
+                 ("Incident", case["name"]), ("Location", case.get("location") or ""), ("Date", case.get("date_text") or ""),
+                 ("Exported", dt.datetime.now().isoformat(timespec="seconds")),
+                 ("Case ID", case_id), ("Search runs", ", ".join(f"run {r}" for r in runs) or "none (manual sources only)"),
+                 ("Sources in this file", f"{len(rows)} ({'all, including deselected' if include_all else 'deselected sources left out'})"),
+                 ("Counts", f"discovered {counts['discovered']} · retrieved {counts['retrieved']} · relevant {counts['relevant']} · "
+                            f"failed/blocked {counts['failed']} · selected {counts['selected']} · usable for analysis "
+                            f"{counts['usable_for_analysis']}"),
+                 ("Order", "Source type priority: after-action reports; government / regulatory; legislative; academic / "
+                           "technical; news media; other. Then length, then order found."),
+                 ("Note", "Source type is assigned automatically from the address and title and can be corrected on the "
+                          "Sources tab. Type priority is a way to sort, not proof that a source is accurate."),
+                 ("Note", "Relevance is an automatic word-match check against the incident name, place and year (no AI)."),
+                 ("Note", "Language is filled only when the web page declares it."),
+                 ("Note", "This file lists sources only. It contains no coding suggestions or reviewed values.")]:
+        wa.append([k, v])
+    ws = wb.create_sheet("Sources")
+    ws.append(SOURCE_COLUMNS)
+    for i, s in enumerate(rows, 1):
+        ws.append(_source_row(i, s))
+    wu = wb.create_sheet("Usage")
+    wu.append(["Activity", "Requests", "Cost (USD)", "Cost basis"])
+    for r in usage_summary(case_id):
+        wu.append([r[0], r[1], "unknown" if r[2] is None else r[2], r[3]])
+    wq = wb.create_sheet("Search_Log")
+    wq.append(["Search run", "Round", "Purpose", "Query", "Page", "Search service", "Status", "Results", "Error", "Time"])
+    for q in db.q("SELECT * FROM search_queries WHERE case_id=? ORDER BY id", (case_id,)):
+        wq.append([f"run {q['job_id']}" if q.get("job_id") else "", q.get("round"), q.get("purpose"), q.get("query"), q.get("page"), q.get("provider"), q.get("status"),
+                   q.get("result_count"), q.get("error") or "",
+                   dt.datetime.fromtimestamp(q["created_at"]).isoformat(timespec="seconds") if q.get("created_at") else ""])
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()

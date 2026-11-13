@@ -62,6 +62,7 @@ def main():
             pg.fill("#f_date", "July 4, 2025")
             pg.click("details:nth-of-type(2) summary")
             pg.fill("#s_rounds", "1")
+            pg.check("input[name=rmode][value=search_analyze]")  # D-045: this test covers the full pipeline
             pg.click("#startBtn")
             pg.wait_for_url("**/progress", timeout=10000)
             for _ in range(120):

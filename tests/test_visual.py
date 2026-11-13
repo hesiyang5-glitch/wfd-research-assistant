@@ -123,7 +123,7 @@ def main():
 
             print("\n[4] Readable status tags; [5] variable-name breaks")
             pg.goto(U + "#/cases"); pg.wait_for_timeout(800)
-            tag = pg.inner_text("table tbody tr td:nth-child(3)")
+            tag = pg.inner_text("table tbody tr td:nth-child(3) .badge >> nth=0")  # D-045: search/analysis pills follow it
             check("4 case status shows a readable name, not the raw id", tag.strip() == "In review", tag)
             check("4b the raw id stays available as a tooltip", pg.get_attribute("table tbody tr td:nth-child(3) .badge", "title") == "review")
             pg.goto(U + "#/case/1/review"); pg.wait_for_timeout(900)

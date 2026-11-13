@@ -408,3 +408,44 @@ that aliases are searched, long names are unquoted, and discovery queries are ad
 **Risks.** Hand-made word lists may be imperfect (only affects what is searched); discovered keywords can drift to a
 neighbouring topic (mitigated: only results that already match the incident, at least two websites); more Tavily
 credits per case.
+
+## D-044 · 2026-11-13 · The reading limit can be raised on an existing case — Active (merged to `main` 2026-11-13 with owner approval)
+**Decision (owner request 2026-11-13).** `max_fetch` stays a per-case total across all runs, and it becomes an
+explicit per-case limit that can be raised or lowered (1–300) from the Re-run research dialog; every change is
+recorded with who and why (like the other per-case limits, D-011).
+**Why.** A re-run on a case at its limit spent search credits without reading new pages; the owner otherwise had to
+create a new case.
+**Ceiling 300.** More pages mean more memory on the 512 MB server (K-17) and higher later coding cost.
+
+## D-045 · 2026-11-13 · "Search only" and "Search & analyze" run modes — Active (merged to `main` 2026-11-13 with owner approval)
+**Decision (owner request after the AlertHub demonstration).** The Research form offers two mutually exclusive modes,
+default **Search only**. Search only runs the existing search and retrieval stages and stops; Search & analyze is the
+existing full pipeline. Sources can be viewed and exported in both, and analysis can be started later.
+**Boundary.** Search only includes identity check, searches with D-043 expansion, fetch/extraction, de-duplication,
+relevance screening (word match on name/place/year, no AI), source-type ranking and passages. It excludes the codebook
+evidence-gap check and its follow-up searches (both organised around coding variables) and all model coding. It is not
+necessarily free: searches use Tavily credits (counted in the case budget). Continuing later uses Re-analyze on the
+sources already read (no new search; no gap-driven follow-up).
+**Ranking.** Unchanged and already equal to the requested order: after-action reports; government / regulatory;
+legislative; academic / technical (ngo_technical); news; other (`research.TYPE_PRIORITY`, D-041). Type comes from an
+address/title heuristic and is a sorting signal, not proof of accuracy.
+**Selection.** "Select" uses the existing per-source Exclude / Include; the export lists kept sources by default.
+Excluding also removes a source from later analysis (same meaning as before).
+**Change to D-036 (needs owner confirmation, K-60).** The spec says Search & analyze must not ask again after retrieval;
+the optional "pause after research" box therefore defaults to unticked (was ticked). Caps still pause.
+**Compatibility.** `run_mode` is stored in case settings; absent → full pipeline, so existing cases and API clients are
+unchanged. Additive migration `2026-11-13-search-only` adds `sources.language` and `sources.job_id` only.
+**Statuses (spec §8).** Search and analysis statuses are derived from existing jobs, sources and runs rather than
+stored, so old cases get them without migration. A finished Search only task is search complete/partial + analysis
+"not requested" — a success.
+**Not analyzed (spec §8).** In a case with no analysis run, a variable without a suggestion is "Not analyzed", never
+"Insufficient evidence". (Failed model calls keep their existing handling — K-64.)
+**Selection and snapshots (spec §6).** No new snapshot mechanism: the D-036 evidence snapshot already freezes the
+eligible sources, content hashes and selection state per run and is loaded once at the start of coding. "Analyze selected
+sources" = Re-analyze on usable selected text; it does not run gap-driven follow-up retrieval (that stays inside
+Search & analyze). Deselecting a source that a finished run cited marks those suggestions stale (existing behaviour);
+the run's evidence is unchanged.
+**Re-run provider choice (K-61, fixed before merge).** Choosing Search & analyze in the Re-run research dialog asks for
+the coding provider(s), validated like the first form.
+**Usable evidence.** Analysis requires at least one passage from a read, selected, non-duplicate, non-irrelevant source;
+otherwise no job (API) and no coding call (pipeline).

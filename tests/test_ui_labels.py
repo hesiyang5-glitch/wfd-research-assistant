@@ -42,7 +42,7 @@ def _guard(self, addr):
 socket.socket.connect = _guard
 
 # fingerprints computed on main (302a2f2) with the same synthetic input — must be identical after a label-only change
-PIN_SCHEMA = "5f231bf5a2af2aad"
+PIN_SCHEMA = "b07a226b09013245"  # D-045 (2026-11-13): + sources.language, sources.job_id (additive). Was 5f231bf5a2af2aad
 # Re-pinned 2026-11-13 (and 2026-11-12): the prompt changed DELIBERATELY for D-039 owner decisions (wfd-prompt-2026-11-13); a label-only
 # change must still leave these values identical.
 PIN_CACHE = {"anthropic": "llm3:4b480f1f335cd5eba1a5c6ebf54a1c8ea821b41cfa78690118f9ca884264b1c8",
@@ -159,6 +159,8 @@ def main():
                 pg.goto(base + "/")
                 pg.evaluate(f"localStorage.setItem('wfd_lang','{lang}')")
                 pg.reload()
+                pg.wait_for_selector("#runModeChoice", timeout=10000)
+                pg.check("input[name=rmode][value=search_analyze]")  # D-045: model choice shows in Search & analyze
                 pg.wait_for_selector("#providerChoice", timeout=10000)
                 pg.wait_for_timeout(600)
                 T[f"{lang}_services"] = pg.locator(".services").locator("xpath=..").inner_text()

@@ -81,8 +81,13 @@ DEFAULT_SETTINGS = {
     "openai_budget_usd": 3.00,                  # cap on OpenAI model spend per CASE (inside the overall budget_usd)
     "max_openai_attempts_per_case": 50,         # every request sent to OpenAI, incl. retries and re-runs
     "max_model_attempts_per_case": 100,         # every request sent to any model provider
-    "pause_before_coding": False,               # first research run: pause after research, before any paid model request
+    "pause_before_coding": False,
+    # D-045: "search_only" stops after source discovery and retrieval (no gap check, no follow-up, no coding);
+    # "search_analyze" is the full pipeline. Cases created by older clients (no run_mode) keep the full pipeline.
+    "run_mode": "search_analyze",               # first research run: pause after research, before any paid model request
 }
 
 # Limits that an approval may raise — always to an explicit number, never to "unlimited".
-RAISABLE_LIMITS = ("budget_usd", "openai_budget_usd", "max_openai_attempts_per_case", "max_model_attempts_per_case")
+RAISABLE_LIMITS = ("budget_usd", "openai_budget_usd", "max_openai_attempts_per_case", "max_model_attempts_per_case", "max_fetch")
+# max_fetch counts every page read for the case (all runs); ceiling protects the 512 MB server (K-17), D-044
+MAX_FETCH_CEILING = 300

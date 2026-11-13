@@ -173,6 +173,10 @@ def check_limit_value(k: str, v):
         raise ApiError(400, f"{k} must be a finite number ≥ 0 (limits can be raised, never removed)")
     if k.endswith("_usd") and x > 1000:
         raise ApiError(400, f"{k} must be at most $1,000 per case")
+    if k == "max_fetch":
+        from .config import MAX_FETCH_CEILING
+        if not (1 <= x <= MAX_FETCH_CEILING):
+            raise ApiError(400, f"max_fetch (pages read for this case, all runs) must be between 1 and {MAX_FETCH_CEILING}")
     if k.startswith("max_") and x > 10000:
         raise ApiError(400, f"{k} must be at most 10,000 per case")
     return round(x, 2) if k.endswith("_usd") else int(x)
@@ -281,6 +285,60 @@ def api_edit_field(h, sid, name, body, **_):
 
 
 # ----------------------------------------------------------------------------- cases
+SEARCH_STAGES = ("queued", "identify", "search", "fetch")
+
+
+def case_statuses(cid: int) -> dict:
+    """D-045: search and analysis are reported separately (derived from existing jobs, sources and runs; nothing stored).
+    search: not_started | running | waiting | complete | partial | no_usable_content | failed | stopped
+    analysis: not_requested | waiting_for_search | running | waiting | complete | failed | stopped | not_run_no_content
+    A completed search-only task is search=complete/partial with analysis=not_requested — a successful outcome."""
+    jobs_ = db.q("SELECT id, kind, status, stage, params_json, state_json FROM jobs WHERE case_id=? ORDER BY id", (cid,))
+    research_jobs = [j for j in jobs_ if j["kind"] == "research"]
+    n_ok = db.q1("SELECT COUNT(*) n FROM sources WHERE case_id=? AND fetch_status='ok'", (cid,))["n"]
+    n_fail = db.q1("SELECT COUNT(*) n FROM sources WHERE case_id=? AND fetch_status!='ok'", (cid,))["n"]
+    search = "not_started"
+    if research_jobs:
+        r = research_jobs[-1]
+        st = json.loads(r["state_json"] or "{}")
+        in_search = r["stage"] in SEARCH_STAGES and "fetch" not in (st.get("done") or [])
+        if r["status"] in ("queued", "running") and in_search:
+            search = "running"
+        elif r["status"] == "needs_input" and in_search and st.get("awaiting"):
+            search = "waiting"
+        elif r["status"] == "failed" and in_search:
+            search = "failed"
+        elif r["status"] == "cancelled" and in_search:
+            search = "stopped"
+        elif not n_ok:
+            search = "no_usable_content"
+        else:
+            limits = (st.get("coverage") or {}).get("limits_hit") or st.get("limits_hit") or []
+            search = "partial" if (n_fail or limits) else "complete"
+    elif n_ok:
+        search = "complete"  # manually added sources only
+    analysis_jobs = [j for j in jobs_ if j["kind"] == "recode" or
+                     (j["kind"] == "research" and not json.loads(j["params_json"] or "{}").get("search_only"))]
+    analysis = "not_requested"
+    if analysis_jobs:
+        a = analysis_jobs[-1]
+        st = json.loads(a["state_json"] or "{}")
+        before_analysis = a["kind"] == "research" and a["stage"] in SEARCH_STAGES and "fetch" not in (st.get("done") or [])
+        if a["status"] in ("queued", "running"):
+            analysis = "waiting_for_search" if before_analysis else "running"
+        elif a["status"] == "needs_input":
+            analysis = "not_run_no_content" if a["stage"] == "fetch" and not st.get("awaiting") else (
+                "waiting_for_search" if before_analysis else "waiting")
+        elif a["status"] == "failed":
+            analysis = "failed"
+        elif a["status"] == "cancelled":
+            analysis = "stopped"
+        elif a["status"] == "done":
+            ran = db.q1("SELECT COUNT(*) n FROM runs WHERE job_id=?", (a["id"],))["n"]
+            analysis = "complete" if ran else "stopped"
+    return {"search": search, "analysis": analysis, "saved": True}
+
+
 @route("GET", "/api/cases")
 def api_cases(h, **_):
     rows = db.q("SELECT * FROM cases ORDER BY id DESC")
@@ -289,6 +347,7 @@ def api_cases(h, **_):
         c["job"] = j
         c["n_sources"] = db.q1("SELECT COUNT(*) n FROM sources WHERE case_id=? AND fetch_status='ok'", (c["id"],))["n"]
         c["n_confirmed"] = db.q1("SELECT COUNT(*) n FROM reviews WHERE case_id=? AND action IN ('accepted','edited','cleared')", (c["id"],))["n"]
+        c["statuses"] = case_statuses(c["id"])
     return rows
 
 
@@ -311,7 +370,10 @@ def api_new_case(h, body, **_):
     # Coding provider chosen on the first form (D-036). Validated BEFORE anything is created or searched: the mode must
     # exist, its keys must be configured, the free availability check must pass, and the hard limits must cover at
     # least one worst-case request per selected provider. Without "mode" (older clients) the global default applies.
-    mode = check_mode(body.get("mode"), {**global_settings(), **overrides})
+    run_mode = check_run_mode(body.get("run_mode"))
+    overrides["run_mode"] = run_mode
+    # Search only (D-045): no model is used, so no coding-provider choice or provider check is needed.
+    mode = None if run_mode == "search_only" else check_mode(body.get("mode"), {**global_settings(), **overrides})
     if mode and mode != "single":
         overrides["coding_mode"] = mode
         checks = provider_checks(mode, {**global_settings(), **overrides})
@@ -322,7 +384,7 @@ def api_new_case(h, body, **_):
         short = minimum_request_check(mode, {**global_settings(), **overrides}, spent=0.0, spent_openai=0.0)
         if short:
             raise ApiError(400, short + " Raise the limit or choose another mode. Nothing was created or searched.")
-    if "pause_before_coding" in body:
+    if "pause_before_coding" in body and run_mode == "search_analyze":
         overrides["pause_before_coding"] = bool(body["pause_before_coding"])
     cid = db.insert("cases", {"name": body["name"].strip(), "location": body.get("location", "").strip(),
                               "date_text": body.get("date_text", "").strip(), "date_start": body.get("date_start", ""),
@@ -331,8 +393,17 @@ def api_new_case(h, body, **_):
                               "schema_version_id": act["id"] if act else None, "status": "new", "identity_json": "{}",
                               "settings_json": json.dumps({**global_settings(), **overrides}), "created_at": time.time(),
                               "updated_at": time.time()})
-    jid = jobs.enqueue(cid, "research", {"mode": mode} if mode else None) if body.get("start", True) else None
-    return {"id": cid, "job_id": jid, "mode": mode}
+    params = {**({"mode": mode} if mode else {}), **({"search_only": True} if run_mode == "search_only" else {})}
+    jid = jobs.enqueue(cid, "research", params or None) if body.get("start", True) else None
+    return {"id": cid, "job_id": jid, "mode": mode, "run_mode": run_mode}
+
+
+def check_run_mode(v) -> str:
+    if v in (None, ""):
+        return "search_analyze"  # older clients: unchanged full pipeline
+    if v not in ("search_only", "search_analyze"):
+        raise ApiError(400, "run_mode must be 'search_only' or 'search_analyze'")
+    return v
 
 
 @route("GET", "/api/cases/{cid}")
@@ -342,6 +413,11 @@ def api_case(h, cid, **_):
         raise ApiError(404, "case not found")
     c["identity"] = json.loads(c.pop("identity_json") or "{}")
     c["settings"] = json.loads(c.pop("settings_json") or "{}")
+    # pages already read for this case (all runs); the fetch limit counts these (same rule as research.fetch_candidates)
+    c["fetched_count"] = db.q1("SELECT COUNT(*) n FROM sources WHERE case_id=? AND origin IN ('search','followed_link')",
+                               (int(cid),))["n"]
+    c["max_fetch"] = c["settings"].get("max_fetch", DEFAULT_SETTINGS["max_fetch"])
+    c["statuses"] = case_statuses(int(cid))
     return c
 
 
@@ -360,12 +436,59 @@ def api_edit_case(h, cid, body, **_):
 
 @route("POST", "/api/cases/{cid}/research")
 def api_research(h, cid, body, **_):
-    return {"job_id": jobs.enqueue(int(cid), "research", {"identity_confirmed": bool(body.get("identity_confirmed"))})}
+    c = db.q1("SELECT * FROM cases WHERE id=?", (int(cid),))
+    if not c:
+        raise ApiError(404, "case not found")
+    st = json.loads(c["settings_json"] or "{}")
+    # D-045: a re-run uses the case's own mode unless the request names one; cases from before D-045 analyze as before
+    run_mode = check_run_mode(body.get("run_mode") or st.get("run_mode"))
+    # K-61 fix: Search & analyze from the re-run dialog may name the coding provider, checked exactly like the first
+    # form (exists, keys configured, free availability check, caps cover one worst-case request) before anything runs
+    mode = None
+    if run_mode == "search_analyze" and body.get("mode"):
+        merged = {**global_settings(), **st}
+        mode = check_mode(body.get("mode"), merged)
+        if mode and mode != "single":
+            bad = [v["reason"] for v in provider_checks(mode, merged).values() if not v["ok"]]
+            if bad:
+                raise ApiError(400, "; ".join(bad) + ". Nothing was started.")
+            from .coding import case_spent, minimum_request_check
+            spent_oa = db.q1("SELECT COALESCE(SUM(cost_usd),0) c FROM usage WHERE case_id=? AND kind='model' AND provider "
+                             "IN ('openai','openai_compatible')", (int(cid),))["c"] or 0.0
+            short = minimum_request_check(mode, merged, spent=case_spent(int(cid)), spent_openai=float(spent_oa))
+            if short:
+                raise ApiError(400, short + " Raise the limit or choose another option. Nothing was started.")
+    changed = False
+    if body.get("run_mode") and st.get("run_mode") != run_mode:
+        st["run_mode"] = run_mode
+        changed = True
+    if mode and mode != "single" and st.get("coding_mode") != mode:
+        st["coding_mode"] = mode
+        changed = True
+    if changed:
+        db.update("cases", int(cid), {"settings_json": json.dumps(st), "updated_at": time.time()})
+    params = {"identity_confirmed": bool(body.get("identity_confirmed"))}
+    if run_mode == "search_only":
+        params["search_only"] = True
+    elif mode:
+        params["mode"] = mode
+    return {"job_id": jobs.enqueue(int(cid), "research", params), "run_mode": run_mode}
 
 
 @route("POST", "/api/cases/{cid}/recode")
 def api_recode(h, cid, body, **_):
     c = db.q1("SELECT * FROM cases WHERE id=?", (int(cid),))
+    if not c:
+        raise ApiError(404, "case not found")
+    from .research import usable_passage_count
+    active = db.q1("SELECT id FROM jobs WHERE case_id=? AND status IN ('queued','running')", (int(cid),))
+    if not active and usable_passage_count(int(cid)) == 0:  # D-045: refuse before any job or paid request exists
+        read_no_text = db.q1("SELECT COUNT(*) n FROM sources WHERE case_id=? AND fetch_status='ok' AND COALESCE(n_passages,0)=0",
+                             (int(cid),))["n"]
+        raise ApiError(400, "No usable selected source text, so analysis was not started and nothing was billed. "
+                       "Select at least one read, relevant source on the Sources tab" +
+                       (f"; {read_no_text} read source(s) have no saved text — re-run the search or add their text to "
+                        "retrieve it" if read_no_text else "; or run a search / add sources first") + ".")
     st = {**DEFAULT_SETTINGS, **json.loads(c["settings_json"] or "{}")}
     params = {"variables": body.get("variables") or None, "approve_over_budget": bool(body.get("approve_over_budget")),
               "mode": check_mode(body.get("mode"), st)}
@@ -594,6 +717,14 @@ def api_estimate_preview(h, query, **_):
 
 
 # ----------------------------------------------------------------------------- sources
+@route("GET", "/api/cases/{cid}/source_counts")
+def api_source_counts(h, cid, **_):
+    """D-045: discovered (distinct result addresses from searches), retrieved, relevant / uncertain / irrelevant,
+    failed or blocked, selected (not deselected) and usable for analysis. Read-only: never starts search or analysis."""
+    from .export import source_counts
+    return source_counts(int(cid))
+
+
 @route("GET", "/api/cases/{cid}/sources")
 def api_sources(h, cid, **_):
     return db.q("SELECT * FROM sources WHERE case_id=? ORDER BY id", (int(cid),))
@@ -857,6 +988,13 @@ def export_response(h, cid, query):
     fmt = (query.get("format") or ["xlsx"])[0]
     unrev = (query.get("unreviewed") or ["0"])[0] == "1"
     c = db.q1("SELECT * FROM cases WHERE id=?", (int(cid),))
+    if fmt in ("sources", "sources_csv"):  # D-045: sources only, no coding results; works before any analysis
+        include_all = (query.get("all") or ["0"])[0] == "1"
+        sbase = re.sub(r"[^\w\-]+", "_", c["name"])[:40] + ("_sources_all" if include_all else "_sources")
+        if fmt == "sources_csv":
+            return h.send_bytes(export.sources_csv(int(cid), include_all).encode("utf-8-sig"), "text/csv; charset=utf-8", f"{sbase}.csv")
+        return h.send_bytes(export.sources_xlsx(int(cid), include_all),
+                            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", f"{sbase}.xlsx")
     base = re.sub(r"[^\w\-]+", "_", c["name"])[:40] + ("_UNREVIEWED" if unrev else "_reviewed")
     if fmt == "tsv":
         return h.send_bytes(export.tsv(int(cid), unrev).encode("utf-8"), "text/tab-separated-values; charset=utf-8", f"{base}.tsv")

@@ -26,6 +26,22 @@ citations, and leaves every final decision to a human reviewer.
 | Users do not need to collect or upload sources before starting | TESTED (live: Marshall Fire run) |
 | Optional supplements: add URL, upload PDF/HTML/DOCX/TXT, paste text | TESTED (offline) |
 
+## 2a. Run modes (D-045)
+
+| Requirement | Status |
+|---|---|
+| Research form offers **Search only** (default) and **Search & analyze**; start button reads "Search sources" / "Search & analyze" | TESTED offline (browser, `test_search_only`); merged 2026-11-13, not yet checked live |
+| Search only: discovery, de-duplication, relevance screening (word match, no AI), type ranking, retrieval and passages; no codebook gap check, no follow-up search, no model coding, no suggestions | TESTED offline |
+| Sources viewable and exportable (Excel: About / Sources / Search_Log; CSV) without any analysis; excluded sources left out unless requested | TESTED offline |
+| Continue to analysis later on the sources already read, without a new search | TESTED offline (coding replaced by a counter) |
+| Search & analyze continues into analysis with no confirmation after retrieval (pause is opt-in; caps still pause) | TESTED offline; conflicts with D-036 default — owner confirmation pending (K-60) |
+| Cases and API clients from before D-045 keep the full pipeline | TESTED offline |
+| Separate Search and Analysis statuses; completed Search only is a success; "Saved automatically" | TESTED offline |
+| "Not analyzed" distinct from insufficient evidence / validation failure / disagreement / completed coding | TESTED offline (never-analyzed cases; failed model calls: K-64) |
+| Sources page: counts, original link, domain, language (when declared), search run, retrieval status, labelled snippet for unread sources, Select / Deselect without deletion, Refresh | TESTED offline (browser) |
+| Analyze selected sources: usable-content check, saved text, no new search, frozen evidence snapshot per run, new run for a new selection, no duplicate jobs, failure keeps search results | TESTED offline (manual-mode coding, no model) |
+| Sources export labelled as source-search results; selection, run id, language, domain; usage split search vs coding with unknown ≠ $0 | TESTED offline |
+
 ## 3. Automatic multi-round source discovery
 
 | Requirement | Status |
@@ -39,6 +55,7 @@ citations, and leaves every final decision to a human reviewer.
 | Search snippets are discovery leads only, never evidence | TESTED (only fetched full text is indexed) |
 | From name + date + location alone: non-U.S. locations get local-language and official-domain queries; keywords that recur across matching results (several websites) are discovered and searched; incident-anchored keywords (Ahrtal ← Ahr) help recognise local-language sources (D-043) | PARTIAL: TESTED offline (`test_query_expansion`, TEST-FIXTURE); merged 2026-11-13; not yet run live; word lists cover 22 countries / 10 languages |
 | Configurable limits: rounds, queries, sources read, time, cost; stopping is reported as "research incomplete", never as absence of evidence | TESTED |
+| Reading limit (pages read for the case, all runs) can be raised on an existing case before re-running research; 1–300; every change recorded (D-044) | TESTED offline (`test_fetch_limit`) + browser check by hand; merged 2026-11-13, not yet checked live |
 
 ## 4. Source priority and handling
 
