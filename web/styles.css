@@ -219,10 +219,15 @@ td.human-final { background: var(--final-bg); }
 #wbTable td b.mono { font-size: 12px; }
 #wbTable .pc-anthropic, #wbTable .pc-openai { min-width: 112px; }
 #wbTable td.ag-cell { min-width: 112px; max-width: 170px; }
-/* Variable column: wide enough that most names stay on one line (owner request 2026-11-13). Desktop only — on narrow
-   screens the column is pinned while the table scrolls sideways, so it keeps its natural width there. The width follows
-   the room the table has (the table side of .workbench is 2.2fr), so the table does not start scrolling sideways. */
-@media (min-width: 1001px) { #wbTable th:nth-child(2), #wbTable td:nth-child(2) { min-width: clamp(120px, calc(68vw - 700px), 300px); } }
+/* Review table (owner requests 2026-11-13): the variable column is wide enough that most names stay on one line, and the
+   table never scrolls sideways on a computer screen. The column width is a preference (`width`, not `min-width`), so it
+   gives way when the other columns need the room; long tags inside cells wrap (`.badge.wrap`). Between 1001 and 1240 px
+   there is not enough room for the table beside the detail panel, so the panel moves below the table. Phones (<= 1000 px)
+   keep the pinned variable column with sideways scrolling — seven columns cannot fit there. */
+@media (min-width: 1001px) { #wbTable th:nth-child(2), #wbTable td:nth-child(2) { width: 260px; } }
+#wbTable td.human-final { min-width: 92px; }
+@media (min-width: 1241px) { #wbTable th:nth-child(2), #wbTable td:nth-child(2) { width: clamp(120px, calc(68vw - 700px), 240px); } }
+@media (max-width: 1240px) { .workbench { grid-template-columns: 1fr; } .wb-detail { position: static; max-height: none; } }
 
 /* ------------------------------------------------------------ coding-provider choice (native radio group as cards) */
 fieldset.pchoice { border: 0; padding: 0; margin: 14px 0 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }

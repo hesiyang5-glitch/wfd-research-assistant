@@ -136,6 +136,34 @@ def main():
               return { col: td.getBoundingClientRect().width, scrolls: w.scrollWidth > w.clientWidth + 1, multi, n: document.querySelectorAll('#wbTable .var-name').length }; }""")
             check("5d the variable column is wide enough that few names wrap (1400 px; owner request 2026-11-13)", m["col"] >= 240 and m["multi"] <= m["n"] * 0.15, m)
             check("5e the wider variable column does not make the review table scroll sideways", not m["scrolls"], m)
+            # 5f: no sideways scrollbar on a computer screen even when every row is full (two models, long reason tags,
+            # stopped / partially-valid notes, long human values, long comparison labels). The data is changed only in
+            # the browser (the response of the read-only results request is rewritten); nothing is stored or sent.
+            def heavy(route):
+                r = route.fetch(); j = r.json()
+                for i, row in enumerate(j.get("rows", [])):
+                    if row.get("field_class") not in ("sourced", "judgment"):
+                        continue
+                    mr = ["unknown", "not_documented", "not_applicable", None][i % 4]
+                    row["providers"] = ["anthropic", "openai"]; row["system"] = None
+                    row["cells"] = {"anthropic": {"state": "suggested", "value": "-9" if mr else "1; 3; 5 some longer text value here that goes on", "missing_reason": mr, "evidence_status": "INSUFFICIENT", "evidence_recorded": True},
+                                    "openai": {"state": ["suggested", "disputed", "partially_valid", "no_supported_value"][i % 4], "value": "2026-01-07T10:30:00-08:00", "missing_reason": mr, "evidence_status": "CONFLICTING",
+                                               "evidence_recorded": True, "stopped_latest": i % 3 == 0, "interpretation": "cross_model_review" if i % 5 == 0 else None}}
+                    row["agreement"] = {"status": ["eligible_evidence_difference", "cross_version_disagreement", "value_disagreement", "confirmed"][i % 4], "reason": ""}
+                    row["review"] = {"action": "accepted", "value": "a long human final value with words 123456", "source_provider": "openai"} if i % 2 else None
+                route.fulfill(response=r, json=j)
+            over = {}
+            for lang in ("en", "zh"):
+                for w in (1001, 1100, 1240, 1241, 1280, 1366, 1440, 1640, 1920):
+                    c2 = b.new_context(viewport={"width": w, "height": 900}); c2.add_init_script(f"localStorage.setItem('wfd_lang','{lang}')")
+                    p2 = c2.new_page(); p2.route("**/api/cases/1/results*", heavy)
+                    p2.goto(U + "#/case/1/review"); p2.wait_for_timeout(1100)
+                    r2 = p2.evaluate("""() => { const w = document.querySelector('.wb-table'); return { table: w.scrollWidth - w.clientWidth, page: document.documentElement.scrollWidth - window.innerWidth,
+                      tags: document.querySelectorAll('#wbTable .mr-badge').length, cols: [...document.querySelectorAll('#wbTable thead th')].filter((th) => th.getBoundingClientRect().right <= w.getBoundingClientRect().right + 1).length }; }""")
+                    if r2["table"] > 1 or r2["page"] > 1 or r2["cols"] != 7 or not r2["tags"]:
+                        over[f"{lang} {w}"] = r2
+                    c2.close()
+            check("5f full rows: no sideways scrollbar and all 7 columns visible at 1001–1920 px, 中文 and English (owner request 2026-11-13)", not over, over)
             pg.goto(U + "#/case/1/progress"); pg.wait_for_timeout(800)
             check("5c progress page with no run shows a sentence, not 'none'", "No research has been run for this case yet." in pg.inner_text("#tabBody"))
 

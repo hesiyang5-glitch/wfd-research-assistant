@@ -6,6 +6,22 @@ Completed changes, newest first. Commit hashes refer to `hesiyang5-glitch/wfd-re
 
 
 
+## 2026-11-13 — Review table: no sideways scrollbar on computer screens (branch `fix/review-no-hscroll`, not merged, not deployed) — D-041 follow-up
+- Cause: the "-9 / not documented" reason tag ("Not documented (nothing found in the sources read)", added with
+  PI-M1…M4) could not wrap, so a row carrying it made the table up to ~430 px wider than its box; the wider variable
+  column from the previous entry (a hard minimum width) added to it. The fixture case used for that entry had no such
+  rows, so the tests did not show it.
+- Fix (display only): the reason tag wraps (`.badge.wrap`); the variable column width is now a preference (240 px, less
+  on smaller screens) that gives way to the other columns; the human-final column keeps at least 92 px; between 1001 and
+  1240 px the detail panel moves below the table (there is no room for both side by side). Phones (≤ 1000 px) unchanged:
+  pinned variable column with sideways scrolling.
+- Files: `web/app.js` (one class name), `web/styles.css`, `tests/test_visual.py` (new check 5f: every row filled with
+  two-model results, long tags and long values, 9 widths × 2 languages → no sideways scroll, all 7 columns visible;
+  fails on the previous version with 650 px of overflow).
+- Tests (offline, 2026-11-13, this branch, cloud sandbox with the stand-in `httpx` described below): test_visual 24/24,
+  test_sources_sort 13/13, test_ui_labels 38, test_missingness 84, test_bulk_agreement 67, test_evidence_status 59 —
+  pass. Not run here: test_auth, test_providers, test_pipeline, test_ui_flow (same reasons as below). No live check.
+
 ## 2026-11-13 — Sources tab ordering; wider Review variable column (merged to `main` 2026-11-13 with owner approval) — D-041
 - Sources tab: "Sort by" — Type priority (default, AAR first; longer first inside a type), Length (pages, then
   passages), Order found (S number, the previous order). Correcting a source's type re-sorts the list. Display only:

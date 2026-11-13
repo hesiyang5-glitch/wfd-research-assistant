@@ -69,7 +69,7 @@ function esBadge(es, recorded) {
 }
 // D-039 (owner decisions 2026-11-12): which meaning a model's -9 has
 const MR_TEXT = { unknown: ["未知（所读资料未提及）", "Unknown (not mentioned in the sources read)"], not_applicable: ["不适用", "Not applicable"], not_stated: ["未说明（规则生效前保存）", "not stated (saved before the -9 reason rule)"], not_documented: ["未记录（所读资料未提及）", "Not documented (nothing found in the sources read)"] };
-const mrBadge = (r) => (r && MR_TEXT[r] ? ` <span class="badge ${r === "not_stated" ? "" : "info"} mr-badge" data-mr="${esc(r)}" title="${esc(L("缺失/未记录编码的含义", "Meaning of the missing / absence code"))}">${esc(L(MR_TEXT[r][0], MR_TEXT[r][1]))}</span>` : "");
+const mrBadge = (r) => (r && MR_TEXT[r] ? ` <span class="badge wrap ${r === "not_stated" ? "" : "info"} mr-badge" data-mr="${esc(r)}" title="${esc(L("缺失/未记录编码的含义", "Meaning of the missing / absence code"))}">${esc(L(MR_TEXT[r][0], MR_TEXT[r][1]))}</span>` : "");
 function statusLines(m) {
   // evidence status and validation status, always shown as two separate facts
   const alts = (m.alternatives || []);
