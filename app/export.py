@@ -110,6 +110,7 @@ def _cells_out(cells: dict | None) -> dict:
                     "value": (row or {}).get("value") or "", "status": (row or {}).get("status"),
                     "evidence_status": (row or {}).get("evidence_status"),
                     "evidence_recorded": bool((row or {}).get("evidence_recorded")),
+                    "missing_reason": (row or {}).get("missing_reason") or "",
                     "validation_state": (row or {}).get("validation_state"),
                     "suggestion_id": (row or {}).get("id"), "model": (row or {}).get("model") or (row or {}).get("run_model"),
                     "interpretation": interp_of(row) if row else None, "cache_status": (row or {}).get("cache_status"),
@@ -119,6 +120,16 @@ def _cells_out(cells: dict | None) -> dict:
                     "previous_value": (c.get("previous") or {}).get("value") if c.get("previous") else None,
                     "changed": bool(c.get("previous"))}
     return out
+
+
+MISSING_REASON_TEXT = {"unknown": "Unknown (not mentioned in the sources read)",
+                       "not_applicable": "Not applicable",
+                       "not_stated": "not stated (saved before the -9 reason rule)"}
+
+
+def missing_reason_text(s: dict | None) -> str:
+    """D-039 PI-M2: which meaning a model's -9 has. Blank when the value is not -9."""
+    return MISSING_REASON_TEXT.get((s or {}).get("missing_reason") or "", "")
 
 
 def export_value(row: dict, include_unreviewed: bool) -> tuple[str, str]:
@@ -252,7 +263,7 @@ def xlsx(case_id: int, include_unreviewed=False) -> bytes:
     wr = wb.create_sheet("Results")
     wr.append(["Variable", "Value", "Source", "Explanation", "Review status", "Value origin", "Suggestion status",
                "Model comparison", "Accepted from provider", "Agreement status", "Confirmation method",
-               "Evidence status", "Validation status", "Rule checks"])
+               "Evidence status", "Validation status", "Rule checks", "-9 reason (model)"])
     yellow = PatternFill("solid", fgColor="FFF2CC")
     for row in res["rows"]:
         v, origin = export_value(row, include_unreviewed)
@@ -264,7 +275,7 @@ def xlsx(case_id: int, include_unreviewed=False) -> bytes:
                     if (row["review"] or {}).get("method") == "bulk_separate_run_agreement"
                     else ((row["review"] or {}).get("action") or "")),
                    evidence_status_text(row["suggestion"]), (row["suggestion"] or {}).get("validation_state") or "",
-                   "; ".join(row.get("rule_flags") or [])])
+                   "; ".join(row.get("rule_flags") or []), missing_reason_text(row["suggestion"])])
         if origin == "UNREVIEWED":
             for c in wr[wr.max_row]:
                 c.fill = yellow
@@ -292,7 +303,7 @@ def xlsx(case_id: int, include_unreviewed=False) -> bytes:
     wp.append(["Variable", "Provider", "Model", "Interpretation", "Suggested value", "Status", "Rationale", "Unresolved",
                "Cache status", "Evidence version", "Analysis version", "Run", "Original run", "Generated at",
                "Comparison", "Human-approved value", "Evidence status", "Validation status", "Alternative values",
-               "Missing evidence"])
+               "Missing evidence", "-9 reason"])
     for row in res["rows"]:
         rv = row["review"] if (row["review"] and row["review"]["action"] in ("accepted", "edited", "cleared")) else None
         for s in row.get("providers") or []:
@@ -305,7 +316,7 @@ def xlsx(case_id: int, include_unreviewed=False) -> bytes:
                        dt.datetime.fromtimestamp(ga).isoformat(timespec="seconds") if ga else "",
                        (row.get("comparison") or {}).get("label", ""), (rv or {}).get("value", "") if rv else "",
                        s.get("evidence_status") or "not recorded", s.get("validation_state") or "",
-                       _alts_text(s), s.get("missing_evidence") or ""])
+                       _alts_text(s), s.get("missing_evidence") or "", missing_reason_text(s)])
 
     wbk = wb.create_sheet("Bulk_Confirmations")
     bcols = ["batch_id", "variable", "value", "claude_suggestion_id", "openai_suggestion_id", "claude_model", "openai_model",

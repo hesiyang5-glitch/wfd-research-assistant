@@ -6,6 +6,21 @@ Completed changes, newest first. Commit hashes refer to `hesiyang5-glitch/wfd-re
 
 
 
+## 2026-11-12 — Missing values: owner decisions PI-M1…M3 (branch `audit/missingness`; not merged, not deployed)
+- PI-M1: for the 7 variables whose codebook entry defines `-9`, a model may suggest `-9` = Unknown ("not mentioned in the
+  passages read") marked INSUFFICIENT without a citation; it is kept as a review-only suggestion (never exported
+  unreviewed, never bulk-confirmable). `-9` = Not applicable needs a cited passage. `-9` stays forbidden elsewhere.
+- PI-M2: every model `-9` must begin its rationale with "Unknown:" or "Not applicable:" (new reason code
+  `missing_reason_not_stated`); shown as a badge in the Review table / detail panel and in new Excel columns
+  ("-9 reason (model)" on Results, "-9 reason" on Provider_Suggestions; Case_Row unchanged). Older rows: "not stated".
+- PI-M3: historical `-9` / placeholders kept as recorded (wording of the Schema-page and rule-check flags updated).
+- Prompt version `wfd-prompt-2026-11-12` (new analyses do not reuse earlier cached replies — paid when run; K-56).
+  OpenAI schema unchanged (`wfd-batch-v2` already allowed `-9` only where defined). No database schema change.
+- Files: `app/validator.py`, `app/evidence_status.py`, `app/coding.py`, `app/export.py`, `app/schema_loader.py`,
+  `app/missingness.py`, `web/app.js`, `tests/test_missingness.py`, `docs/missingness/PI_DECISIONS_missingness.md`.
+- Branch updated with `main` (863c085) first; docs conflicts resolved by keeping both sides.
+- Tests: TEST_RESULTS_PLACEHOLDER
+
 ## 2026-10-29 — Visual polish and "research instrument" theme (merged to `main` 2026-10-29 with owner approval)
 - Presentation only (owner request 2026-10-29: items 1–22 visual polish + items 1–10 tech-style elements). Button,
   tab, chip and status-tag text never wraps; buttons react to hover / press / keyboard focus; disabled buttons don't.

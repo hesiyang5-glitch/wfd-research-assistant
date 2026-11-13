@@ -39,12 +39,19 @@ Rules you must follow:
      directly establish. Explain the inference in "rationale".
    - AMBIGUOUS: two or more permitted values remain reasonably supported and the passages do not distinguish them. List
      them in "alternatives" (each with its own cited evidence); "value" may hold your best candidate, or "".
-   - INSUFFICIENT: the passages do not establish a defensible value. "value" must be ""; say in "missing_evidence" what
-     evidence would be needed. Blank is the default.
+   - INSUFFICIENT: the passages do not establish a defensible value. "value" must be "" (the only exception is -9 =
+     Unknown below); say in "missing_evidence" what evidence would be needed. Blank is the default.
    - CONFLICTING: credible passages materially support incompatible interpretations. Cite both sides (stance
      "contradicts" or "alternative"); "value" may be "" or your best candidate.
-   Do not use 0, -9 or any other code to mean "not found". A special missing value (such as -9) may be used ONLY if that
-   variable's rules define it AND the sources themselves indicate the information is unknown or not applicable. Set
+   Do not use 0 or any other ordinary code to mean "not found". The special missing value -9 may be used ONLY for a
+   variable whose rules below define it ("Special missing values defined for THIS variable"); never for any other
+   variable. For those variables only:
+   - -9 = Unknown means the information is not mentioned in the passages you were given (or the passages say it is
+     unknown). If no passage mentions it, give "value": "-9", "evidence_status": "INSUFFICIENT", no citation, say in
+     "missing_evidence" what would establish it, and begin "rationale" with "Unknown:".
+   - -9 = Not applicable means the variable does not apply to this case (for example, no alert was sent). Cite the
+     passage that shows this, and begin "rationale" with "Not applicable:".
+   Every -9 must begin its "rationale" with exactly "Unknown:" or "Not applicable:"; a -9 without one is rejected. Set
    "rule_unclear" to true only when the codebook rule itself is unclear for this case.
 4. Separate what happened (observed failure) from why it happened (cause). An uncertain cause must not stop you from coding a
    well-documented observed failure. A documented failure does not by itself establish a software, human, or organizational
@@ -91,7 +98,7 @@ evidence to the codebook definition. "unresolved": open questions, conflicts or 
 STRUCTURED_SYSTEM_PROMPT = PROMPT_RULES + STRUCTURED_REPLY_FORMAT
 
 # Bump when the prompt text, prompt assembly or reply handling changes; part of every cache key.
-PROMPT_VERSION = "wfd-prompt-2026-10-06"
+PROMPT_VERSION = "wfd-prompt-2026-11-12"  # 2026-11-12: -9 Unknown / Not applicable rules (D-039, owner decisions)
 EVIDENCE_STATUS_SINCE = "wfd-prompt-2026-10-06"  # results from earlier prompt versions have no evidence status
 EVIDENCE_STATUSES = ("SUPPORTED", "INFERRED", "AMBIGUOUS", "INSUFFICIENT", "CONFLICTING")
 
@@ -152,7 +159,9 @@ def field_spec_text(f: dict) -> str:
                      + " (record a percentage number)")
     if f.get("missing_codes"):
         lines.append("Special missing values defined for THIS variable: " +
-                     "; ".join(f"{m} = {f.get('missing_labels', {}).get(m, 'unknown')}" for m in f["missing_codes"]))
+                     "; ".join(f"{m} = {f.get('missing_labels', {}).get(m, 'unknown')}" for m in f["missing_codes"])
+                     + " (use -9 for Unknown = not mentioned in the passages, or Not applicable; begin the rationale "
+                       "with 'Unknown:' or 'Not applicable:')")
     else:
         lines.append("No special missing value is defined for this variable: leave blank when not established.")
     if f.get("format"):
@@ -977,7 +986,8 @@ def run_coding(case: dict, settings: dict, client, job_id: int | None, log, budg
                         "outcome": "invalid" if r["validation_status"] == "invalid" else v.get("outcome"),
                         "reason_codes": sorted(set(v.get("reason_codes", []) + r["reason_codes"])),
                         "selections": v.get("selections", []), "rejected_citations": v.get("rejected_citations", []),
-                        "evidence_status": r["evidence_status"]}, item, basis="model",
+                        "evidence_status": r["evidence_status"], "missing_reason": v.get("missing_reason", "")},
+                       item, basis="model",
                        meta={**meta, **bmeta, "call_id": call_id, "cache_status": cache_status,
                              "evidence_status": r["evidence_status"], "validation_status": r["validation_status"],
                              "alternatives_json": json.dumps(r["alternatives"]),
@@ -1139,7 +1149,18 @@ def _load_row(s: dict) -> dict:
     s["evidence_recorded"] = es_mod.recorded(s)
     s["validation_state"] = es_mod.validation_status_of(s)
     s["evidence_review_reason"] = es_mod.review_required(s)
+    s["missing_reason"] = missing_reason_of(s)
     return s
+
+
+def missing_reason_of(row: dict) -> str:
+    """For a -9 model value: 'unknown' / 'not_applicable' (D-039 PI-M2), 'not_stated' for rows saved before the rule;
+    '' when the value is not -9. Read-only: nothing stored is changed."""
+    from .validator import missing_reason, special_missing_form
+    if special_missing_form(str(row.get("value") or "")) is None:
+        return ""
+    stored = (row.get("validation") or {}).get("missing_reason") if isinstance(row.get("validation"), dict) else None
+    return stored or missing_reason(row.get("rationale")) or "not_stated"
 
 
 PROVIDER_COLUMN = {"anthropic": "anthropic", "openai": "openai", "openai_compatible": "openai"}

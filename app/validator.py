@@ -59,11 +59,26 @@ REASONS = {
     "not_iso_date": "not an ISO date (YYYY-MM-DD)",
     "rule_missing": "no codebook rule for this field",
     "missing_code_not_defined": "a special missing value (-9) is not defined for this variable in the codebook",
+    "missing_reason_not_stated": "a -9 suggestion must say in its rationale whether it means Unknown or Not applicable",
 }
 # Special missing values seen in the WFD codebook (v1.3 defines only -9, for 7 variables). A value equal to one of these is
 # accepted ONLY when the variable's own codebook entry defines it (D-003, D-039) — never as an ordinary number or text.
 SPECIAL_MISSING = ("-9",)
 BLANK_WORDS = ("null", "none", "n/a", "blank", "unknown", "-", "–", "—", "")
+
+
+# Owner decisions 2026-11-12 (D-039, PI-M1/PI-M2): -9 means "not mentioned in the sources read" (Unknown) or "not
+# applicable". One code is kept; the rationale must begin with which one it is, and the server checks this.
+MISSING_REASONS = {"unknown": "Unknown", "not_applicable": "Not applicable"}
+_REASON_RE = re.compile(r"^\s*[\[(]?\s*(unknown|not[\s-]+applicable|inapplicable|n/a)\s*(?:[\])]|[:\-\u2013\u2014.]|$)", re.I)
+
+
+def missing_reason(text) -> str | None:
+    """'Unknown: ...' -> 'unknown'; 'Not applicable — ...' -> 'not_applicable'; anything else -> None."""
+    m = _REASON_RE.match(str(text or ""))
+    if not m:
+        return None
+    return "unknown" if m.group(1).lower() == "unknown" else "not_applicable"
 
 
 def special_missing_form(v: str) -> str | None:
@@ -173,7 +188,7 @@ def validate(field: dict, item: dict, passages: dict) -> dict:
     counter, ctr_bad = _check([e for e in ev_raw if e.get("stance") in ("contradicts", "alternative")], passages,
                               "counter-evidence")
     warnings.extend(m for _, m in ctr_bad)
-    base = {"warnings": warnings, "counter": counter, "selections": [], "rejected_citations": []}
+    base = {"warnings": warnings, "counter": counter, "selections": [], "rejected_citations": [], "missing_reason": ""}
 
     def finish(ok, outcome, val, errs, reasons, evidence, options=None, selections=None, rejected_citations=None):
         return {**base, "ok": ok, "outcome": outcome, "value": val, "errors": errs, "evidence": evidence,
@@ -212,14 +227,33 @@ def validate(field: dict, item: dict, passages: dict) -> dict:
         if len(parts) > 1:
             return finish(False, "invalid", "", ["special missing value mixed with other values"],
                           ["special_missing_mixed"], top_good)
-        warnings.append(f"special missing value {value} used — allowed for this variable only when sources indicate the "
-                        f"information is unknown/not applicable; confirm")
+        # Owner decisions 2026-11-12 (D-039 PI-M1/PI-M2): the rationale must say Unknown or Not applicable.
+        # - Not applicable is a finding about the case (e.g. no alert was sent): it needs a supporting citation.
+        # - Unknown means "not mentioned in the sources read": with no citation it is allowed only when the reply marks
+        #   the evidence INSUFFICIENT; it is then a suggestion for human review, never a final value.
+        why = missing_reason(item.get("rationale"))
+        base["missing_reason"] = why or ""
         errs = [m for _, m in top_bad]
+        reasons = [c for c, _ in top_bad]
+        if why is None:
+            return finish(False, "invalid", "", errs + [f"{value} given without saying in the rationale whether it means "
+                                                        f"Unknown or Not applicable (start the rationale with 'Unknown:' "
+                                                        f"or 'Not applicable:')"],
+                          reasons + ["missing_reason_not_stated"], top_good)
         sr = _support_reason(top_good)
-        if sr:
-            errs.append(f"value: {sr[1]}")
-        reasons = [c for c, _ in top_bad] + ([sr[0]] if sr else [])
-        return finish(not errs, "valid" if not errs else "invalid", value, errs, reasons, top_good)
+        es = str(item.get("evidence_status") or "").strip().upper()
+        if why == "unknown" and sr and es == "INSUFFICIENT":
+            warnings.append(f"{value} = Unknown: the information was not found in the passages the model read — "
+                            f"confirm against the sources before accepting")
+        else:
+            if sr:
+                errs.append(f"value: {sr[1]}" + ("" if why == "not_applicable" else
+                                                  " (an uncited -9 Unknown must be marked INSUFFICIENT)"))
+                reasons.append(sr[0])
+            warnings.append(f"{value} = {MISSING_REASONS[why]}" + (" — confirm that the variable does not apply to this case"
+                                                                   if why == "not_applicable" else
+                                                                   " — the cited sources say the information is unknown; confirm"))
+        return finish(not errs, "valid" if not errs else "invalid", value if not errs else "", errs, reasons, top_good)
 
     if t == "categorical" and not field.get("multi") and len(parts) > 1:
         return finish(False, "invalid", "", ["several codes given for a single-select variable"],

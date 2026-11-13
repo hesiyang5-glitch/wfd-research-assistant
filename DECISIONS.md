@@ -317,7 +317,7 @@ change sends new (paid) requests; there is no cache to reuse for the new version
 citations, not whether the inference is sound. Human review remains the safeguard.
 
 
-## D-039 · 2026-10-06 · Missing values: implement only what codebook v1.3 states; the rest goes to the PI team — Proposed (branch `audit/missingness`, not merged, not deployed)
+## D-039 · 2026-10-06 · Missing values: implement only what codebook v1.3 states; the rest goes to the PI team — Proposed (branch `audit/missingness`, not merged, not deployed; PI-M1…M3 decided by the owner 2026-11-12)
 **Context.** The benchmark showed disagreement on TRANSMISSION_LATENCY, DELIVERY_COVERAGE, POPULATION_AFFECTED_ESTIMATE,
 HARM_LOSS_INDICATORS, MESSAGE_DISSEMINATION_TIME, END_DATE and INCIDENT_DURATION, and the workbook uses `-9` in many
 variables whose codebook entry does not define it. An audit of all 82 workbook columns against the codebook and the code
@@ -339,6 +339,17 @@ suggested from silence in the retrieved passages; separating unknown from not ap
 "absence" codes such as PERCEIVED_TIMELINESS 3; END_DATE when undocumented; INCIDENT_DURATION history; UNCERTAINTY_TYPE
 for flag 0; nonuse-case message variables; DELIVERY_COVERAGE format; POPULATION_AFFECTED_ESTIMATE scope;
 HARM_LOSS_INDICATORS type and attribution. Current behaviour stays until the team decides.
+**Owner decisions 2026-11-12 (project owner, final; PI-M1, PI-M2, PI-M3).** (M1) `-9` means "not mentioned in the
+sources we read" or "not applicable". For the 7 variables whose entry defines `-9`, the assistant may suggest `-9` =
+Unknown when its passages do not mention the information: the reply must mark it INSUFFICIENT (no citation needed); the
+value is then kept as a suggestion with status INSUFFICIENT — a deliberate, narrow exception to D-038 rule 2 — that
+always needs human review, is never exported unreviewed and is never bulk-confirmable. `-9` = Not applicable is a finding
+about the case and needs a cited passage. (M2) One `-9` is kept; every model `-9` must begin its rationale with
+"Unknown:" or "Not applicable:" (server check, reason `missing_reason_not_stated`); the meaning is shown in the review
+workbench and in the Excel export ("-9 reason" columns; Case_Row unchanged). Rows saved earlier show "not stated" (read
+only). (M3) Historical `-9` and placeholders are kept as recorded; no stored data is changed; the assistant still never
+suggests `-9` where the codebook does not define it. Prompt version `wfd-prompt-2026-11-12` (new analyses do not reuse
+replies cached under earlier prompts). PI-M4 … PI-M11 remain open.
 
 ## D-040 · 2026-10-29 · Visual polish and "research instrument" theme — Active (merged to `main` 2026-10-29 with owner approval)
 **Decision.** The interface gets a restrained "research instrument / data console" look (owner request 2026-10-29):

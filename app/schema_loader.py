@@ -400,7 +400,7 @@ def build_schema(codebook_vars: list[dict], header: list, data_rows: list, workb
                     ph += 1
             if m9:
                 f["issues"].append(f"Workbook data uses -9 in {m9} row(s), but the codebook defines no special missing value "
-                                   f"for this variable.")
+                                   f"for this variable. Historical entries are kept as recorded (owner decision 2026-11-12, PI-M3).")
             if ph:
                 f["issues"].append(f"Workbook data uses a placeholder ('N/A' or '-') in {ph} row(s); the codebook defines no "
                                    f"such value for this variable.")

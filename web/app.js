@@ -67,12 +67,16 @@ function esBadge(es, recorded) {
   if (!es && !recorded) return "";
   return ` <span class="badge ${ES_BADGE[es] || "warn"} es-badge" data-es="${esc(es || "missing")}" title="${esc(ES_HELP[es] ? L(ES_HELP[es][0], ES_HELP[es][1]) : L("回复未给出证据状态", "The reply gave no evidence status"))}">${esc(esText(es))}</span>`;
 }
+// D-039 (owner decisions 2026-11-12): which meaning a model's -9 has
+const MR_TEXT = { unknown: ["未知（所读资料未提及）", "Unknown (not mentioned in the sources read)"], not_applicable: ["不适用", "Not applicable"], not_stated: ["未说明（规则生效前保存）", "not stated (saved before the -9 reason rule)"] };
+const mrBadge = (r) => (r && MR_TEXT[r] ? ` <span class="badge ${r === "not_stated" ? "" : "info"} mr-badge" data-mr="${esc(r)}" title="${esc(L("-9 的含义", "Meaning of -9"))}">${esc(L(MR_TEXT[r][0], MR_TEXT[r][1]))}</span>` : "");
 function statusLines(m) {
   // evidence status and validation status, always shown as two separate facts
   const alts = (m.alternatives || []);
   return `<div class="small es-lines"><b>${L("证据状态", "Evidence status")}:</b> ${esc(esText(m.evidence_status))}${m.evidence_status && ES_HELP[m.evidence_status] ? ` <span class="muted">— ${esc(L(ES_HELP[m.evidence_status][0], ES_HELP[m.evidence_status][1]))}</span>` : (!m.evidence_recorded ? ` <span class="muted">${L("（此结果早于证据状态功能）", "(result predates evidence statuses)")}</span>` : "")}
     · <b>${L("验证状态", "Validation status")}:</b> ${esc(vsText(m.validation_state))}</div>
     ${alts.length ? `<div class="small"><b>${L("其他候选值", "Alternative values")}:</b> ${alts.map((a) => `<span class="mono">${esc(a.value)}</span>${a.provider ? ` (${esc(PROV[a.provider] || a.provider)})` : ""} [${(a.evidence || []).map((e) => esc(e.id)).join(", ")}]`).join("; ")}</div>` : ""}
+    ${m.missing_reason ? `<div class="small"><b>${L("-9 的含义", "Meaning of -9")}:</b>${mrBadge(m.missing_reason)}</div>` : ""}
     ${m.missing_evidence ? `<div class="small"><b>${L("缺少的证据", "Missing evidence")}:</b> ${esc(m.missing_evidence)}</div>` : ""}
     ${m.evidence_review_reason ? `<div class="small muted">${L("不会作为未复核值导出或用于推导字段", "Not exported as an unreviewed value or used for derived fields")}: ${esc(m.evidence_review_reason)}</div>` : ""}`;
 }
@@ -84,7 +88,7 @@ function cellHtml(cell, row) {
   const roleNote = c.interpretation === "cross_model_review" ? ` <span class="badge warn" title="${esc(interpText("cross_model_review"))}">${L("跨模型复核", "cross-model")}</span>` : "";
   const esTag = ["suggested", "disputed", "partially_valid", "no_supported_value"].includes(c.state) ? esBadge(c.evidence_status, c.evidence_recorded) : "";
   if (["suggested", "disputed", "partially_valid"].includes(c.state) && c.value) {
-    return `<div class="cell-val st-${c.state}"><span class="mono">${esc(c.value.slice(0, 48))}</span>${esTag}${c.state === "disputed" ? ` <span class="cell-tag st-disputed">${esc(cellText("disputed"))}</span>` : ""}${c.state === "partially_valid" ? ` <span class="cell-tag st-invalid_output" title="${esc(L("部分选项未通过验证，已被拒绝；保留的是有证据支持的选项", "Some selections failed validation and were rejected; the supported selections are kept"))}">${esc(cellText("partially_valid"))}</span>` : ""}${c.changed ? ` <span class="badge warn" title="${esc(L("上次", "previous") + ": " + (c.previous_value || "∅"))}">Δ</span>` : ""}${roleNote}</div>${stopNote}`;
+    return `<div class="cell-val st-${c.state}"><span class="mono">${esc(c.value.slice(0, 48))}</span>${mrBadge(c.missing_reason)}${esTag}${c.state === "disputed" ? ` <span class="cell-tag st-disputed">${esc(cellText("disputed"))}</span>` : ""}${c.state === "partially_valid" ? ` <span class="cell-tag st-invalid_output" title="${esc(L("部分选项未通过验证，已被拒绝；保留的是有证据支持的选项", "Some selections failed validation and were rejected; the supported selections are kept"))}">${esc(cellText("partially_valid"))}</span>` : ""}${c.changed ? ` <span class="badge warn" title="${esc(L("上次", "previous") + ": " + (c.previous_value || "∅"))}">Δ</span>` : ""}${roleNote}</div>${stopNote}`;
   }
   const icon = { not_run: "—", no_supported_value: "∅", stopped: "⏸", failed: "✕", invalid_output: "⚠", limit_reached: "⛔", disputed: "≠" }[c.state] || "";
   return `<span class="cell-tag st-${esc(c.state)}">${icon} ${esc(cellText(c.state))}</span>${esTag}${roleNote}${stopNote}`;

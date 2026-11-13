@@ -53,8 +53,9 @@ def consistency_flags(final: dict, fields: dict | None = None) -> dict[str, list
         parts = split_values(_norm(val)) if f.get("type") in ("categorical", "open_list") else [_norm(val)]
         if any(special_missing_form(p) for p in parts) and "-9" not in (f.get("missing_codes") or []):
             # a researcher may still enter it (historical practice); it is reported, not blocked — PI decision PI-M3
-            flag(var, "-9 is not defined by the codebook for this variable (see PI decision PI-M3); blank is the "
-                      "codebook-consistent entry when the value is not established.")
+            flag(var, "-9 is not defined by the codebook for this variable; historical entries are kept as recorded "
+                      "(owner decision 2026-11-12, PI-M3), but for new coding blank is the codebook-consistent entry "
+                      "when the value is not established.")
 
     if _norm(final.get("UNCERTAINTY_FLAG")) == "1" and "UNCERTAINTY_TYPE" in final and not _norm(final["UNCERTAINTY_TYPE"]):
         flag("UNCERTAINTY_TYPE", "Codebook: when UNCERTAINTY_FLAG = 1, the case must also specify UNCERTAINTY_TYPE "

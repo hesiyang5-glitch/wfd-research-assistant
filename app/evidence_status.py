@@ -9,8 +9,11 @@ Every model suggestion carries two INDEPENDENT dimensions:
 
 Rules enforced here and in app/agreement.py / app/export.py:
 1. INFERRED is never turned into a human-final value (it is not exported unreviewed and not bulk-confirmable).
-2. AMBIGUOUS, INSUFFICIENT and CONFLICTING never force a value: INSUFFICIENT always stores a blank value; AMBIGUOUS
+2. AMBIGUOUS, INSUFFICIENT and CONFLICTING never force a value: INSUFFICIENT stores a blank value; AMBIGUOUS
    and CONFLICTING keep at most the model's best candidate, stored with status "disputed" (human review).
+   One exception (owner decision 2026-11-12, D-039 PI-M1): where the variable's codebook entry defines -9, an
+   INSUFFICIENT reply may keep "-9" marked "Unknown" (= not mentioned in the passages the model read). It stays
+   INSUFFICIENT, always needs human review, is never exported unreviewed and is never bulk-confirmable.
 3. A model may name a best candidate while still marking it INFERRED or AMBIGUOUS.
 4. Human-approved final values live in the `reviews` table and are never touched by this module.
 5. Agreement between providers never upgrades an evidence status (agreement is not verification).
@@ -104,7 +107,9 @@ def resolve(field: dict, item: dict, v: dict, passages: dict, validate, *, requi
     es, es_err, es_codes = read_evidence_status(item)
     warnings, codes, errors = [], list(es_codes), list(es_err)
     proposed = item.get("value")
-    if es == "INSUFFICIENT" and proposed not in (None, "", []):
+    keep_unknown = (es == "INSUFFICIENT" and v.get("ok") and v.get("missing_reason") == "unknown"
+                    and is_defined_missing(field, v.get("value")))
+    if es == "INSUFFICIENT" and proposed not in (None, "", []) and not keep_unknown:
         # rule 2: never force a value — the proposed value is reported, not validated or kept
         warnings.append(WARN["value_with_insufficient"])
         codes.append("value_with_insufficient")
@@ -135,7 +140,10 @@ def resolve(field: dict, item: dict, v: dict, passages: dict, validate, *, requi
     if alt_warn:
         codes.append("alternative_rejected")
 
-    if es == "INSUFFICIENT":
+    if es == "INSUFFICIENT" and keep_unknown:
+        status = "suggested"  # value "-9" (Unknown), evidence status stays INSUFFICIENT -> human review (PI-M1)
+        codes.append("missing_unknown_from_silence")
+    elif es == "INSUFFICIENT":
         status, value = "insufficient_evidence", ""
         if not missing_evidence:
             warnings.append(WARN["missing_evidence_not_described"].format(es=es))
@@ -204,6 +212,13 @@ def alternatives_of(row: dict) -> list:
         return []
 
 
+def is_defined_missing(field: dict, value) -> bool:
+    """True when `value` is a special missing value that THIS variable's codebook entry defines (e.g. -9)."""
+    from .validator import special_missing_form
+    sm = special_missing_form(str(value or ""))
+    return bool(sm) and sm in set(field.get("missing_codes") or [])
+
+
 def review_required(row: dict) -> str:
     """Non-empty reason when the evidence status forbids treating this suggestion as a value without a human decision
     (rule 1: INFERRED is never exported or derived from unreviewed; rule 2: no forced value). Rows stored before
@@ -213,4 +228,7 @@ def review_required(row: dict) -> str:
     es = evidence_status_of(row)
     if es == "SUPPORTED":
         return ""
+    if es == "INSUFFICIENT" and str(row.get("value") or "").strip() == "-9":
+        return ("-9 = Unknown: not found in the passages the model read — needs human review against the sources "
+                "(owner decision D-039)")
     return f"evidence status {es or 'missing'} — needs human review"

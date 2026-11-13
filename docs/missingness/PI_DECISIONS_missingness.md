@@ -1,8 +1,9 @@
 # Proposed PI decisions — missing values (blank, `-9`, N/A, unknown, insufficient evidence)
 
 Status: **proposal for the research team (Hamilton Bean, Katie Dickinson)**, prepared 2026-10-06 for D-039.
-Nothing in this document has been decided. The WFD Coding Assistant keeps its current behaviour on every item below
-until the team decides; it does not guess.
+**Decided 2026-11-12 by the project owner (final): PI-M1, PI-M2, PI-M3** — see the "Decision" line under each.
+**PI-M4 … PI-M11 are still open**: the WFD Coding Assistant keeps its current behaviour on those items until the team
+decides; it does not guess.
 
 Source of facts: `CODEBOOK v1.3` (April 14, 2026; variable text in `reference/CODEBOOK_v1.3_variables.txt`, same wording as
 the .docx), `MASTER_WFD_Pilot_Workbook_v1.7.xlsx` (50 cases), and the variable-level table
@@ -45,6 +46,10 @@ would ideally become part of that appendix.
 - **Decision needed:** (a) keep the current rule (blank from the assistant; the researcher enters `-9` after their own
   review), or (b) allow the assistant to suggest `-9` when its passages are silent, always as INSUFFICIENT/needs review,
   or (c) a per-variable rule (e.g. only MESSAGE_DISSEMINATION_TIME, whose wording includes "not documented").
+- **Decision (project owner, 2026-11-12, final): (b).** `-9` means "not mentioned in the sources we read" or "not
+  applicable". For the 7 variables whose entry defines `-9`, the assistant suggests `-9` = Unknown when its passages do
+  not mention the information — always with evidence status INSUFFICIENT, never exported unreviewed, never
+  bulk-confirmable; the researcher confirms it against the sources. `-9` = Not applicable needs a cited passage.
 
 ## PI-M2 — Should "unknown" and "not applicable" be separated where one `-9` covers both?
 
@@ -55,6 +60,10 @@ would ideally become part of that appendix.
 - **Current tool:** follows the codebook literally (one `-9`); a model's "N/A" becomes blank, never `-9`.
 - **Decision needed:** keep one code, or define a separate not-applicable value (and for which variables), and whether
   historical `N/A` entries become `-9`, the new value, or blank.
+- **Decision (project owner, 2026-11-12, final): keep one `-9`; distinguish in the reasoning.** Every model `-9` must
+  begin its rationale with "Unknown:" or "Not applicable:"; the server rejects a `-9` without one
+  (`missing_reason_not_stated`). The meaning is shown in the review workbench and in the Excel export ("-9 reason"
+  columns). Historical `N/A` entries are not changed (PI-M3).
 
 ## PI-M3 — Historical `-9` and placeholders where the codebook defines none
 
@@ -75,6 +84,9 @@ MESSAGE_CHARACTERISTICS_* and HARM_LOSS_INDICATORS.
 - **Decision needed, per variable:** (a) amend the codebook to define `-9` (with its meaning), or (b) recode historical
   entries (to blank, or to an existing code such as GEOCODE_SPECIFICITY 0) — the team decides; the tool will not
   recode workbook data.
+- **Decision (project owner, 2026-11-12, final): keep them.** Historical `-9` and placeholders stay exactly as recorded;
+  this integration changes no past data. For new coding the codebook rule still applies: the assistant never suggests
+  `-9` for these 21 variables; a researcher's own `-9` there is kept and flagged.
 
 ## PI-M4 — Codes that record absence of evidence: should the assistant ever suggest them?
 
