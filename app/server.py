@@ -442,12 +442,36 @@ def api_research(h, cid, body, **_):
     st = json.loads(c["settings_json"] or "{}")
     # D-045: a re-run uses the case's own mode unless the request names one; cases from before D-045 analyze as before
     run_mode = check_run_mode(body.get("run_mode") or st.get("run_mode"))
+    # K-61 fix: Search & analyze from the re-run dialog may name the coding provider, checked exactly like the first
+    # form (exists, keys configured, free availability check, caps cover one worst-case request) before anything runs
+    mode = None
+    if run_mode == "search_analyze" and body.get("mode"):
+        merged = {**global_settings(), **st}
+        mode = check_mode(body.get("mode"), merged)
+        if mode and mode != "single":
+            bad = [v["reason"] for v in provider_checks(mode, merged).values() if not v["ok"]]
+            if bad:
+                raise ApiError(400, "; ".join(bad) + ". Nothing was started.")
+            from .coding import case_spent, minimum_request_check
+            spent_oa = db.q1("SELECT COALESCE(SUM(cost_usd),0) c FROM usage WHERE case_id=? AND kind='model' AND provider "
+                             "IN ('openai','openai_compatible')", (int(cid),))["c"] or 0.0
+            short = minimum_request_check(mode, merged, spent=case_spent(int(cid)), spent_openai=float(spent_oa))
+            if short:
+                raise ApiError(400, short + " Raise the limit or choose another option. Nothing was started.")
+    changed = False
     if body.get("run_mode") and st.get("run_mode") != run_mode:
         st["run_mode"] = run_mode
+        changed = True
+    if mode and mode != "single" and st.get("coding_mode") != mode:
+        st["coding_mode"] = mode
+        changed = True
+    if changed:
         db.update("cases", int(cid), {"settings_json": json.dumps(st), "updated_at": time.time()})
     params = {"identity_confirmed": bool(body.get("identity_confirmed"))}
     if run_mode == "search_only":
         params["search_only"] = True
+    elif mode:
+        params["mode"] = mode
     return {"job_id": jobs.enqueue(int(cid), "research", params), "run_mode": run_mode}
 
 

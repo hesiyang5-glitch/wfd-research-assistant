@@ -6,7 +6,12 @@ Completed changes, newest first. Commit hashes refer to `hesiyang5-glitch/wfd-re
 
 
 
-## 2026-11-13 — "Search only" and "Search & analyze" (branch `feature/search-only`, built on `feature/case-fetch-limit`; not merged) — D-045
+## 2026-11-13 — "Search only" and "Search & analyze" (merged to `main` 2026-11-13 with owner approval, together with D-044) — D-045
+- K-61 fixed before merge (owner request): the Re-run research dialog shows the coding-provider choice (Claude only /
+  GPT only / Claude + GPT) whenever Search & analyze is selected; the server checks it exactly like the first form
+  (option exists and is available, free availability check, caps cover one worst-case request given this case's spend)
+  and refuses before anything starts; the choice is saved as the case's coding mode. Cards stacked in the narrow dialog.
+  Browser-checked by hand with models shown as configured (no request sent to any model).
 - Owner request after the AlertHub demonstration: use search and source curation on their own (news, official
   documents, after-action reports for Country Profiles), with analysis optional.
 - Research form: two options near the start button, **Search only** (default) and **Search & analyze**, with the
@@ -48,7 +53,7 @@ Completed changes, newest first. Commit hashes refer to `hesiyang5-glitch/wfd-re
   choose Search & analyze before using the model choice (+1 check: pause box unticked); schema fingerprints in
   `test_export_labels` / `test_ui_labels` updated for the two new columns; `test_visual` reads the first status badge.
 
-## 2026-11-13 — Raise the reading (fetch) limit on an existing case (branch `feature/case-fetch-limit`, not merged) — D-044
+## 2026-11-13 — Raise the reading (fetch) limit on an existing case (merged to `main` 2026-11-13 with owner approval, with D-045) — D-044
 - The fetch limit (`max_fetch`, default 60) counts every page read for the case in all runs, so re-running research on
   a case that had reached it searched (using Tavily credits) but read nothing new. There was no way to change it on an
   existing case.

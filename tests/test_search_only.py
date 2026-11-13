@@ -214,6 +214,28 @@ def main():
         db.q1("SELECT settings_json FROM cases WHERE id=?", (cid,))["settings_json"])["run_mode"] == "search_analyze"
           and "search_only" not in json.loads(db.q1("SELECT params_json FROM jobs WHERE id=?", (rr2["job_id"],))["params_json"]))
     db.update("jobs", rr2["job_id"], {"status": "cancelled"})
+    nj = db.q1("SELECT COUNT(*) n FROM jobs WHERE case_id=?", (cid,))["n"]
+    try:
+        server.api_research(H(), str(cid), {"run_mode": "search_analyze", "mode": "anthropic_only"})
+        check("K-61: re-run with an unavailable coding provider is refused", False)
+    except server.ApiError as e:
+        check("K-61: re-run with an unavailable coding provider is refused before anything starts",
+              e.status == 400 and db.q1("SELECT COUNT(*) n FROM jobs WHERE case_id=?", (cid,))["n"] == nj, e.msg)
+    try:
+        server.api_research(H(), str(cid), {"run_mode": "search_analyze", "mode": "no_such_mode"})
+        check("K-61: unknown coding provider option refused", False)
+    except server.ApiError as e:
+        check("K-61: unknown coding provider option refused", e.status == 400)
+    rr3 = server.api_research(H(), str(cid), {"run_mode": "search_analyze", "mode": "single"})
+    check("K-61: the chosen option is passed to the job", json.loads(
+        db.q1("SELECT params_json FROM jobs WHERE id=?", (rr3["job_id"],))["params_json"]).get("mode") == "single")
+    db.update("jobs", rr3["job_id"], {"status": "cancelled"})
+    rr4 = server.api_research(H(), str(cid), {"run_mode": "search_only", "mode": "anthropic_only"})
+    check("K-61: Search only ignores a coding provider choice", "mode" not in json.loads(
+        db.q1("SELECT params_json FROM jobs WHERE id=?", (rr4["job_id"],))["params_json"]))
+    db.update("jobs", rr4["job_id"], {"status": "cancelled"})
+    server.api_research(H(), str(cid), {"run_mode": "search_analyze"})  # restore the mode the next checks expect
+    db.update("jobs", db.q1("SELECT MAX(id) m FROM jobs WHERE case_id=?", (cid,))["m"], {"status": "cancelled"})
     legacy = db.insert("cases", {"name": "Legacy", "location": "", "date_text": "", "details": "", "known_links": "", "aliases": "",
                                  "schema_version_id": 1, "status": "review", "identity_json": "{}",
                                  "settings_json": json.dumps({"max_fetch": 60}), "created_at": time.time(), "updated_at": time.time()})
@@ -386,6 +408,19 @@ def main():
                   all(x in txt for x in ("Analyze selected sources", "View sources", "Export source list", "not checked (search only)",
                                          "Search: complete — partial retrieval", "Analysis: not requested", "Saved automatically")), txt[:600])
             check("search-only completion described as a successful outcome", "not a failed analysis" in txt)
+            pg.click("#rerunBtn")
+            pg.wait_for_selector("#modalRoot #runModeChoice")
+            hidden_so = not pg.is_visible("#rrProv")
+            pg.check("#modalRoot input[name=rmode][value=search_analyze]")
+            pg.wait_for_timeout(300)
+            shown_sa = pg.is_visible("#rrProv")
+            btn_sa = pg.inner_text("#dlgOk").strip()
+            pg.locator(".modal").screenshot(path=str(TMP / "rerun_dialog_analyze.png"))
+            pg.check("#modalRoot input[name=rmode][value=search_only]")
+            pg.wait_for_timeout(300)
+            check("K-61: re-run dialog shows the coding-provider part only for Search & analyze",
+                  hidden_so and shown_sa and not pg.is_visible("#rrProv") and btn_sa == "Search & analyze")
+            pg.click("#dlgCancel")
             pg.click("text=View sources")
             pg.wait_for_selector("#srcExport")
             check("Sources tab offers the export", "Source list (Excel)" in pg.inner_text("#srcExport"))

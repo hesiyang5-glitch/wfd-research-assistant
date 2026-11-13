@@ -613,16 +613,26 @@ async function startResearch(id, btn, ask = false) {
       const c = await api("GET", `/api/cases/${id}`);
       const full = c.fetched_count >= c.max_fetch;
       let rm = (c.settings || {}).run_mode === "search_only" ? "search_only" : "search_analyze";  // older cases: full pipeline
+      // K-61: Search & analyze in this dialog also asks which coding provider(s) to use (same choices as the first form)
+      const av = availModes();
+      const stored = (c.settings || {}).coding_mode;
+      let pm = av.some((m) => m.mode === stored) ? stored : av.some((m) => m.mode === "anthropic_only") ? "anthropic_only" : (av[0] ? av[0].mode : null);
+      const provBox = () => av.length ? providerChoiceHtml(STATUS.modes || [], pm)
+        : `<div class="callout warn small">${L("服务器没有配置任何模型密钥：研究照常进行，结果留给你手动编码。", "No model key is configured on the server: research runs as usual and the results are left for manual coding.")}</div>`;
       const dlg = askDialog({
         title: t("rerun"),
-        body: `${runModeHtml(rm)}<div class="kv" style="margin-top:10px"><div>${L("本案例已读取的网页（所有运行）", "Pages already read for this case (all runs)")}</div><div><b>${c.fetched_count}</b></div>
+        body: `${runModeHtml(rm)}<div id="rrProv" style="margin-top:8px" ${rm === "search_analyze" ? "" : "hidden"}>${provBox()}<p class="small muted" style="margin:4px 0 0">${L("读取完来源后会直接开始编码（仍受本案例的预算和请求上限约束）。想先看精确费用，可以选“只搜索”，之后点“分析已选来源”。", "Coding starts right after the sources are read (still within this case's budget and request caps). To see an exact estimate first, choose Search only and then Analyze selected sources.")}</p></div><div class="kv" style="margin-top:10px"><div>${L("本案例已读取的网页（所有运行）", "Pages already read for this case (all runs)")}</div><div><b>${c.fetched_count}</b></div>
           <div>${L("本案例的读取上限", "This case's reading limit")}</div><div><b>${c.max_fetch}</b></div></div>
           ${full ? `<div class="callout warn small">${L("已达到读取上限：不提高上限的话，这次运行会搜索，但不会读取新网页。", "The reading limit is reached: without raising it, this run will search but read no new pages.")}</div>` : ""}
           <p class="small muted">${L("新的搜索会用到 Tavily 额度（按每次 $0.016 计入本案例预算）。读取更多网页会让之后的编码费用变高。上限最高 300；每次修改都会记录。", "New searches use Tavily credits (counted at $0.016 each in this case's budget). Reading more pages makes later coding cost more. Maximum 300; every change is recorded.")}</p>`,
         okText: L("开始重新研究", "Start research"), cancelText: L("取消", "Cancel"),
         input: { label: L("读取上限（本案例所有运行合计）", "Reading limit (all runs of this case)"), value: String(full ? Math.min(c.fetched_count + 60, 300) : c.max_fetch) } });
+      $$("#modalRoot input[name=pmode]").forEach((r) => (r.onchange = () => {
+        pm = r.value; $$("#modalRoot #providerChoice .pcard").forEach((x) => x.classList.toggle("on", x.querySelector("input").checked));
+      }));
       $$("#modalRoot input[name=rmode]").forEach((r) => (r.onchange = () => {
-        rm = r.value; $$("#modalRoot .pcard").forEach((x) => x.classList.toggle("on", x.querySelector("input").checked));
+        rm = r.value; $$("#modalRoot #runModeChoice .pcard").forEach((x) => x.classList.toggle("on", x.querySelector("input").checked));
+        $("#rrProv").hidden = rm !== "search_analyze";
         $("#dlgOk").textContent = rm === "search_only" ? L("开始搜索", "Search sources") : L("开始搜索并分析", "Search & analyze");
       }));
       $("#dlgOk").textContent = rm === "search_only" ? L("开始搜索", "Search sources") : L("开始搜索并分析", "Search & analyze");
@@ -631,7 +641,8 @@ async function startResearch(id, btn, ask = false) {
       const n = parseInt(v, 10);
       if (!(n >= 1 && n <= 300)) { toast(L("读取上限必须是 1–300 之间的整数", "The reading limit must be a whole number from 1 to 300"), true); return; }
       if (n !== c.max_fetch) await api("POST", `/api/cases/${id}/limits`, { limits: { max_fetch: n }, reason: "set before re-running research" });
-      await api("POST", `/api/cases/${id}/research`, { run_mode: rm }); location.hash = `#/case/${id}/progress`; route(); return;
+      await api("POST", `/api/cases/${id}/research`, { run_mode: rm, ...(rm === "search_analyze" && pm ? { mode: pm } : {}) });
+      location.hash = `#/case/${id}/progress`; route(); return;
     }
     await api("POST", `/api/cases/${id}/research`, {}); location.hash = `#/case/${id}/progress`; route(); }
   catch (e) { toast(e.message, true); }
