@@ -36,6 +36,11 @@ citations, and leaves every final decision to a human reviewer.
 | Continue to analysis later on the sources already read, without a new search | TESTED offline (coding replaced by a counter) |
 | Search & analyze continues into analysis with no confirmation after retrieval (pause is opt-in; caps still pause) | TESTED offline; conflicts with D-036 default — owner confirmation pending (K-60) |
 | Cases and API clients from before D-045 keep the full pipeline | TESTED offline |
+| Separate Search and Analysis statuses; completed Search only is a success; "Saved automatically" | TESTED offline |
+| "Not analyzed" distinct from insufficient evidence / validation failure / disagreement / completed coding | TESTED offline (never-analyzed cases; failed model calls: K-64) |
+| Sources page: counts, original link, domain, language (when declared), search run, retrieval status, labelled snippet for unread sources, Select / Deselect without deletion, Refresh | TESTED offline (browser) |
+| Analyze selected sources: usable-content check, saved text, no new search, frozen evidence snapshot per run, new run for a new selection, no duplicate jobs, failure keeps search results | TESTED offline (manual-mode coding, no model) |
+| Sources export labelled as source-search results; selection, run id, language, domain; usage split search vs coding with unknown ≠ $0 | TESTED offline |
 
 ## 3. Automatic multi-round source discovery
 

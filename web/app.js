@@ -168,6 +168,18 @@ const varName = (n) => esc(n).replace(/_/g, "_<wbr>");
 const JOB_TEXT = { done: ["已完成", "Done"], running: ["运行中", "Running"], queued: ["排队中", "Queued"], needs_input: ["需要你处理", "Needs your input"], failed: ["失败", "Failed"], cancelled: ["已取消", "Cancelled"] };
 const CASE_TEXT = { new: ["新建", "New"], review: ["待复核", "In review"], needs_sources: ["需要资料", "Sources needed"], sources_ready: ["来源已就绪（未分析）", "Sources ready (not analyzed)"] };
 const stText = (map, s) => (map[s] ? L(map[s][0], map[s][1]) : s);
+// D-045: search and analysis statuses, shown separately
+const SEARCH_ST = { not_started: ["未开始", "not started", ""], running: ["进行中", "running", "info"], waiting: ["等待你的操作", "waiting for you", "warn"],
+  complete: ["完成", "complete", "ok"], partial: ["完成（部分来源未能读取）", "complete — partial retrieval", "warn"],
+  no_usable_content: ["没有可用内容", "no usable content", "warn"], failed: ["失败", "failed", "bad"], stopped: ["已停止", "stopped", ""] };
+const ANALYSIS_ST = { not_requested: ["未请求", "not requested", ""], waiting_for_search: ["等待搜索完成", "waiting for search", "info"],
+  running: ["进行中", "running", "info"], waiting: ["等待你的操作", "waiting for you", "warn"], complete: ["完成", "complete", "ok"],
+  failed: ["失败", "failed", "bad"], stopped: ["已停止", "stopped", ""], not_run_no_content: ["未运行（没有可用内容）", "not run — no usable content", "warn"] };
+function statusPills(sts) {
+  if (!sts) return "";
+  const s = SEARCH_ST[sts.search] || [sts.search, sts.search, ""], a = ANALYSIS_ST[sts.analysis] || [sts.analysis, sts.analysis, ""];
+  return `<span class="badge ${s[2]}" title="${esc(sts.search)}">${L("搜索", "Search")}: ${esc(L(s[0], s[1]))}</span> <span class="badge ${a[2]}" title="${esc(sts.analysis)}">${L("分析", "Analysis")}: ${esc(L(a[0], a[1]))}</span>`;
+}
 
 // ------------------------------------------------------------------ router
 async function route() {
@@ -414,7 +426,7 @@ async function renderCases() {
   app.innerHTML = `<h1>${t("cases_title")}</h1><div class="panel" style="padding:0">
     <table><thead><tr><th>#</th><th>${t("c_name")}</th><th>${t("c_status")}</th><th>${t("c_sources")}</th><th>${t("c_confirmed")}</th><th>${t("c_created")}</th></tr></thead>
     <tbody>${rows.map((c) => `<tr class="click" data-id="${c.id}"><td>${c.id}</td><td><b>${esc(c.name)}</b><div class="small muted">${esc(c.location)} · ${esc(c.date_text)}</div></td>
-    <td>${statusBadge(c.job, c.status)}</td><td>${c.n_sources}</td><td>${c.n_confirmed}</td><td class="small">${fmtTime(c.created_at)}</td></tr>`).join("") ||
+    <td>${statusBadge(c.job, c.status)}<div class="small" style="margin-top:4px">${statusPills(c.statuses)}</div></td><td>${c.n_sources}</td><td>${c.n_confirmed}</td><td class="small">${fmtTime(c.created_at)}</td></tr>`).join("") ||
     `<tr><td colspan="6" class="muted">${t("none")}</td></tr>`}</tbody></table></div>`;
   $$("tr.click").forEach((tr) => (tr.onclick = () => (location.hash = `#/case/${tr.dataset.id}/progress`)));
   if (rows.some((c) => c.job && ["running", "queued"].includes(c.job.status))) POLL = setInterval(() => location.hash === "#/cases" && renderCases(), 4000);
@@ -443,6 +455,7 @@ async function tabProgress(c, body) {
     const j = await api("GET", `/api/cases/${c.id}/job`);
     if (!j) { body.innerHTML = `<div class="panel empty-state"><span>${L("这个案例还没有研究记录。", "No research has been run for this case yet.")}</span><button class="primary" id="runBtn">${t("rerun")}</button></div>`; $("#runBtn").onclick = () => startResearch(c.id); return; }
     const searchOnly = !!(j.params && j.params.search_only);
+    const sts = (await api("GET", `/api/cases/${c.id}`)).statuses;
     const stages = searchOnly ? STAGES_SEARCH_ONLY : STAGES;
     const cur = stages.indexOf(j.stage);
     const st = j.state || {};
@@ -496,9 +509,10 @@ async function tabProgress(c, body) {
       <div class="bar"><i style="width:${Math.round((j.progress || 0) * 100)}%"></i></div>
       <div class="row" style="margin-top:10px">${statusBadge(j)}<span>${esc(j.message || "")}</span><span class="spacer"></span>
       ${["running", "queued"].includes(j.status) ? `<button class="danger" id="cancelBtn">${t("cancel")}</button>`
-        : searchOnly ? `<button id="rerunBtn">${t("rerun")}</button> <button id="recodeBtn">${L("继续分析", "Continue to analysis")}</button> <a href="#/case/${c.id}/sources"><button class="primary">${L("查看来源", "View sources")} →</button></a>`
+        : searchOnly ? `<button id="rerunBtn">${t("rerun")}</button> <a href="${srcLink(c.id, "sources", false)}"><button>${L("导出来源清单", "Export source list")}</button></a> <button id="recodeBtn">${L("分析已选来源", "Analyze selected sources")}</button> <a href="#/case/${c.id}/sources"><button class="primary">${L("查看来源", "View sources")} →</button></a>`
         : `<button id="rerunBtn">${t("rerun")}</button> <button id="recodeBtn">${t("recode")}</button> <a href="#/case/${c.id}/review"><button class="primary">${t("tab_review")} →</button></a>`}</div>
-      ${searchOnly && j.status === "done" ? `<div class="callout ok small">${L("只搜索：已完成来源查找、去重、相关性检查、排序和读取。没有运行证据缺口检查、补充搜索或编码分析。可以在“来源”页查看、排除和导出来源；需要时点“继续分析”。", "Search only: source discovery, de-duplication, relevance check, ranking and retrieval are done. No evidence-gap check, follow-up search or coding analysis was run. View, exclude and export sources on the Sources tab; choose Continue to analysis when needed.")}</div>` : ""}
+      <div class="row small" style="margin-top:8px;gap:6px">${statusPills(sts)} <span class="muted">${L("· 自动保存：来源、正文和选择都已保存在服务器上，可以离开后再回来。", "· Saved automatically: sources, their text and your selections are stored on the server; you can leave and come back.")}</span></div>
+      ${searchOnly && j.status === "done" ? `<div class="callout ok small">${L("只搜索已成功完成：来源查找、去重、相关性检查、排序和读取都已完成。没有运行证据缺口检查、补充搜索或编码分析——这是正常结果，不是分析失败。可以在“来源”页查看、选择和导出来源；需要时点“分析已选来源”。", "Search only finished successfully: source discovery, de-duplication, relevance check, ranking and retrieval are done. No evidence-gap check, follow-up search or coding analysis was run — this is the expected outcome, not a failed analysis. View, select and export sources on the Sources tab; choose Analyze selected sources when needed.")}</div>` : ""}
       ${j.error ? `<div class="callout bad">${esc(j.error)}</div>` : ""}${needs}
       ${providerPanel(j)}
       ${cov ? `<h3>${t("coverage")}</h3>${!cov.automatic_search_ran ? `<div class="callout warn">${LANG === "zh" ? "未进行自动网页搜索（未配置搜索服务，或本次只是重新分析）。结果只基于已有或手动补充的资料。" : "No automatic web search in this run (no search provider configured, or this was a re-analysis). Results rest only on existing or manually added sources."}</div>` : cov.research_complete ? `<div class="callout ok">${t("complete_note")}</div>` : `<div class="callout warn">${t("incomplete")}<br><span class="small">${esc((cov.limits_hit || []).join("; "))}</span></div>`}
@@ -691,7 +705,7 @@ async function startRecode(id, variables, btn) {
 }
 
 // ------------------------------------------------------------------ review workbench
-const CAT_BADGE = { confirmed: "ok", pending: "info", insufficient: "", disputed: "dispute", rule_missing: "bad" };
+const CAT_BADGE = { confirmed: "ok", pending: "info", insufficient: "", disputed: "dispute", rule_missing: "bad", not_analyzed: "" };
 function codeLabel(row, v) {
   if (!v) return "";
   const m = {}; (row.codes || []).forEach((c) => (m[String(c.code).toUpperCase()] = c.label));
@@ -700,10 +714,11 @@ function codeLabel(row, v) {
 async function tabReview(c, body) {
   WB.data = await api("GET", `/api/cases/${c.id}/results`);
   WB.srcMap = Object.fromEntries(WB.data.sources.map((s) => [s.id, s]));
-  const cats = ["all", "pending", "confirmed", "insufficient", "disputed", "rule_missing"];
+  const cats = ["all", "pending", "confirmed", "insufficient", "disputed", "rule_missing", ...(WB.data.analyzed ? [] : ["not_analyzed"])];
+  if (!cats.includes(WB.filter)) WB.filter = "all";
   const counts = { all: WB.data.rows.length }; WB.data.rows.forEach((r) => (counts[r.category] = (counts[r.category] || 0) + 1));
   const sections = [...new Set(WB.data.rows.map((r) => r.section).filter(Boolean))];
-  body.innerHTML = `<div class="workbench"><div>
+  body.innerHTML = `${WB.data.analyzed ? "" : `<div class="callout warn" style="margin-bottom:10px"><b>${L("这个案例还没有分析", "This case has not been analyzed")}</b> — ${L("没有任何编码建议。下面的变量是“未分析”，不代表证据不足、验证失败或模型不一致。来源可以在“来源”页查看和导出；需要时点“分析已选来源”。", "there are no coding suggestions. The variables below are “Not analyzed”: this is not insufficient evidence, a validation failure or a model disagreement. View and export sources on the Sources tab; choose Analyze selected sources when needed.")} <a href="#/case/${c.id}/sources">→ ${t("tab_sources")}</a></div>`}<div class="workbench"><div>
       <div class="row wb-tools"><div class="chips">${cats.map((k) => `<span class="chip ${WB.filter === k ? "on" : ""}" data-f="${k}" role="button" tabindex="0">${t("filter_" + k)} <span class="n">${counts[k] || 0}</span></span>`).join("")}</div><span class="spacer"></span>
       <button id="bulkBtn" class="small" disabled title="${esc(L("两个模型给出相同有效值的变量（同一次运行，或不同运行并附警告）；需要你逐一勾选并确认", "Variables where Claude and GPT gave the same valid value (same run, or separate runs with a warning); you review and confirm them"))}">${L("确认模型一致的变量…", "Confirm model agreements…")}</button></div>
       <div class="row" style="margin-bottom:8px"><input id="wbq" placeholder="${esc(t("search_vars"))}" value="${esc(WB.q)}" style="max-width:260px">
@@ -934,33 +949,45 @@ function sortSources(rows, mode) {
 const srcLink = (id, fmt, all) => `/api/cases/${id}/export?format=${fmt}&all=${all ? 1 : 0}`;  // D-045 sources-only export
 async function tabSources(c, body) {
   const rows = sortSources(await api("GET", `/api/cases/${c.id}/sources`), SRC_SORT);
+  const cnt = await api("GET", `/api/cases/${c.id}/source_counts`);
+  const job = await api("GET", `/api/cases/${c.id}/job`);
+  const busyJob = job && ["running", "queued"].includes(job.status);
+  const host = (u) => { try { return new URL(u).hostname.replace(/^www\./, ""); } catch (e) { return ""; } };
   const sortNames = { type: L("类型优先（AAR 在前）", "Type priority (AAR first)"), length: L("篇幅（页数，其次段落数）", "Length (pages, then passages)"), found: L("找到顺序（S 编号）", "Order found (S number)") };
   body.innerHTML = `<div class="panel"><h3 style="margin-top:0">${t("src_add")}</h3>
     <div class="grid3"><div class="add-box"><label>${t("add_url")}</label><input id="addUrl" placeholder="https://"><button id="addUrlBtn" class="add-btn">${t("add")}</button></div>
     <div class="add-box"><label>${t("add_file")} (PDF, HTML, DOCX, TXT)</label><input id="addFile" type="file" multiple><button id="addFileBtn" class="add-btn">${t("add")}</button></div>
     <div class="add-box"><label>${t("add_text")}</label><input id="addTitle" placeholder="${t("src_title")}"><textarea id="addText" style="margin-top:4px"></textarea><button id="addTextBtn" class="add-btn">${t("add")}</button></div></div>
-    <p class="small muted">${LANG === "zh" ? "不会绕过登录或付费墙；无法访问的来源可在有合法访问权时手动补充正文。补充后点击“重新分析”。" : "Logins and paywalls are never bypassed; add text manually if you have legitimate access. Re-analyze after adding."}
-    <button class="small" id="recodeAll">${t("recode")}</button></p><div id="affBox"></div></div>
+    <p class="small muted">${LANG === "zh" ? "不会绕过登录或付费墙；无法访问的来源可在有合法访问权时手动补充正文。" : "Logins and paywalls are never bypassed; add text manually if you have legitimate access."}</p><div id="affBox"></div></div>
+    <div class="panel" style="margin-top:12px" id="srcCounts"><div class="row" style="align-items:center;gap:6px;flex-wrap:wrap">
+      ${[["discovered", L("搜索发现", "Discovered")], ["retrieved", L("已读取", "Retrieved")], ["relevant", L("相关", "Relevant")], ["failed", L("未能读取 / 被拒", "Failed / blocked")], ["selected", L("已选中", "Selected")], ["usable_for_analysis", L("可用于分析", "Usable for analysis")]].map(([k, lab]) => `<span class="badge" data-count="${k}">${esc(lab)} <b>${cnt[k]}</b></span>`).join(" ")}
+      <span class="spacer"></span><button class="small" id="srcRefresh">${L("刷新", "Refresh")}</button>
+      <button class="small primary" id="recodeAll" ${cnt.usable_for_analysis ? "" : "disabled"} title="${esc(L("用已保存的已选来源正文做编码分析，不会重新搜索", "Code the saved text of the selected sources; no new search"))}">${L("分析已选来源", "Analyze selected sources")}</button></div>
+      <p class="small muted" style="margin:6px 0 0">${L("“搜索发现”= 搜索结果里的不同网址；“已读取”= 成功取得正文；“可用于分析”= 已读取、已选中、不是重复、未标为无关。来源一读取就会保存。", "Discovered = distinct addresses in search results; Retrieved = text obtained; Usable for analysis = retrieved, selected, not a duplicate, not marked irrelevant. Each source is saved as soon as it is read.")}
+      ${busyJob ? `<b>${L("任务正在运行：这里显示的是到目前为止已保存的来源，不会自动更新，请点“刷新”。", "A task is running: this shows the sources saved so far; it does not update by itself — use Refresh.")}</b>` : ""}</p></div>
     <div class="panel" style="margin-top:12px" id="srcExport"><h3 style="margin-top:0">${L("导出来源", "Export sources")}</h3>
       <div class="row" style="align-items:center;gap:8px"><a id="srcXlsx" href="${srcLink(c.id, "sources", false)}"><button class="primary">${L("来源清单（Excel）", "Source list (Excel)")}</button></a>
         <a id="srcCsv" href="${srcLink(c.id, "sources_csv", false)}"><button>CSV</button></a>
-        <label class="chk small" style="margin:0"><input type="checkbox" id="srcAll" style="width:auto"> ${L("包括已排除的来源", "Include excluded sources")}</label></div>
-      <p class="small muted">${L("不需要先运行编码分析。默认导出你保留的来源（未排除的），按类型优先排序：事后评估报告、政府/监管、立法、学术/技术、新闻、其他。类型优先只是排序方式，不代表来源一定准确。", "No coding analysis needed. By default the export lists the sources you kept (not excluded), in type priority: after-action reports, government / regulatory, legislative, academic / technical, news, other. Type priority is a way to sort, not proof of accuracy.")}</p></div>
+        <label class="chk small" style="margin:0"><input type="checkbox" id="srcAll" style="width:auto"> ${L("包括已取消选中的来源", "Include deselected sources")}</label></div>
+      <p class="small muted">${L("不需要先运行编码分析。默认导出已选中的来源，按类型优先排序：事后评估报告、政府/监管、立法、学术/技术、新闻、其他。类型优先只是排序方式，不代表来源一定准确。", "No coding analysis needed. By default the export lists the selected sources, in type priority: after-action reports, government / regulatory, legislative, academic / technical, news, other. Type priority is a way to sort, not proof of accuracy.")}</p></div>
     <div class="row" style="margin-top:12px;align-items:center;gap:8px"><label for="srcSort" class="small" style="margin:0">${L("排序", "Sort by")}</label>
       <select id="srcSort" class="small" style="width:auto">${SRC_SORTS.map((x) => `<option value="${x}" ${x === SRC_SORT ? "selected" : ""}>${sortNames[x]}</option>`).join("")}</select>
       <span class="small muted">${L("只改变显示顺序；“类型”是自动判断的，可在下方更正。", "Display order only. Type is assigned automatically and can be corrected below.")}</span></div>
     <div class="panel" style="padding:0;margin-top:8px"><table id="srcTable"><thead><tr><th>#</th><th>${t("src_title")}</th><th>${t("src_type")}</th><th>${t("src_rel")}</th><th>${t("src_status")}</th><th>${t("src_flags")}</th><th></th></tr></thead><tbody>
     ${rows.map((s) => `<tr><td class="mono small">S${s.id}</td><td><b>${esc((s.title || s.url || "").slice(0, 110))}</b>
       <div class="small muted">${esc(s.publisher || "")} ${esc(s.published_date || "")} · ${esc(s.found_via || s.origin)}</div>
-      ${s.url ? `<div class="small"><a href="${esc(s.final_url || s.url)}" target="_blank" rel="noopener">${esc((s.final_url || s.url).slice(0, 90))}</a></div>` : ""}</td>
+      <div class="small muted">${host(s.url || s.final_url) ? esc(host(s.url || s.final_url)) + " · " : ""}${s.language ? esc(L("语言", "language")) + " " + esc(s.language) + " · " : ""}${s.job_id ? esc(L("搜索运行", "search run")) + " " + s.job_id : esc(s.origin && s.origin !== "search" ? L("用户添加", "added by user") : "")}</div>
+      ${s.url ? `<div class="small">${L("原始链接", "Original link")}: <a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.url.slice(0, 90))}</a></div>` : ""}
+      ${s.final_url && s.final_url !== s.url ? `<div class="small muted">${L("跳转到", "Redirected to")}: ${esc(s.final_url.slice(0, 90))}</div>` : ""}
+      ${s.fetch_status !== "ok" && s.snippet ? `<div class="small"><span class="badge">${L("搜索结果摘要 — 不是读取到的正文", "Search-result snippet — not retrieved text")}</span> <span class="muted">${esc(s.snippet.slice(0, 220))}</span></div>` : ""}</td>
       <td><select data-type="${s.id}" style="width:auto">${TYPES.map((x) => `<option ${x === s.source_type ? "selected" : ""}>${x}</option>`).join("")}</select></td>
       <td><span class="badge ${s.relevance_status === "relevant" ? "ok" : s.relevance_status === "irrelevant" ? "bad" : "warn"}">${esc(s.relevance_status)}</span>
         <div class="small muted">${esc(s.relevance_reason || "")}</div></td>
-      <td>${s.fetch_status === "ok" ? `<span class="badge ok">ok</span><div class="small muted">${s.n_pages ? s.n_pages + " pp · " : ""}${s.n_passages || 0} passages</div>` : `<span class="badge bad">${esc(s.fetch_status)}</span><div class="small">${esc(s.fetch_error || "")}</div>`}</td>
-      <td class="small">${s.duplicate_of ? `<span class="badge bad">${t("dup_of")} S${s.duplicate_of}</span> ` : ""}${s.near_duplicate_of ? `<span class="badge warn">${t("near_of")} S${s.near_duplicate_of} (${Math.round((s.similarity || 0) * 100)}%)</span> ` : ""}${s.excluded ? `<span class="badge bad">${t("excluded")}</span> ${esc(s.exclude_reason || "")}` : ""}
+      <td>${s.fetch_status === "ok" ? `<span class="badge ok">${L("已读取", "retrieved")}</span><div class="small muted">${s.n_pages ? s.n_pages + " pp · " : ""}${s.n_passages || 0} passages</div>` : `<span class="badge bad">${L("未读取", "not retrieved")}</span><div class="small">${esc(s.fetch_error || s.fetch_status)}</div><div class="small muted">${L("不作为证据使用", "not used as evidence")}</div>`}</td>
+      <td class="small">${s.duplicate_of ? `<span class="badge bad">${t("dup_of")} S${s.duplicate_of}</span> ` : ""}${s.near_duplicate_of ? `<span class="badge warn">${t("near_of")} S${s.near_duplicate_of} (${Math.round((s.similarity || 0) * 100)}%)</span> ` : ""}${s.excluded ? `<span class="badge bad">${L("未选中", "not selected")}</span> ${esc(s.exclude_reason || "")}` : ""}
         ${s.ocr_status && !["not_needed", "not_applicable"].includes(s.ocr_status) ? `<div class="muted">${esc(s.ocr_status)}</div>` : ""}</td>
       <td class="actions"><div class="row">${s.fetch_status === "ok" ? `<button class="small" data-open="${s.id}">${t("view")}</button>` : ""}
-        <button class="small" data-excl="${s.id}" data-on="${s.excluded ? 0 : 1}">${s.excluded ? t("include") : t("exclude")}</button>
+        <button class="small" data-excl="${s.id}" data-on="${s.excluded ? 0 : 1}" title="${esc(L("只改变是否用于分析；不会删除来源，也不会改动搜索记录或已完成的分析", "Only changes whether it is used in analysis; never deletes the source, the search record or a finished analysis"))}">${s.excluded ? L("选中", "Select") : L("取消选中", "Deselect")}</button>
         <select class="small" data-rel="${s.id}" style="width:auto"><option value="">relevance…</option><option>relevant</option><option>uncertain</option><option>irrelevant</option></select></div></td></tr>`).join("") || `<tr><td colspan="7" class="muted">${t("none")}</td></tr>`}
     </tbody></table></div>`;
   const add = async (payload) => { try { const s = await api("POST", `/api/cases/${c.id}/sources`, payload); toast(`S${s.id}: ${s.fetch_status}${s.fetch_error ? " — " + s.fetch_error : ""}`, s.fetch_status !== "ok"); tabSources(c, body); } catch (e) { toast(e.message, true); } };
@@ -969,14 +996,15 @@ async function tabSources(c, body) {
   $("#addTextBtn").onclick = () => add({ kind: "text", title: $("#addTitle").value, text: $("#addText").value });
   $("#addFileBtn").onclick = async () => { for (const f of $("#addFile").files) await add({ kind: "file", filename: f.name, data: await fileToB64(f) }); };
   $("#recodeAll").onclick = (ev) => startRecode(c.id, null, ev.currentTarget);
+  $("#srcRefresh").onclick = () => tabSources(c, body);
   $("#srcSort").onchange = (ev) => { SRC_SORT = ev.target.value; try { localStorage.setItem("wfd_src_sort", SRC_SORT); } catch (e) {} tabSources(c, body); };
   $$("[data-open]", body).forEach((b) => (b.onclick = () => openSource(+b.dataset.open)));
   const showAffected = (r) => { if (r.affected_variables && r.affected_variables.length) { $("#affBox").innerHTML = `<div class="callout warn">${t("affected")}: <span class="mono">${esc(r.affected_variables.join(", "))}</span> <button class="small" id="reAff">${t("reanalyze_affected")}</button></div>`; $("#reAff").onclick = () => startRecode(c.id, r.affected_variables); } };
   $$("[data-excl]", body).forEach((b) => (b.onclick = async () => {
     let reason = "";
     if (b.dataset.on === "1") {
-      reason = await askDialog({ title: LANG === "zh" ? "排除这份来源" : "Exclude this source", input: { label: LANG === "zh" ? "排除理由" : "Reason for excluding" },
-        okText: t("exclude"), cancelText: LANG === "zh" ? "取消" : "Cancel" });
+      reason = await askDialog({ title: L("取消选中这份来源", "Deselect this source"), body: `<p class="small">${L("这份来源会保留在列表和搜索记录里，只是不用于之后的分析。正在进行或已完成的分析不受影响。", "The source stays in the list and the search record; it is just not used in later analysis. Running or finished analyses are not affected.")}</p>`,
+        input: { label: L("理由（可选）", "Reason (optional)") }, okText: L("取消选中", "Deselect"), cancelText: LANG === "zh" ? "取消" : "Cancel" });
       if (reason === null) return;
     }
     const r = await api("PATCH", `/api/sources/${b.dataset.excl}`, { excluded: b.dataset.on === "1", reason });

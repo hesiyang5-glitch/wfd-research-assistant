@@ -285,6 +285,60 @@ def api_edit_field(h, sid, name, body, **_):
 
 
 # ----------------------------------------------------------------------------- cases
+SEARCH_STAGES = ("queued", "identify", "search", "fetch")
+
+
+def case_statuses(cid: int) -> dict:
+    """D-045: search and analysis are reported separately (derived from existing jobs, sources and runs; nothing stored).
+    search: not_started | running | waiting | complete | partial | no_usable_content | failed | stopped
+    analysis: not_requested | waiting_for_search | running | waiting | complete | failed | stopped | not_run_no_content
+    A completed search-only task is search=complete/partial with analysis=not_requested — a successful outcome."""
+    jobs_ = db.q("SELECT id, kind, status, stage, params_json, state_json FROM jobs WHERE case_id=? ORDER BY id", (cid,))
+    research_jobs = [j for j in jobs_ if j["kind"] == "research"]
+    n_ok = db.q1("SELECT COUNT(*) n FROM sources WHERE case_id=? AND fetch_status='ok'", (cid,))["n"]
+    n_fail = db.q1("SELECT COUNT(*) n FROM sources WHERE case_id=? AND fetch_status!='ok'", (cid,))["n"]
+    search = "not_started"
+    if research_jobs:
+        r = research_jobs[-1]
+        st = json.loads(r["state_json"] or "{}")
+        in_search = r["stage"] in SEARCH_STAGES and "fetch" not in (st.get("done") or [])
+        if r["status"] in ("queued", "running") and in_search:
+            search = "running"
+        elif r["status"] == "needs_input" and in_search and st.get("awaiting"):
+            search = "waiting"
+        elif r["status"] == "failed" and in_search:
+            search = "failed"
+        elif r["status"] == "cancelled" and in_search:
+            search = "stopped"
+        elif not n_ok:
+            search = "no_usable_content"
+        else:
+            limits = (st.get("coverage") or {}).get("limits_hit") or st.get("limits_hit") or []
+            search = "partial" if (n_fail or limits) else "complete"
+    elif n_ok:
+        search = "complete"  # manually added sources only
+    analysis_jobs = [j for j in jobs_ if j["kind"] == "recode" or
+                     (j["kind"] == "research" and not json.loads(j["params_json"] or "{}").get("search_only"))]
+    analysis = "not_requested"
+    if analysis_jobs:
+        a = analysis_jobs[-1]
+        st = json.loads(a["state_json"] or "{}")
+        before_analysis = a["kind"] == "research" and a["stage"] in SEARCH_STAGES and "fetch" not in (st.get("done") or [])
+        if a["status"] in ("queued", "running"):
+            analysis = "waiting_for_search" if before_analysis else "running"
+        elif a["status"] == "needs_input":
+            analysis = "not_run_no_content" if a["stage"] == "fetch" and not st.get("awaiting") else (
+                "waiting_for_search" if before_analysis else "waiting")
+        elif a["status"] == "failed":
+            analysis = "failed"
+        elif a["status"] == "cancelled":
+            analysis = "stopped"
+        elif a["status"] == "done":
+            ran = db.q1("SELECT COUNT(*) n FROM runs WHERE job_id=?", (a["id"],))["n"]
+            analysis = "complete" if ran else "stopped"
+    return {"search": search, "analysis": analysis, "saved": True}
+
+
 @route("GET", "/api/cases")
 def api_cases(h, **_):
     rows = db.q("SELECT * FROM cases ORDER BY id DESC")
@@ -293,6 +347,7 @@ def api_cases(h, **_):
         c["job"] = j
         c["n_sources"] = db.q1("SELECT COUNT(*) n FROM sources WHERE case_id=? AND fetch_status='ok'", (c["id"],))["n"]
         c["n_confirmed"] = db.q1("SELECT COUNT(*) n FROM reviews WHERE case_id=? AND action IN ('accepted','edited','cleared')", (c["id"],))["n"]
+        c["statuses"] = case_statuses(c["id"])
     return rows
 
 
@@ -362,6 +417,7 @@ def api_case(h, cid, **_):
     c["fetched_count"] = db.q1("SELECT COUNT(*) n FROM sources WHERE case_id=? AND origin IN ('search','followed_link')",
                                (int(cid),))["n"]
     c["max_fetch"] = c["settings"].get("max_fetch", DEFAULT_SETTINGS["max_fetch"])
+    c["statuses"] = case_statuses(int(cid))
     return c
 
 
@@ -398,6 +454,17 @@ def api_research(h, cid, body, **_):
 @route("POST", "/api/cases/{cid}/recode")
 def api_recode(h, cid, body, **_):
     c = db.q1("SELECT * FROM cases WHERE id=?", (int(cid),))
+    if not c:
+        raise ApiError(404, "case not found")
+    from .research import usable_passage_count
+    active = db.q1("SELECT id FROM jobs WHERE case_id=? AND status IN ('queued','running')", (int(cid),))
+    if not active and usable_passage_count(int(cid)) == 0:  # D-045: refuse before any job or paid request exists
+        read_no_text = db.q1("SELECT COUNT(*) n FROM sources WHERE case_id=? AND fetch_status='ok' AND COALESCE(n_passages,0)=0",
+                             (int(cid),))["n"]
+        raise ApiError(400, "No usable selected source text, so analysis was not started and nothing was billed. "
+                       "Select at least one read, relevant source on the Sources tab" +
+                       (f"; {read_no_text} read source(s) have no saved text — re-run the search or add their text to "
+                        "retrieve it" if read_no_text else "; or run a search / add sources first") + ".")
     st = {**DEFAULT_SETTINGS, **json.loads(c["settings_json"] or "{}")}
     params = {"variables": body.get("variables") or None, "approve_over_budget": bool(body.get("approve_over_budget")),
               "mode": check_mode(body.get("mode"), st)}
@@ -626,6 +693,14 @@ def api_estimate_preview(h, query, **_):
 
 
 # ----------------------------------------------------------------------------- sources
+@route("GET", "/api/cases/{cid}/source_counts")
+def api_source_counts(h, cid, **_):
+    """D-045: discovered (distinct result addresses from searches), retrieved, relevant / uncertain / irrelevant,
+    failed or blocked, selected (not deselected) and usable for analysis. Read-only: never starts search or analysis."""
+    from .export import source_counts
+    return source_counts(int(cid))
+
+
 @route("GET", "/api/cases/{cid}/sources")
 def api_sources(h, cid, **_):
     return db.q("SELECT * FROM sources WHERE case_id=? ORDER BY id", (int(cid),))

@@ -71,8 +71,11 @@ Last reviewed: 2026-10-01 (commit `33a0c5e`). Severity: **High** (blocks correct
 | K-59 | D-043 search expansion (merged 2026-11-13): tested offline only; never run against Tavily. Word lists cover 22 countries / 10 languages and were written by hand; a location in another country gets no local queries. Keyword discovery can pick a neighbouring topic's name if it recurs on several matching sites. Each run may use ~10–16 more Tavily queries (2 credits each). | Medium |
 | K-60 | D-045 changes D-036: the "pause after research" box now defaults to unticked so Search & analyze runs straight into analysis (spec: no confirmation after retrieval). Owner to confirm or restore the ticked default. Caps still pause. | Medium (decision) |
 | K-61 | D-045: choosing Search & analyze in the Re-run research dialog for a case created as Search only codes with the case's stored provider choice or the team default (no provider picker in that dialog). Continue to analysis (Re-analyze) does show the picker; prefer it. | Low |
-| K-62 | D-045: the attached task specification was cut off after section 4 ("…report the difference before"); later sections, if any, were not seen and not implemented. | Medium (process) |
 | K-63 | D-045 not run live: search-only stop, sources export and the new form tested offline (TEST-FIXTURE, local web server, coding replaced by a counter). | Medium |
+| K-64 | A failed model call (status model_error) or validation failure still falls in the "Insufficient evidence" review filter (pre-existing grouping, D-038 era). Only never-analyzed cases get the new "Not analyzed" category. | Low |
+| K-65 | There are no per-user case owners or permissions (one shared team password, K-19); the new endpoints use the same login. | Medium (pre-existing) |
+| K-66 | Source language is recorded only when a web page declares it (`<html lang>`, Content-Language, og:locale); PDFs and uploads have none; sources saved before 2026-11-13 have no language or search-run id. | Low |
+| K-67 | The static interface preview (`tools/build_preview.py`) was not updated for D-045 (it is not part of the app). | Low |
 
 ## Codebook / workbook issues (need PI decisions; app flags them, never guesses)
 

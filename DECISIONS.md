@@ -434,4 +434,16 @@ Excluding also removes a source from later analysis (same meaning as before).
 **Change to D-036 (needs owner confirmation, K-60).** The spec says Search & analyze must not ask again after retrieval;
 the optional "pause after research" box therefore defaults to unticked (was ticked). Caps still pause.
 **Compatibility.** `run_mode` is stored in case settings; absent → full pipeline, so existing cases and API clients are
-unchanged. No database migration (settings are JSON).
+unchanged. Additive migration `2026-11-13-search-only` adds `sources.language` and `sources.job_id` only.
+**Statuses (spec §8).** Search and analysis statuses are derived from existing jobs, sources and runs rather than
+stored, so old cases get them without migration. A finished Search only task is search complete/partial + analysis
+"not requested" — a success.
+**Not analyzed (spec §8).** In a case with no analysis run, a variable without a suggestion is "Not analyzed", never
+"Insufficient evidence". (Failed model calls keep their existing handling — K-64.)
+**Selection and snapshots (spec §6).** No new snapshot mechanism: the D-036 evidence snapshot already freezes the
+eligible sources, content hashes and selection state per run and is loaded once at the start of coding. "Analyze selected
+sources" = Re-analyze on usable selected text; it does not run gap-driven follow-up retrieval (that stays inside
+Search & analyze). Deselecting a source that a finished run cited marks those suggestions stale (existing behaviour);
+the run's evidence is unchanged.
+**Usable evidence.** Analysis requires at least one passage from a read, selected, non-duplicate, non-irrelevant source;
+otherwise no job (API) and no coding call (pipeline).

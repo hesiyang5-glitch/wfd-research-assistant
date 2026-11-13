@@ -72,7 +72,7 @@ def extract_html(html: bytes | str, base_url: str = "") -> dict:
     soup = BeautifulSoup(html, "lxml")
     meta = {}
     for m in soup.find_all("meta"):
-        k = (m.get("property") or m.get("name") or m.get("itemprop") or "").lower()
+        k = (m.get("property") or m.get("name") or m.get("itemprop") or m.get("http-equiv") or "").lower()
         if k and m.get("content"):
             meta[k] = m["content"]
     title = (meta.get("og:title") or (soup.title.string if soup.title and soup.title.string else "") or "").strip()
@@ -118,7 +118,10 @@ def extract_html(html: bytes | str, base_url: str = "") -> dict:
     if not paras:  # plain pages without block tags
         txt = re.sub(r"[ \t]+", " ", root.get_text("\n", strip=True))
         paras = [p.strip() for p in txt.split("\n") if len(p.strip()) >= 25]
-    return {"title": title, "publisher": publisher.strip(), "published": str(published)[:40],
+    # language only when the page declares it (<html lang>, Content-Language, og:locale); never guessed (D-045)
+    lang = ((soup.html.get("lang") if soup.html else None) or meta.get("content-language") or meta.get("og:locale") or "")
+    lang = re.split(r"[-_,; ]", str(lang).strip().lower())[0][:8] if lang else ""
+    return {"title": title, "publisher": publisher.strip(), "published": str(published)[:40], "language": lang,
             "pages": [{"page": None, "paragraphs": paras}], "links": links, "ocr_status": "not_applicable"}
 
 

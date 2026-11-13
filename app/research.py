@@ -380,7 +380,8 @@ def save_source(ctx_case_id: int, meta: dict, extracted: dict | None, fetch_stat
            "publisher": meta.get("publisher") or "", "published_date": meta.get("published") or "", "retrieved_at": time.time(),
            "origin": meta.get("origin", "search"), "found_via": meta.get("found_via", ""), "fetch_status": fetch_status,
            "fetch_error": error, "content_type": meta.get("content_type", ""), "file_path": meta.get("path", ""),
-           "snippet": meta.get("snippet", ""), "relevance_status": "unchecked", "excluded": 0}
+           "snippet": meta.get("snippet", ""), "relevance_status": "unchecked", "excluded": 0,
+           "job_id": meta.get("job_id")}  # D-045: the search run that found it (None for manual additions)
     if extracted is None:
         row["source_type"] = classify_source(meta.get("url", ""), meta.get("title", ""))
         return db.insert("sources", row)
@@ -388,6 +389,7 @@ def save_source(ctx_case_id: int, meta: dict, extracted: dict | None, fetch_stat
     row.update({"title": row["title"] or extracted.get("title") or meta.get("url", ""),
                 "publisher": row["publisher"] or extracted.get("publisher", "") or urlparse(meta.get("final_url") or meta.get("url") or "").netloc,
                 "published_date": row["published_date"] or extracted.get("published", ""),
+                "language": extracted.get("language") or "",
                 "ocr_status": extracted.get("ocr_status"), "n_pages": extracted.get("n_pages"),
                 "text_chars": len(full), "content_hash": content_hash(full) if full.strip() else None})
     row["source_type"] = classify_source(meta.get("final_url") or meta.get("url", ""), row["title"], full)
@@ -496,10 +498,10 @@ CRASH_SKIP_REASON = ("skipped: the server restarted while reading this source (i
 
 
 def fetch_one(ctx: Ctx, url: str, meta: dict) -> int:
-    meta = {**meta, "url": url}
+    meta = {**meta, "url": url, "job_id": ctx.id}
     # Remember which source is being read before reading it. If reading it takes the server down, startup recovery
     # records it as failed (jobs.recover_interrupted), so Resume skips it instead of crashing on it again.
-    ctx.state["fetch_in_progress"] = {k: meta.get(k, "") for k in ("url", "title", "snippet", "origin", "found_via")}
+    ctx.state["fetch_in_progress"] = {k: meta.get(k, "") for k in ("url", "title", "snippet", "origin", "found_via", "job_id")}
     ctx.save()
     try:
         return _fetch_one(ctx, url, meta)
@@ -795,12 +797,15 @@ def run_research(job: dict):
                     break
             stage_gaps(ctx)
             done.append("followup"); ctx.save()
-        n_pass = db.q1("SELECT COUNT(*) n FROM passages WHERE case_id=?", (ctx.case["id"],))["n"]
+        # D-045: analysis needs USABLE selected text (read, not a duplicate, not deselected, not marked irrelevant) —
+        # the same rule the evidence snapshot uses. No usable text → no model calls at all.
+        n_pass = usable_passage_count(ctx.case["id"])
         if ctx.job["kind"] != "research" and n_pass:
             stage_gaps(ctx)
         if n_pass == 0:
-            msg = ("No source text is available yet. " + ("Automatic search found nothing retrievable. " if ctx.provider else
-                   "No search provider is configured. ") + "Add links, upload files, or paste text on the Sources tab, then re-run.")
+            msg = ("No usable source text is selected. " + ("Automatic search found nothing retrievable. " if ctx.provider else
+                   "No search provider is configured. ") + "Add links, upload files, or paste text on the Sources tab, "
+                   "or select sources for analysis, then re-run. No model request was made.")
             ctx.state["coverage"] = coverage_report(ctx)
             ctx.save(status="needs_input", stage="fetch", message=msg)
             db.update("cases", ctx.case["id"], {"status": "needs_sources", "updated_at": time.time()})
@@ -826,6 +831,14 @@ def run_research(job: dict):
         import traceback
         ctx.log("error", traceback.format_exc()[-1500:])
         ctx.save(status="failed", error=f"{type(e).__name__}: {e}")
+
+
+def usable_passage_count(case_id: int) -> int:
+    """Passages analysis may use: read OK, not a duplicate, selected (not excluded), not marked irrelevant (D-045).
+    Same filter as retrieval.load_case_passages, which builds the evidence snapshot."""
+    return db.q1("""SELECT COUNT(*) n FROM passages p JOIN sources s ON s.id=p.source_id
+                    WHERE p.case_id=? AND s.fetch_status='ok' AND s.duplicate_of IS NULL AND s.excluded=0
+                    AND s.relevance_status!='irrelevant'""", (case_id,))["n"]
 
 
 def finish_search_only(ctx: Ctx):

@@ -23,8 +23,30 @@ Completed changes, newest first. Commit hashes refer to `hesiyang5-glitch/wfd-re
   requested workflow runs straight into analysis; budget and request caps still pause. Needs owner confirmation (K-60).
 - Server: `run_mode` on case creation and re-run (`search_only` / `search_analyze`); missing → full pipeline (older
   clients and existing cases unchanged); `format=sources` / `sources_csv` on the export route.
-- New `tests/test_search_only.py` (44 checks). `test_ui_flow`, `test_ui_labels` and `test_independent_providers` now
-  choose Search & analyze before using the model choice (+1 check: pause box unticked).
+- Second half of the specification (sections 5–12, received later the same day):
+  - Separate **Search** and **Analysis** statuses (derived from existing jobs/sources/runs, nothing new stored):
+    Search not started / running / waiting / complete / partial retrieval / no usable content / failed / stopped;
+    Analysis not requested / waiting for search / running / waiting / complete / failed / stopped / not run (no usable
+    content). Shown on Progress and the case list, with "Saved automatically".
+  - Review: a case never analyzed shows every variable as **Not analyzed** (new category and filter, banner) — not
+    "Insufficient evidence", validation failure, disagreement or completed coding. Coded exports say so per row.
+  - Analysis needs usable selected text (read, selected, not a duplicate, not irrelevant): "Analyze selected sources"
+    is refused before any job or request when there is none (explains missing saved text), and the pipeline makes no
+    coding call without it. The existing evidence snapshot (D-036) records which sources each run used; later
+    (de)selection never changes a finished or running run; a different selection gets a new run and snapshot.
+  - Sources tab: counts (discovered / retrieved / relevant / failed or blocked / selected / usable for analysis),
+    Refresh (no simulated live updates), original link + redirect, domain, language (only when the page declares it),
+    search run, failed sources marked "not retrieved — not used as evidence" with any search snippet labelled as a
+    snippet, Select / Deselect wording (deselecting never deletes the source or the search record).
+  - Progress after Search only: View sources, Export source list, Analyze selected sources.
+  - Sources export: labelled "SOURCE-SEARCH RESULTS — not a completed coded WFD case"; adds domain, language, original
+    and final URL, selection status, usable-for-analysis, search run; About counts and search runs; Usage sheet separating
+    search from coding with measured / estimated / unknown basis (unknown is never shown as $0).
+  - Additive migration `2026-11-13-search-only`: `sources.language`, `sources.job_id`. Older cases keep working (their
+    sources simply have no language / run id).
+- New `tests/test_search_only.py` (68 checks). `test_ui_flow`, `test_ui_labels` and `test_independent_providers` now
+  choose Search & analyze before using the model choice (+1 check: pause box unticked); schema fingerprints in
+  `test_export_labels` / `test_ui_labels` updated for the two new columns; `test_visual` reads the first status badge.
 
 ## 2026-11-13 — Raise the reading (fetch) limit on an existing case (branch `feature/case-fetch-limit`, not merged) — D-044
 - The fetch limit (`max_fetch`, default 60) counts every page read for the case in all runs, so re-running research on
