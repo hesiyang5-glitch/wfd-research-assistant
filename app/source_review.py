@@ -23,7 +23,7 @@ from urllib.parse import urlparse
 
 from . import db
 
-RULE_VERSION = "SR-2026-11-13.1"
+RULE_VERSION = "SR-2026-11-13.2"  # .2: German specialist flood/storm words, German authority hosts (D-047)
 
 # ----------------------------------------------------------------------------------------------- 1. content validity
 # Messages that sites show INSTEAD of the document (loading failures, bot checks, logins, cookie walls, 404s).
@@ -87,6 +87,7 @@ def _hazard_terms(case: dict) -> list[str]:
         w = LANG[country["lang"]]
         terms += (w["hazard"].get(hz, w["disaster"]) if hz else w["disaster"]).split()
         terms.append(w["disaster"])
+        terms += [x for x in w.get("more", {}).get(hz, []) if x != "Pegel"]  # D-047 (a gauge page alone is not about the incident)
     if hz == "flood":
         terms += ["flut", "hochwasser", "überschwemmung", "inondation", "crue", "inundación", "alluvione", "overstroming"]
     return sorted({t.lower() for t in terms if len(t) >= 3})
@@ -199,6 +200,10 @@ def _official_host(host: str) -> bool:
         # bare .ee / .ro only with an official word; checked below
         if re.search(r"\.(ee|ro)$", host) and not re.search(r"gov|valitsus|riik|ministerul|guvern|mai\.gov", host):
             return False
+        return True
+    from .search.expansion import AUTHORITIES, DE_STATES
+    gov_sites = [a["site"] for lst in AUTHORITIES.values() for a in lst if a["kind"] == "government"] + [st["gov"] for st in DE_STATES.values()]
+    if any(host == d or host.endswith("." + d) for d in gov_sites):  # D-047
         return True
     return any(host.endswith(c["site"]) and c["site"].count(".") >= 2 for c in COUNTRIES.values())
 

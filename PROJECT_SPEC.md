@@ -55,6 +55,15 @@ citations, and leaves every final decision to a human reviewer.
 | Grouped Sources page, view-only filters, Selected vs Eligible, export states what it contains | TESTED offline (browser) |
 | No search, retrieval, external service or model call in any of the above | TESTED offline (sockets blocked) |
 
+## 2c. German search and retrieval quality (D-047)
+
+| Requirement | Status |
+|---|---|
+| German cases search official bodies (DWD, BBK, Bundestag, BfG, Landtag / state) and specialist German terms | TESTED offline; not run live |
+| These queries never crowd out keyword discovery; per-run limit and case budget apply | TESTED offline |
+| Retrieval-quality report: languages, types, query yield, official bodies, gaps; read-only | TESTED offline (browser) |
+| Estonian / Romanian search; original text with translation | NOT BUILT |
+
 ## 3. Automatic multi-round source discovery
 
 | Requirement | Status |

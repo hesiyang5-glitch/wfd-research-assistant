@@ -74,6 +74,89 @@ LANG = {
            "sirens": "사이렌", "evacuation": "대피"},
 }
 
+# German specialist terms (D-047). Search words only — never evidence, never codes.
+LANG["de"].update({
+    "more": {"flood": ["Starkregen", "Sturzflut", "Flutkatastrophe", "Pegel", "Hochwasserwarnung"],
+             "storm": ["Unwetterwarnung", "Orkan", "Sturmwarnung"], "wildfire": ["Waldbrandgefahr", "Waldbrandwarnung"],
+             "heat": ["Hitzewarnung"], "landslide": ["Hangrutschung", "Murgang"], "earthquake": [], "tsunami": []},
+    "warning_terms": ["Unwetterwarnung", "Warnstufe", "Katastrophenfall", "Katastrophenschutz", "Warn-App", "Sirenenwarnung",
+                      "Krisenstab", "Warnmeldung", "Bevölkerungswarnung"],
+})
+
+# Authoritative German bodies (D-047): used only to build site-restricted search queries and to recognise official /
+# legislative hosts when sorting. A source from these sites is still only a source: its text must be read and checked.
+AUTHORITIES = {
+    "DE": [
+        {"name": "Deutscher Wetterdienst (DWD)", "site": "dwd.de", "kind": "government", "role": "weather warnings",
+         "query": "{hz} {place}{yr} Warnung"},
+        {"name": "Bundesamt für Bevölkerungsschutz und Katastrophenhilfe (BBK)", "site": "bbk.bund.de", "kind": "government",
+         "role": "civil protection; NINA, Cell Broadcast, sirens", "query": "{place}{yr} Warnung Bevölkerung"},
+        {"name": "Deutscher Bundestag", "site": "bundestag.de", "kind": "legislative", "role": "federal parliament papers (Drucksachen)",
+         "query": "{hz} {place}{yr} Drucksache"},
+        {"name": "Bundesanstalt für Gewässerkunde (BfG)", "site": "bafg.de", "kind": "government", "role": "river gauges, flood hydrology",
+         "query": "{hz} {place}{yr}", "hazards": ["flood"]},
+    ],
+}
+# German states: only names a user would type in the location. Domains limited to ones known to be the state's own.
+DE_STATES = {
+    "RP": {"names": ["rheinland-pfalz", "rhineland-palatinate"], "landtag": "landtag.rlp.de", "gov": "rlp.de"},
+    "NW": {"names": ["nordrhein-westfalen", "north rhine-westphalia", "nrw"], "landtag": "landtag.nrw.de", "gov": "nrw.de"},
+    "BY": {"names": ["bayern", "bavaria"], "landtag": "bayern.landtag.de", "gov": "bayern.de"},
+    "BW": {"names": ["baden-württemberg", "baden-wuerttemberg"], "landtag": "landtag-bw.de", "gov": "baden-wuerttemberg.de"},
+    "SN": {"names": ["sachsen", "saxony"], "landtag": "landtag.sachsen.de", "gov": "sachsen.de"},
+    "NI": {"names": ["niedersachsen", "lower saxony"], "landtag": "landtag-niedersachsen.de", "gov": "niedersachsen.de"},
+    "HE": {"names": ["hessen", "hesse"], "landtag": "hessischer-landtag.de", "gov": "hessen.de"},
+}
+
+
+def detect_de_state(location: str) -> dict | None:
+    low = " " + re.sub(r"[,;/()]", " ", (location or "").lower()) + " "
+    for code, st in DE_STATES.items():
+        if any(f" {n} " in low for n in st["names"]):
+            return {"code": code, **st}
+    return None
+
+
+def authority_templates(case: dict, country: dict | None, year: str) -> list[tuple[str, str]]:
+    """(purpose, query) pairs aimed at the country's authoritative bodies and specialist local terms (D-047).
+    Germany only for now; empty elsewhere. Each query is one paid search, counted in the case budget."""
+    if not country or country["code"] != "DE":
+        return []
+    words = LANG["de"]
+    place = place_words(case.get("location", ""), country) or case.get("name", "")
+    st = detect_de_state(case.get("location", ""))
+    drop = list(st["names"]) if st else []  # the state name is not a useful search word next to the place
+    drop += ["valley", "river", "county", "district", "region", "area"]  # English geo words would spoil German queries
+    for n in drop:
+        place = re.sub(rf"(?i)\b{re.escape(n)}\b", " ", place)
+    place = re.sub(r"\s+", " ", place).strip() or case.get("name", "")
+    yr = f" {year}" if year else ""
+    hz_key = hazard_of(case.get("name", "")) or hazard_of(case.get("location", ""))
+    hz = words["hazard"].get(hz_key, words["disaster"]) if hz_key else words["disaster"]
+    out = []
+    for a in AUTHORITIES["DE"]:
+        if a.get("hazards") and hz_key not in a["hazards"]:
+            continue
+        q = a["query"].format(hz=hz, place=place, yr=yr).strip()
+        out.append((f"authority: {a['name']}", f"{q} site:{a['site']}"))
+    inquiry = f"{words['inquiry']} {hz} {place}{yr}"
+    out.append(("authority: state parliament inquiry (Landtag)", f"{inquiry} site:{st['landtag']}" if st else f"Landtag {inquiry}"))
+    if st:
+        out.append((f"authority: state government ({st['code']})", f"{hz} {place}{yr} {words['warning']} site:{st['gov']}"))
+    more = (words["more"].get(hz_key) or [])[:2]
+    if more:
+        out.append(("local terms: specialist words", f"{' '.join(more)} {place}{yr} {words['warning_terms'][0]}"))
+    out.append(("local terms: civil protection", f"{hz} {place}{yr} {words['warning_terms'][2]} {words['warning_terms'][3]}"))
+    return out
+
+
+def authority_sites(code: str) -> list[str]:
+    sites = [a["site"] for a in AUTHORITIES.get(code, [])]
+    if code == "DE":
+        sites += [st["landtag"] for st in DE_STATES.values()] + [st["gov"] for st in DE_STATES.values()]
+    return sites
+
+
 # --------------------------------------------------------------------------- countries
 # names: lower-case English and native names used to detect the country in the location field (and to recognise the
 # country in local-language sources). site: official domain for site: queries. systems: public warning systems.

@@ -735,6 +735,16 @@ def api_source_counts(h, cid, query=None, **_):
     return out
 
 
+@route("GET", "/api/cases/{cid}/retrieval_quality")
+def api_retrieval_quality(h, cid, **_):
+    """D-047: languages, document types, query yield, official bodies searched / found, and gaps. Read-only: counts
+    saved data; never searches, fetches or calls a model."""
+    if not db.q1("SELECT id FROM cases WHERE id=?", (int(cid),)):
+        raise ApiError(404, "case not found")
+    from .retrieval_quality import report
+    return report(int(cid))
+
+
 @route("GET", "/api/cases/{cid}/sources")
 def api_sources(h, cid, **_):
     """Read-only. Adds `eligible` (would be used by the next analysis: read, usable text, selected, not a duplicate,

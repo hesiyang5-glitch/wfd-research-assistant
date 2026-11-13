@@ -16,7 +16,7 @@ from . import db
 from .config import DEFAULT_SETTINGS, load_pricing
 from .ingest import (FetchError, classify_source, containment, content_hash, extract_file, extract_html,
                      extract_text_plain, fetch_url, make_passages, shingles)
-from .search.expansion import detect_country, discover_keywords, discovery_queries, localized_templates
+from .search.expansion import authority_templates, detect_country, discover_keywords, discovery_queries, localized_templates
 from .search.providers import SearchError, get_provider
 
 STAGES = ["identify", "search", "fetch", "gaps", "followup", "coding", "review"]
@@ -328,9 +328,11 @@ def expand_search(ctx: Ctx, found: list[dict]) -> list[dict]:
     extra = [(f"alias: {a.strip()}", f"{a.strip()} {year}".strip())
              for a in (ctx.case.get("aliases") or "").split(";") if a.strip()][:4]
     loc_q = localized_templates(ctx.case, country, year)
+    auth_q = authority_templates(ctx.case, country, year)  # D-047: German authorities and specialist terms
     if country:
         ctx.log("info", f"location recognised as {country['code']} (language {country['lang']}, official domain "
-                        f"{country['site']}): adding {len(loc_q)} local queries")
+                        f"{country['site']}): adding {len(loc_q)} local queries"
+                        + (f"; {len(auth_q)} queries aimed at official bodies / specialist terms run after keyword discovery" if auth_q else ""))
     found += run_plain(ctx, extra + loc_q, 0)
     kws: list[dict] = []
     for _ in range(2):  # second pass: results recognised through the first pass's aliases (e.g. German-only titles)
@@ -357,6 +359,13 @@ def expand_search(ctx: Ctx, found: list[dict]) -> list[dict]:
         for r in found:
             r["identity_score"], r["identity_why"] = identity_score(
                 f"{r.get('title', '')} {r.get('snippet', '')} {r.get('url', '')}", ctx.terms, r.get("published", ""))
+    if auth_q:  # D-047: last, so they never crowd out keyword discovery; the per-run query limit still applies
+        before = db.q1("SELECT COUNT(*) n FROM search_queries WHERE job_id=?", (ctx.id,))["n"]
+        found += run_plain(ctx, auth_q, 0)
+        ran = db.q1("SELECT COUNT(*) n FROM search_queries WHERE job_id=?", (ctx.id,))["n"] - before
+        if ran < len(auth_q):
+            ctx.log("warn", f"official-body / specialist-term queries: {ran} of {len(auth_q)} ran before the per-run query "
+                            f"limit ({ctx.settings['max_queries']}); the Retrieval quality panel lists the bodies not searched")
     return found
 
 

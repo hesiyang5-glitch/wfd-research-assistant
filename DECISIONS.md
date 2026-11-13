@@ -501,3 +501,25 @@ text available" does not mean accurate or complete.
 **Migration.** Additive `2026-11-13-source-review`: nine nullable `sources` columns and table `source_label_history`.
 Existing rows keep their values until a reviewer applies the reassessment; the page shows "not yet checked by current
 rules" until then.
+
+## D-047 · 2026-11-13 · German official bodies, specialist terms and a retrieval-quality report — Proposed (branch `feature/german-search`, on top of D-046, not merged)
+**Request (owner, after the teacher's K-68 suggestion).** Start with German: local terminology, authoritative sources,
+and a retrieval-quality assessment. Estonian / Romanian search and original-plus-translation display are NOT part of
+this (translation would need a paid model or service; it needs separate approval).
+**Queries (Germany only, `expansion.authority_templates`).** Site-restricted searches of the Deutscher Wetterdienst
+(dwd.de), BBK (bbk.bund.de), Bundestag (bundestag.de), BfG (bafg.de, floods only); a Landtag inquiry query (site of the
+state parliament and state government only when the user typed the state; 7 states with known domains); two queries
+with specialist terms (e.g. Starkregen Sturzflut … Unwetterwarnung; Katastrophenfall Katastrophenschutz). English
+geographic words (valley, river, county …) and the state name are left out of these queries. 7–9 extra paid searches
+per run (≈ $0.016 each at the configured Tavily price, counted in the case budget). They run AFTER keyword discovery so
+they never crowd it out; the per-run query limit (default 40) still applies and a cut is logged. Austria / Switzerland
+are unchanged. Queries are search leads only; a found document is still only a source.
+**Classification / relevance.** DWD, BfG and the listed state government domains count as official hosts; Landtag /
+Bundestag stay legislative. German specialist hazard words (Starkregen, Sturzflut, Flutkatastrophe, … — not "Pegel")
+count as hazard words for relevance. Source-review rule version → `SR-2026-11-13.2`.
+**Retrieval-quality report (`app/retrieval_quality.py`, `GET /api/cases/{id}/retrieval_quality`, Sources page panel).**
+Read-only counts of saved data: languages (declared, or estimated from common function words in the saved text —
+de / en / fr / es / it / nl / pt / et / ro; labelled as estimates), document types, what each kind of query produced
+(queries, distinct results, saved, usable, directly relevant), official bodies (searched / results / saved / usable),
+and bilingual gap statements. A gap means "nothing usable saved", never "no such document exists". The estimate is not
+stored; nothing is written.

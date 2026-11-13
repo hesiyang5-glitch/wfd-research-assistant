@@ -985,6 +985,22 @@ function srcPassesFilter(s, f) {
   if (f.q) { const q = f.q.toLowerCase(); if (!`${s.title || ""} ${s.publisher || ""} ${s.url || ""}`.toLowerCase().includes(q)) return false; }
   return true;
 }
+function rqHtml(r) {  // D-047 retrieval-quality report (read-only)
+  const tbl = (head, rows) => `<table class="small" style="width:auto;margin:6px 0 12px"><thead><tr>${head.map((x) => `<th>${x}</th>`).join("")}</tr></thead><tbody>${rows.join("") || `<tr><td colspan="${head.length}" class="muted">—</td></tr>`}</tbody></table>`;
+  const GL = { aar: ["事后评估报告", "After-action reports"], gov: ["政府与监管", "Government and regulatory"], legis: ["立法", "Legislative"], acad: ["学术与技术", "Academic and technical"], media: ["新闻媒体", "News media"], other: ["其他 / 未分类", "Other / unclassified"] };
+  return `<div style="color:var(--ink)">
+    <p class="muted">${esc(L("只统计本案例已经保存的内容。“缺口”表示没有保存到可用的文档，并不代表这种文档不存在。生成这份报告不会搜索、下载或调用模型。", r.note))}</p>
+    <h4 style="margin:8px 0 4px">${L("缺口", "Gaps")}</h4>${r.gaps.length ? `<ul>${r.gaps.map((g) => `<li>${esc(L(g.zh, g.en))}</li>`).join("")}</ul>` : `<p class="muted">${L("没有发现明显缺口。", "No obvious gaps.")}</p>`}
+    ${r.official_bodies.length ? `<h4 style="margin:8px 0 4px">${L("官方机构（按网站搜索）", "Official bodies (site-restricted searches)")}</h4>` + tbl([L("机构", "Body"), L("网站", "Site"), L("搜索次数", "Searched"), L("搜索结果", "Results"), L("已保存", "Saved"), L("有可用正文", "Usable text"), L("来源", "Sources")],
+      r.official_bodies.map((b) => `<tr><td>${esc(b.name)}</td><td class="mono">${esc(b.site)}</td><td>${b.searched}</td><td>${b.results}</td><td>${b.saved}</td><td><b>${b.usable}</b></td><td>${esc(b.examples.join(", "))}</td></tr>`)) : ""}
+    <h4 style="margin:8px 0 4px">${L("语言", "Languages")}</h4>${tbl([L("语言", "Language"), L("已保存", "Saved"), L("有可用正文", "Usable text"), L("直接相关", "Directly relevant"), L("网页声明 / 按文字估计", "Declared / estimated from text")],
+      r.languages.map((l) => `<tr><td>${esc(l.name)}${r.local_language && l.code === r.local_language.split("-")[0] ? ` <span class="badge info">${L("当地语言", "local language")}</span>` : ""}</td><td>${l.saved}</td><td><b>${l.usable}</b></td><td>${l.relevant}</td><td>${l.declared} / ${l.estimated}</td></tr>`))}
+    <h4 style="margin:8px 0 4px">${L("文档类型", "Document types")}</h4>${tbl([L("类型", "Type"), L("已保存", "Saved"), L("有可用正文", "Usable text"), L("直接相关", "Directly relevant")],
+      r.types.map((t) => `<tr><td>${esc(L(GL[t.group][0], GL[t.group][1]))}</td><td>${t.saved}</td><td><b>${t.usable}</b></td><td>${t.relevant}</td></tr>`))}
+    <h4 style="margin:8px 0 4px">${L("各类搜索的收获", "What each kind of search produced")}</h4>${tbl([L("搜索类型", "Kind of query"), L("次数", "Queries"), L("失败", "Failed"), L("不同结果网址", "Distinct results"), L("已保存", "Saved"), L("有可用正文", "Usable text"), L("直接相关", "Directly relevant")],
+      r.query_yield.map((y) => `<tr><td>${esc(y.kind)}</td><td>${y.queries}</td><td>${y.failed}</td><td>${y.results}</td><td>${y.saved}</td><td><b>${y.usable}</b></td><td>${y.relevant}</td></tr>`))}
+    <p class="muted">${L("语言：网页声明了就用声明；否则按正文中的常用虚词估计（本地规则，可能不准）。一个来源可能被多种搜索找到，所以各行之和可能大于来源总数。", "Language: the page's declaration when present, otherwise an estimate from common function words in the saved text (local rule; may be wrong). A source found by several kinds of query is counted in each row, so rows can add up to more than the total.")}</p></div>`;
+}
 async function tabSources(c, body) {
   const all = await api("GET", `/api/cases/${c.id}/sources`);
   const cnt = await api("GET", `/api/cases/${c.id}/source_counts${SRC_FILTER.run && SRC_FILTER.run !== "manual" ? "?run=" + encodeURIComponent(SRC_FILTER.run) : ""}`);
@@ -1064,6 +1080,7 @@ async function tabSources(c, body) {
       <p class="small muted" style="margin:6px 0 0">${L("这几行的分母不同，不是一条漏斗：“搜索发现”数的是搜索结果里的网址；其余数的是已保存的来源。“有文档正文”不代表内容准确或完整；“可用于分析”= 已读取、有可用正文、已选中、不是重复、未标为无关。当前显示：", "These rows have different denominators and are not one funnel: Discovered counts addresses in search results; the others count saved sources. Text available does not mean accurate or complete; Eligible = retrieved, usable text, selected, not a duplicate, not irrelevant. Shown now: ")}<b>${shownStats.n}</b> ${L("条（文本可用", "(text available")} ${shownStats.text} · ${L("直接相关", "directly relevant")} ${shownStats.rel} · ${L("可用于分析", "eligible")} ${shownStats.eligible})</p>
       ${busyJob ? `<p class="small"><b>${L("任务正在运行：这里显示的是到目前为止已保存的来源，不会自动更新，请点“刷新”。", "A task is running: this shows the sources saved so far; it does not update by itself — use Refresh.")}</b></p>` : ""}
       ${cnt.not_on_current_rules ? `<div class="callout warn small" style="margin-top:8px">${cnt.not_on_current_rules} ${L("条来源还没有用当前规则检查内容、相关性和类型。", "source(s) have not been checked with the current content, relevance and type rules.")} <button class="small" id="srPreview">${L("预览重新评估（不会改动任何内容）", "Preview reassessment (changes nothing)")}</button></div>` : `<p class="small muted">${L("所有来源都已按当前规则", "All sources are on the current rules")} (${esc(cnt.rule_version_current || "")}) ${L("检查。", "")}</p>`}</div>
+    <details class="panel" style="margin-top:12px" id="rqPanel"><summary><b>${L("检索质量", "Retrieval quality")}</b> <span class="small muted">${L("（语言、来源类型、官方机构、缺口；只统计已保存的数据）", "(languages, document types, official bodies, gaps; counts saved data only)")}</span></summary><div id="rqBody" class="small muted">${L("正在载入…", "Loading…")}</div></details>
     <div class="panel" style="margin-top:12px" id="srcTools">
       <div class="row" style="gap:8px;flex-wrap:wrap;align-items:flex-end">
         ${sel("fType", L("文档类型", "Document type"), opt("", L("全部", "All"), SRC_FILTER.type) + SRC_GROUPS.map(([k, l]) => opt(k, L(l[0], l[1]), SRC_FILTER.type)).join(""))}
@@ -1089,6 +1106,11 @@ async function tabSources(c, body) {
       <div class="add-box"><label>${t("add_text")}</label><input id="addTitle" placeholder="${t("src_title")}"><textarea id="addText" style="margin-top:4px"></textarea><button id="addTextBtn" class="add-btn">${t("add")}</button></div></div>
       <p class="small muted">${LANG === "zh" ? "不会绕过登录或付费墙；无法访问的来源可在有合法访问权时手动补充正文。" : "Logins and paywalls are never bypassed; add text manually if you have legitimate access."}</p></details>`;
   const rerender = () => tabSources(c, body);
+  $("#rqPanel").ontoggle = async () => {
+    if (!$("#rqPanel").open || $("#rqPanel").dataset.loaded) return;
+    try { $("#rqBody").innerHTML = rqHtml(await api("GET", `/api/cases/${c.id}/retrieval_quality`)); $("#rqPanel").dataset.loaded = "1"; }
+    catch (e) { $("#rqBody").textContent = e.message; }
+  };
   const add = async (payload) => { try { const s = await api("POST", `/api/cases/${c.id}/sources`, payload); toast(`S${s.id}: ${s.fetch_status}${s.fetch_error ? " — " + s.fetch_error : ""}`, s.fetch_status !== "ok"); rerender(); } catch (e) { toast(e.message, true); } };
   $("#srcAll").onchange = (ev) => { $("#srcXlsx").href = srcLink(c.id, "sources", ev.target.checked); $("#srcCsv").href = srcLink(c.id, "sources_csv", ev.target.checked);
     $("#srcExpNote").textContent = ev.target.checked ? L("导出内容：全部来源，包括未选中的（不受上面的筛选影响）。", "Export contains: all sources, including deselected ones (filters above do not apply).") : L("导出内容：全部已选中的来源（不受上面的筛选影响）。", "Export contains: all selected sources (filters above do not apply)."); };

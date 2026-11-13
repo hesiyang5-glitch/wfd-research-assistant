@@ -82,6 +82,11 @@ prompts or keys) · `schema_migrations` · `suggestions_provider_archive` (used 
    and role → derived/admin fields computed once → provider comparison.
 7. **Review** — humans accept/edit/clear/defer; exports default to reviewed values.
 
+**German search and retrieval quality (D-047).** `expansion.authority_templates` adds site-restricted queries for
+German official bodies and specialist terms; `research.expand_search` runs them after keyword discovery.
+`app/retrieval_quality.py` builds a read-only report from the search log, sources and passages
+(`GET /api/cases/{id}/retrieval_quality`, Sources page panel), including a local function-word language estimate.
+
 **Source review (D-046).** `app/source_review.py` assesses each saved source with local rules only: content validity
 (`content_status`), relevance tier, document type + subtype, topic tags, document group. Run at save time for new sources
 and, for existing ones, via `GET/POST /api/cases/{id}/source_review` (dry run / apply with confirm), which writes

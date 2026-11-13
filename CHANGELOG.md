@@ -6,6 +6,15 @@ Completed changes, newest first. Commit hashes refer to `hesiyang5-glitch/wfd-re
 
 
 
+## 2026-11-13 — German official bodies, specialist terms, retrieval-quality report (branch `feature/german-search`, not merged) — D-047
+- German cases also search DWD, BBK, Bundestag, BfG (floods) and the Landtag (state sites when the state is typed),
+  plus specialist German terms; run after keyword discovery; per-run limit unchanged; a cut is logged.
+- DWD / BfG / state government hosts classified as official; German specialist hazard words used in relevance
+  (source-review rules `SR-2026-11-13.2`).
+- New read-only Retrieval quality panel on the Sources page (languages declared / estimated, types, query yield,
+  official bodies, bilingual gaps) and API.
+- Tests: new `tests/test_german_search.py` (42).
+
 ## 2026-11-13 — Source review and grouped Sources page (branch `feature/source-review`, not merged) — D-046
 - Content validity separated from relevance and type: saved error / login / bot-check pages become "No usable document
   text" (needs review, not irrelevant), are left out of evidence and of duplicate detection.
