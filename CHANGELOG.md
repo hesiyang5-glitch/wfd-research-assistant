@@ -6,6 +6,15 @@ Completed changes, newest first. Commit hashes refer to `hesiyang5-glitch/wfd-re
 
 
 
+## 2026-11-13 — Keyword discovery quality (branch `fix/keyword-quality`, not merged; with the README guide)
+- Live Ahr run (case #12) produced keywords made only of words the user had typed ("Ahr Valley", "Germany Ahr",
+  "Germany Ahr Valley", "Ahr Valley Germany") and a plural ("Disasters"), several wrongly marked as aliases.
+- Candidates made only of typed words, filler words or simple plurals of typed words are skipped; "anchored"
+  (automatic alias) now means a NEW word built on a typed word (Ahrtal, Ahrweiler ← Ahr), not a plural.
+- New single compound words rank first; phrases that contain one ("Ahr River Ahrtal") are dropped.
+- `tests/test_query_expansion.py`: +4 checks (40).
+- README user guide and ARCHITECTURE notes for Search only / Search & analyze (owner: merge with the next change).
+
 ## 2026-11-13 — "Search only" and "Search & analyze" (merged to `main` 2026-11-13 with owner approval, together with D-044) — D-045
 - K-61 fixed before merge (owner request): the Re-run research dialog shows the coding-provider choice (Claude only /
   GPT only / Claude + GPT) whenever Search & analyze is selected; the server checks it exactly like the first form

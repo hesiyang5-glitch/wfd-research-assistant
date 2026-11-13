@@ -104,6 +104,21 @@ def main():
     k2 = ex.discover_keywords(res, t2)
     check("second pass finds terms from German-only results (Flutkatastrophe)",
           "Flutkatastrophe" in [k["term"] for k in k2], str(k2))
+    # 2026-11-13 live Ahr run produced "Ahr Valley", "Germany Ahr", "Germany Ahr Valley", "Disasters",
+    # "Ahr Valley Germany" (all words already typed) and marked "Disasters" / "Germany Ahr" as aliases
+    live = [{"url": f"https://site{i}.example/x", "title": t, "snippet": "", "identity_score": 0.9}
+            for i in range(6) for t in ("Ahr Valley disasters in Germany", "Germany Ahr Valley flood", "Ahr River Ahrtal Ahrweiler 2021")]
+    for i, r in enumerate(live):
+        r["url"] = f"https://site{i}.example/x"
+    kl = ex.discover_keywords(live, t)
+    tl = [k["term"] for k in kl]
+    check("phrases made only of typed words are not keywords (Ahr Valley, Germany Ahr, Ahr Valley Germany)",
+          not any(x in tl for x in ("Ahr Valley", "Germany Ahr", "Germany Ahr Valley", "Ahr Valley Germany")), str(tl))
+    check("a plural of a typed word is not a keyword (Disasters)", "Disasters" not in tl, str(tl))
+    check("new compound words are kept and anchored (Ahrtal, Ahrweiler)",
+          all(any(k["term"] == x and k["anchored"] for k in kl) for x in ("Ahrtal", "Ahrweiler")), str(kl))
+    check("a phrase with a new word is kept but is not an alias (Ahr River)",
+          not any(k["anchored"] for k in kl if k["term"] == "Ahr River"), str(kl))
     dq = ex.discovery_queries(k1, AHR, de, "2021")
     check("discovered keywords become queries with year and local warning word",
           any(x[1] == "Ahrweiler 2021 Warnung" for x in dq) and all(x[0].startswith("discovered keyword") for x in dq), str(dq))

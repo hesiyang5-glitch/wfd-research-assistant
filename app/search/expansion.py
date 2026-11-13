@@ -199,6 +199,13 @@ def discover_keywords(results: list[dict], terms: dict, min_sites: int = 2, top:
     """
     known = set(terms.get("name", [])) | set(terms.get("loc", [])) | {a for al in terms.get("aliases", []) for a in al}
     anchors = [t for t in (list(terms.get("name", [])) + list(terms.get("loc", []))) if len(t) >= 3]
+
+    def is_known(w: str) -> bool:  # what the user already typed (incl. simple plurals: disasters ← disaster), or filler
+        return (w in known or w in _STOP or w.isdigit()
+                or (w.endswith("s") and w[:-1] in known) or (w.endswith("es") and w[:-2] in known))
+
+    def compound(w: str) -> bool:  # a NEW word built on a typed word: Ahrtal, Ahrweiler ← Ahr (not plurals)
+        return not is_known(w) and any(w.startswith(a) and len(w) >= len(a) + 3 for a in anchors)
     sites: dict[str, set] = defaultdict(set)
     shown: dict[str, str] = {}
     for r in results:
@@ -207,7 +214,9 @@ def discover_keywords(results: list[dict], terms: dict, min_sites: int = 2, top:
         host = urlparse(r.get("url") or "").netloc.lower().removeprefix("www.")
         for tok in _candidates(f"{r.get('title', '')} {r.get('snippet', '')}"):
             low = tok.lower()
-            if low in _STOP or low in known or low.isdigit():
+            # 2026-11-13 live Ahr run: skip candidates made only of words already typed ("Ahr Valley", "Germany Ahr",
+            # "Disasters") — they add nothing new to search with
+            if all(is_known(w) for w in low.split()):
                 continue
             sites[low].add(host)
             if tok[:1].isupper() or low not in shown:
@@ -216,16 +225,21 @@ def discover_keywords(results: list[dict], terms: dict, min_sites: int = 2, top:
     for low, hosts in sites.items():
         if len(hosts) < min_sites:
             continue
-        anchored = any(low.startswith(a) and len(low) > len(a) for a in anchors)
+        anchored = any(compound(w) for w in low.split())
         proper = shown[low][:1].isupper() or not shown[low].isascii()
         if not (anchored or proper):
             continue  # ordinary lower-case words ("residents", "water") are not useful search keywords
         out.append({"term": shown[low], "sites": len(hosts), "anchored": anchored})
-    # anchored first; then more websites; then longer phrases ("Bad Neuenahr" before "Bad")
-    out.sort(key=lambda d: (-int(d["anchored"]), -d["sites"], -len(d["term"].split()), d["term"].lower()))
+    # single new compound words first (Ahrtal, Ahrweiler); then other anchored terms; then more websites; then longer
+    # phrases ("Bad Neuenahr" before "Bad")
+    single_anchor = lambda d: d["anchored"] and " " not in d["term"]
+    out.sort(key=lambda d: (-int(single_anchor(d)), -int(d["anchored"]), -d["sites"], -len(d["term"].split()), d["term"].lower()))
     kept: list[dict] = []
     for d in out:  # drop a word already inside a kept phrase, or a phrase whose words are all kept on their own
         low = d["term"].lower()
+        words = low.split()
+        if " " in low and any(w == k["term"].lower() for k in kept if single_anchor(k) for w in words):
+            continue  # "Ahr River Ahrtal", "Ahrtal Ahrweiler": the kept compound alone is the better search term
         if any(low in k["term"].lower().split() for k in kept if " " in k["term"]):
             continue
         if " " in low and all(w in {k["term"].lower() for k in kept} for w in low.split()):
