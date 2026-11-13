@@ -195,6 +195,55 @@ def main():
     js = (ROOT / "web" / "app.js").read_text()
     check("interface shows the interrupted job with Resume / Cancel", 'st.awaiting === "interrupted"' in js and "cancelBtn2" in js)
 
+    print("\n[4b] A source that takes the server down is skipped on Resume (incident 2026-11-13)")
+    from app import research, ingest
+    bad = "https://example.org/huge-report.pdf"
+    fjid = db.insert("jobs", {"case_id": cid, "kind": "research", "stage": "fetch", "status": "running", "progress": 0.4,
+                              "message": "", "params_json": "{}", "state_json": "{}",
+                              "created_at": time.time(), "updated_at": time.time()})
+    fctx = research.Ctx(db.q1("SELECT * FROM jobs WHERE id=?", (fjid,)))
+    seen_marker = {}
+    real_fetch = research.fetch_url
+
+    def crash_fetch(url):  # simulate the process dying mid-read: look at what is on disk, then stop
+        seen_marker["state"] = json.loads(db.q1("SELECT state_json FROM jobs WHERE id=?", (fjid,))["state_json"])
+        raise SystemExit("simulated crash")
+    research.fetch_url = crash_fetch
+    try:
+        research.fetch_one(fctx, bad, {"title": "Huge report", "origin": "search", "found_via": "search: AAR"})
+    except SystemExit:
+        pass
+    research.fetch_url = real_fetch
+    check("the source being read is recorded on disk BEFORE it is read",
+          (seen_marker.get("state") or {}).get("fetch_in_progress", {}).get("url") == bad, str(seen_marker))
+    # a real crash never reaches the `finally`; put the marker back as it would be on disk after a crash
+    st = json.loads(db.q1("SELECT state_json FROM jobs WHERE id=?", (fjid,))["state_json"])
+    st["fetch_in_progress"] = seen_marker["state"]["fetch_in_progress"]
+    db.update("jobs", fjid, {"state_json": json.dumps(st), "status": "running"})
+    jobs.recover_interrupted()
+    row = db.q1("SELECT * FROM sources WHERE case_id=? AND url=?", (cid, bad))
+    check("after the restart that source is recorded as failed with a plain reason",
+          row and row["fetch_status"] == "failed" and "server restarted while reading" in row["fetch_error"], str(row))
+    check("so Resume will skip it (it is now a known URL for the case)", bad in research.existing_urls(cid))
+    fst = json.loads(db.q1("SELECT state_json FROM jobs WHERE id=?", (fjid,))["state_json"])
+    check("the marker is cleared and the job is paused for the owner",
+          "fetch_in_progress" not in fst and fst.get("awaiting") == "interrupted")
+    check("the run log names the skipped source",
+          db.q1("SELECT COUNT(*) n FROM job_log WHERE job_id=? AND message LIKE ?", (fjid, f"%{bad}%"))["n"] == 1)
+    check("a second recovery adds nothing", jobs.recover_interrupted()["paused_jobs"] == [] and
+          db.q1("SELECT COUNT(*) n FROM sources WHERE case_id=? AND url=?", (cid, bad))["n"] == 1)
+
+    def ok_fetch(url):
+        raise ingest.FetchError("HTTP 404")
+    research.fetch_url = ok_fetch
+    try:
+        research.fetch_one(fctx, "https://example.org/missing", {"origin": "search"})
+    finally:
+        research.fetch_url = real_fetch
+    check("after a normal (even failed) read the marker is removed",
+          "fetch_in_progress" not in json.loads(db.q1("SELECT state_json FROM jobs WHERE id=?", (fjid,))["state_json"]))
+    db.update("jobs", fjid, {"status": "done"})
+
     print("\n[5] Worker thread runs at lower CPU priority")
     if sys.platform.startswith("linux"):
         r = {}

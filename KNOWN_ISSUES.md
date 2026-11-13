@@ -67,6 +67,7 @@ Last reviewed: 2026-10-01 (commit `33a0c5e`). Severity: **High** (blocks correct
 | K-14 | Prompt-injection resistance (source text treated as data) is a prompt rule only; no adversarial test. | Medium |
 | K-15 | `WFD_ID` sequence uses IDs in the active workbook, not the master database. | Low |
 | K-57 | Source type is assigned by a keyword rule (`ingest.classify_source`): any title, URL or opening text containing "after-action", "AAR" or "improvement plan" is typed `aar`, so a news article *about* an after-action report is typed `aar` (seen 2026-11-13: an NBC Los Angeles article in the Palisades Fire case). With the Sources tab sorted by type (D-041) such articles appear first until a researcher corrects the Type box. The same type also feeds fetch priority. Not changed yet — changing the rule affects research behaviour and needs an owner decision. | Medium |
+| K-58 | Repeated "Interrupted by a server restart" during `fetch` (case #11, 2026-11-13). Resume loop fixed on branch `fix/skip-source-that-crashed` (D-042, not merged). Root cause of the restarts (out of memory vs health-check timeout vs deploys) not confirmed: needs Render Events/Logs for those times. If memory: consider extracting PDFs in a memory-limited subprocess or a larger instance (paid). | High |
 
 ## Codebook / workbook issues (need PI decisions; app flags them, never guesses)
 

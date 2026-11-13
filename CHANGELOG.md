@@ -6,6 +6,17 @@ Completed changes, newest first. Commit hashes refer to `hesiyang5-glitch/wfd-re
 
 
 
+## 2026-11-13 — A source that takes the server down is skipped on Resume (branch `fix/skip-source-that-crashed`, not merged) — D-042
+- Incident (owner report, case #11 "Ahr valley disaster flood"): the research job paused repeatedly in `fetch` with
+  "Interrupted by a server restart", and paused again right after Resume. Cause in code: the URL being read was not
+  recorded before reading, so after a restart Resume ranked the same URL first and read it again. If that URL is what
+  stops the server (for example a large PDF exhausting the 512 MB instance), this repeats on every Resume. Which URL,
+  and whether memory or a health-check timeout stopped the server, is **not confirmed** (Render Events not yet seen).
+- `research.fetch_one` saves the URL being read to the job state before reading it and clears it afterwards.
+- `jobs.recover_interrupted` records that URL as a failed source ("skipped: the server restarted while reading this
+  source …") and logs it, so Resume skips it. Not retried automatically; the text can be added manually.
+- `tests/test_resilience.py` [4b]: +7 checks (38 total).
+
 ## 2026-11-13 — Review table: no sideways scrollbar on computer screens (merged to `main` 2026-11-13 with owner approval) — D-041 follow-up
 - Cause: the "-9 / not documented" reason tag ("Not documented (nothing found in the sources read)", added with
   PI-M1…M4) could not wrap, so a row carrying it made the table up to ~430 px wider than its box; the wider variable
