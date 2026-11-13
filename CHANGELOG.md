@@ -17,7 +17,12 @@ Completed changes, newest first. Commit hashes refer to `hesiyang5-glitch/wfd-re
 - `app/validator.py` (`ABSENCE_FROM_SILENCE`, `absence_code`, guarded by the codebook label), `app/evidence_status.py`,
   `app/coding.py` (prompt rule + per-variable "Absence code" line; prompt `wfd-prompt-2026-11-13`), `app/export.py`
   (reason columns renamed "Missing / absence reason"), `web/app.js` ("Not documented" badge).
-- Tests: TEST_RESULTS_PLACEHOLDER
+- Tests (offline, 2026-11-13, this branch; no network, no paid calls): test_missingness 84/84 (9 new PI-M4 checks;
+  a deliberate leak of EQUITY_IMPACT into the allowed list was caught by 3 checks), test_pipeline 44, test_costs 32,
+  test_auth 24, test_ui_flow PASS, test_providers 141, test_legacy_migration 18, test_bulk_agreement 67,
+  test_resilience 31, test_independent_providers 68, test_cross_version 27, test_export_labels 23, test_ui_labels 38,
+  test_evidence_status 59, test_multiselect_validation 24, test_visual 21 — all 16 suites pass. Prompt / cache-key
+  fingerprints re-pinned for `wfd-prompt-2026-11-13`.
 
 ## 2026-11-12 — Missing values: owner decisions PI-M1…M3 (merged to `main` 2026-11-13 with owner approval, together with the 2026-10-06 D-039 audit below)
 - PI-M1: for the 7 variables whose codebook entry defines `-9`, a model may suggest `-9` = Unknown ("not mentioned in the
