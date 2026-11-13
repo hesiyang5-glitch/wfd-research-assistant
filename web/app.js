@@ -450,6 +450,19 @@ async function renderCase(id, tab) {
 // ------------------------------------------------------------------ progress
 const STAGES = ["identify", "search", "fetch", "gaps", "followup", "coding", "review"];
 const STAGES_SEARCH_ONLY = ["identify", "search", "fetch", "sources"];  // D-045
+// D-046: working time per step of this run, measured by the server (job state "timings", seconds). Display only.
+const TIMED_STAGES = ["identify", "search", "fetch", "gaps", "followup", "coding"];
+function fmtSecs(x) {
+  const n = Math.round(x);
+  return n < 60 ? `${n} ${L("秒", "s")}` : `${Math.floor(n / 60)} ${L("分", "min")} ${String(n % 60).padStart(2, "0")} ${L("秒", "s")}`;
+}
+function timingLine(st) {
+  const tm = (st && st.timings) || {};
+  const parts = TIMED_STAGES.filter((s) => tm[s] >= 0.5).map((s) => `${t("st_" + s)} ${fmtSecs(tm[s])}`);
+  if (!parts.length) return "";
+  const total = TIMED_STAGES.reduce((a, s) => a + (tm[s] || 0), 0);
+  return `<div class="small muted" id="stageTimes" style="margin-top:6px" title="${esc(L("只计算服务器实际工作的时间；等待你确认或服务器重启的时间不计入。", "Server working time only; time spent waiting for your input or for a server restart is not counted."))}">${L("本次运行各步骤用时", "Time spent per step in this run")}: ${parts.map(esc).join(" · ")} — ${L("合计", "total")} ${esc(fmtSecs(total))}</div>`;
+}
 async function tabProgress(c, body) {
   const draw = async () => {
     const j = await api("GET", `/api/cases/${c.id}/job`);
@@ -513,6 +526,7 @@ async function tabProgress(c, body) {
         : `<button id="rerunBtn">${t("rerun")}</button> <button id="recodeBtn">${t("recode")}</button> <a href="#/case/${c.id}/review"><button class="primary">${t("tab_review")} →</button></a>`}</div>
       <div class="row small" style="margin-top:8px;gap:6px">${statusPills(sts)} <span class="muted">${L("· 自动保存：来源、正文和选择都已保存在服务器上，可以离开后再回来。", "· Saved automatically: sources, their text and your selections are stored on the server; you can leave and come back.")}</span></div>
       ${searchOnly && j.status === "done" ? `<div class="callout ok small">${L("只搜索已成功完成：来源查找、去重、相关性检查、排序和读取都已完成。没有运行证据缺口检查、补充搜索或编码分析——这是正常结果，不是分析失败。可以在“来源”页查看、选择和导出来源；需要时点“分析已选来源”。", "Search only finished successfully: source discovery, de-duplication, relevance check, ranking and retrieval are done. No evidence-gap check, follow-up search or coding analysis was run — this is the expected outcome, not a failed analysis. View, select and export sources on the Sources tab; choose Analyze selected sources when needed.")}</div>` : ""}
+      ${timingLine(st)}
       ${j.error ? `<div class="callout bad">${esc(j.error)}</div>` : ""}${needs}
       ${providerPanel(j)}
       ${cov ? `<h3>${t("coverage")}</h3>${!cov.automatic_search_ran ? `<div class="callout warn">${LANG === "zh" ? "未进行自动网页搜索（未配置搜索服务，或本次只是重新分析）。结果只基于已有或手动补充的资料。" : "No automatic web search in this run (no search provider configured, or this was a re-analysis). Results rest only on existing or manually added sources."}</div>` : cov.research_complete ? `<div class="callout ok">${t("complete_note")}</div>` : `<div class="callout warn">${t("incomplete")}<br><span class="small">${esc((cov.limits_hit || []).join("; "))}</span></div>`}

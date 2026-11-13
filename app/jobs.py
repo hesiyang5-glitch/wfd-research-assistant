@@ -62,6 +62,8 @@ def recover_interrupted() -> dict:
     """At startup: a job that was running when the server stopped is PAUSED for the owner (never restarted
     automatically: a crash loop must not repeat paid requests), and a model request that was in flight is counted at its
     worst-case cost, because it may have reached the provider and been billed (D-033)."""
+    from .ingest import remove_partial_downloads
+    remove_partial_downloads()  # D-046: downloads cut off by the stop were never used as sources
     calls = db.q("SELECT * FROM model_calls WHERE status='sending'")
     for r in calls:
         db.update("model_calls", r["id"], {"status": "interrupted_possibly_billed",

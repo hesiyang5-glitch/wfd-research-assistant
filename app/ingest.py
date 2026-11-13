@@ -5,8 +5,10 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import os
 import re
 import time
+import uuid
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
 
@@ -22,6 +24,7 @@ from .config import DATA_DIR
 UA = "WFD-Coding-Assistant/0.1 (academic research tool; public-warning-failure database)"
 MAX_BYTES = 60 * 1024 * 1024
 FILES = DATA_DIR / "files"
+PART_PREFIX = "dl-"   # unfinished downloads: files/dl-<random>.part
 
 
 class FetchError(Exception):
@@ -33,7 +36,13 @@ def url_key(url: str) -> str:
 
 
 def fetch_url(url: str) -> dict:
-    """Returns {final_url, content_type, path, status}. Raises FetchError with a human-readable reason."""
+    """Returns {final_url, content_type, path, status}. Raises FetchError with a human-readable reason.
+
+    The body is written to disk while it arrives (D-046), not held in memory, so several downloads at the same time
+    cannot add up to hundreds of MB on the 512 MB server. Uses no shared state: safe to call from several threads."""
+    FILES.mkdir(parents=True, exist_ok=True)
+    tmp = FILES / f"{PART_PREFIX}{uuid.uuid4().hex}.part"
+    head, size = b"", 0
     try:
         with httpx.Client(follow_redirects=True, timeout=httpx.Timeout(30.0, connect=10.0),
                           headers={"User-Agent": UA, "Accept": "text/html,application/pdf,*/*;q=0.8"}) as c:
@@ -45,23 +54,41 @@ def fetch_url(url: str) -> dict:
                 if r.status_code >= 400:
                     raise FetchError(f"HTTP {r.status_code}")
                 ctype = r.headers.get("content-type", "").split(";")[0].strip().lower()
-                buf = io.BytesIO()
-                for chunk in r.iter_bytes():
-                    buf.write(chunk)
-                    if buf.tell() > MAX_BYTES:
-                        raise FetchError(f"file larger than {MAX_BYTES // 1024 // 1024} MB — not downloaded")
+                with open(tmp, "wb") as f:
+                    for chunk in r.iter_bytes():
+                        if len(head) < 5:
+                            head = (head + chunk)[:5]
+                        f.write(chunk)
+                        size += len(chunk)
+                        if size > MAX_BYTES:
+                            raise FetchError(f"file larger than {MAX_BYTES // 1024 // 1024} MB — not downloaded")
                 final = str(r.url)
     except httpx.HTTPError as e:
+        tmp.unlink(missing_ok=True)
         raise FetchError(f"network error: {type(e).__name__}: {e}") from e
-    data = buf.getvalue()
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
     if not ctype:
-        ctype = "application/pdf" if data[:5] == b"%PDF-" else "text/html"
-    if data[:5] == b"%PDF-":
+        ctype = "application/pdf" if head == b"%PDF-" else "text/html"
+    if head == b"%PDF-":
         ctype = "application/pdf"
     ext = ".pdf" if ctype == "application/pdf" else ".html"
     path = FILES / f"{url_key(final)}{ext}"
-    path.write_bytes(data)
-    return {"final_url": final, "content_type": ctype, "path": str(path), "size": len(data)}
+    os.replace(tmp, path)
+    return {"final_url": final, "content_type": ctype, "path": str(path), "size": size}
+
+
+def remove_partial_downloads() -> int:
+    """Startup clean-up: delete downloads that were cut off when the server stopped (never used as sources)."""
+    n = 0
+    for f in FILES.glob(f"{PART_PREFIX}*.part") if FILES.exists() else []:
+        try:
+            f.unlink()
+            n += 1
+        except OSError:
+            pass
+    return n
 
 
 # ----------------------------------------------------------------------------- extraction

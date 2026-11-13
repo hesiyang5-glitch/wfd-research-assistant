@@ -8,11 +8,13 @@ from __future__ import annotations
 
 import json
 import re
+import threading
 import time
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urlparse
 
-from . import db
+from . import config, db
 from .config import DEFAULT_SETTINGS, load_pricing
 from .ingest import (FetchError, classify_source, containment, content_hash, extract_file, extract_html,
                      extract_text_plain, fetch_url, make_passages, shingles)
@@ -149,8 +151,20 @@ class Ctx:
         self.terms = case_terms(self.case)
         pr = load_pricing().get("search", {})
         self.search_unit = (pr.get(self.provider.name, {}) if self.provider else {}).get("usd_per_1000_queries")
+        self._mark = time.time()  # in memory only: time while the job waited or the server was down is not counted
+
+    def tick(self):
+        """Add the working time since the last tick to the current stage (state["timings"], seconds; D-046).
+        Measurement only — nothing reads it to make a decision."""
+        now = time.time()
+        stage = self.state.get("stage")
+        if stage:
+            t = self.state.setdefault("timings", {})
+            t[stage] = round(t.get(stage, 0.0) + max(0.0, now - self._mark), 1)
+        self._mark = now
 
     def save(self, **kw):
+        self.tick()
         kw.setdefault("state_json", json.dumps(self.state))
         kw["updated_at"] = time.time()
         db.update("jobs", self.id, kw)
@@ -160,6 +174,7 @@ class Ctx:
                               "message": msg})
 
     def stage(self, name: str, progress: float, msg: str = ""):
+        self.tick()
         self.state["stage"] = name
         self.save(stage=name, progress=progress, message=msg)
 
@@ -476,43 +491,101 @@ def fetch_candidates(ctx: Ctx, cands: list[dict], found_via: str = "search") -> 
             best[u] = {"url": u, "title": "", "snippet": "", "identity_score": 1.0, "purpose": "user-supplied link", "origin": "manual_url"}
     ranked = sorted(best.values(), key=lambda c: (-round(c["identity_score"], 1),
                                                   TYPE_PRIORITY.get(classify_source(c["url"], c.get("title", "")), 5)))
-    n = 0
-    for c in ranked:
-        ctx.check_cancel()
-        fetched_so_far = db.q1("SELECT COUNT(*) n FROM sources WHERE case_id=? AND origin IN ('search','followed_link')",
-                               (ctx.case["id"],))["n"]
-        if fetched_so_far >= int(ctx.settings["max_fetch"]):
-            ctx.limit(f"fetch limit ({ctx.settings['max_fetch']} pages for this case, all runs; "
-                      f"can be raised in the Re-run research dialog)")
-        ctx.check_limits("fetch")
-        if c["identity_score"] < 0.3:
-            continue  # remains visible in the search log as "not fetched (weak identity match)"
-        n += fetch_one(ctx, c["url"], {"title": c.get("title", ""), "snippet": c.get("snippet", ""),
-                                       "published": c.get("published", ""), "origin": c.get("origin", "search"),
-                                       "found_via": c.get("found_via") or f"{found_via}: {c.get('purpose','')}"})
+    # D-046: the DOWNLOADS of the next few candidates wait on the network at the same time; everything else is as before
+    # and happens one source at a time in ranked order (limit checks, reading/extraction, duplicate checks, saving,
+    # link following), so the stored sources are the same as with one download at a time.
+    workers = config.FETCH_PARALLEL
+    pre = Prefetch(workers, config.FETCH_PER_HOST) if workers > 1 else None
+    todo = [i for i, c in enumerate(ranked) if c["identity_score"] >= 0.3]  # the only candidates ever downloaded
+    futures: dict[int, object] = {}
+    nxt = 0  # position in `todo` of the next download to start
+    n = attempted = 0
+    t0 = time.time()
+    try:
+        for i, c in enumerate(ranked):
+            ctx.check_cancel()
+            fetched_so_far = db.q1("SELECT COUNT(*) n FROM sources WHERE case_id=? AND origin IN ('search','followed_link')",
+                                   (ctx.case["id"],))["n"]
+            if fetched_so_far >= int(ctx.settings["max_fetch"]):
+                ctx.limit(f"fetch limit ({ctx.settings['max_fetch']} pages for this case, all runs; "
+                          f"can be raised in the Re-run research dialog)")
+            ctx.check_limits("fetch")
+            if c["identity_score"] < 0.3:
+                continue  # remains visible in the search log as "not fetched (weak identity match)"
+            download = None
+            if pre:
+                # Never start more downloads than the reading limit still allows: each candidate adds at most one
+                # page to the count, so nothing beyond the limit is requested from any website.
+                room = min(workers, int(ctx.settings["max_fetch"]) - fetched_so_far)
+                while nxt < len(todo) and todo[nxt] < i:
+                    nxt += 1
+                while nxt < len(todo) and len(futures) < room:
+                    futures[todo[nxt]] = pre.submit(ranked[todo[nxt]]["url"])
+                    nxt += 1
+                download = futures.pop(i).result
+            attempted += 1
+            n += fetch_one(ctx, c["url"], {"title": c.get("title", ""), "snippet": c.get("snippet", ""),
+                                           "published": c.get("published", ""), "origin": c.get("origin", "search"),
+                                           "found_via": c.get("found_via") or f"{found_via}: {c.get('purpose','')}"},
+                           download=download)
+    finally:
+        if pre:
+            pre.close()  # limit, cancel or error: downloads not yet started are dropped; nothing is saved for them
+        if attempted:
+            ctx.log("info", f"reading step: {attempted} page(s) attempted, {n} read, in {time.time() - t0:.0f} s "
+                            f"(up to {workers} download(s) at a time)")
     return n
+
+
+class Prefetch:
+    """Runs source downloads on a few threads (D-046). Only `fetch_url` runs here — network waiting and writing the
+    file to disk; no database access and no text extraction. At most `per_host` downloads from one website at a time."""
+
+    def __init__(self, workers: int, per_host: int):
+        self.pool = ThreadPoolExecutor(max_workers=workers, thread_name_prefix="wfd-fetch")
+        self.per_host = per_host
+        self.hosts: dict[str, threading.BoundedSemaphore] = {}
+        self.lock = threading.Lock()
+        self.closed = False
+
+    def submit(self, url: str):
+        return self.pool.submit(self._get, url)
+
+    def _get(self, url: str) -> dict:
+        host = urlparse(url).netloc.lower()
+        with self.lock:
+            sem = self.hosts.setdefault(host, threading.BoundedSemaphore(self.per_host))
+        with sem:
+            if self.closed:
+                raise FetchError("not downloaded: the reading step stopped first")
+            return fetch_url(url)  # looked up at call time, like the one-at-a-time path
+
+    def close(self):
+        self.closed = True
+        self.pool.shutdown(wait=False, cancel_futures=True)
 
 
 CRASH_SKIP_REASON = ("skipped: the server restarted while reading this source (it may be too large or too complex "
                      "for the server's memory). Not retried automatically; add the text manually if it is needed.")
 
 
-def fetch_one(ctx: Ctx, url: str, meta: dict) -> int:
+def fetch_one(ctx: Ctx, url: str, meta: dict, download=None) -> int:
+    """`download`: optional callable returning the already-started download of this url (D-046); default: download now."""
     meta = {**meta, "url": url, "job_id": ctx.id}
     # Remember which source is being read before reading it. If reading it takes the server down, startup recovery
     # records it as failed (jobs.recover_interrupted), so Resume skips it instead of crashing on it again.
     ctx.state["fetch_in_progress"] = {k: meta.get(k, "") for k in ("url", "title", "snippet", "origin", "found_via", "job_id")}
     ctx.save()
     try:
-        return _fetch_one(ctx, url, meta)
+        return _fetch_one(ctx, url, meta, download)
     finally:
         ctx.state.pop("fetch_in_progress", None)
         ctx.save()
 
 
-def _fetch_one(ctx: Ctx, url: str, meta: dict) -> int:
+def _fetch_one(ctx: Ctx, url: str, meta: dict, download=None) -> int:
     try:
-        res = fetch_url(url)
+        res = download() if download else fetch_url(url)
         meta.update(res)
         if res["content_type"] == "application/pdf":
             ex = extract_file(res["path"])

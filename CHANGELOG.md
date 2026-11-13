@@ -6,6 +6,21 @@ Completed changes, newest first. Commit hashes refer to `hesiyang5-glitch/wfd-re
 
 
 
+## 2026-11-13 — Faster reading step and time per step (branch `perf/stage-timing-parallel-fetch`, NOT merged, NOT deployed) — D-046
+- Progress page: "Time spent per step in this run" (Chinese / English), from server-measured working time per stage
+  (`state.timings`); waiting for the researcher and server restarts are not counted. The run log gets one line per
+  reading step: pages attempted, pages read, seconds, downloads at a time.
+- Reading step: up to 4 downloads wait on the network at the same time (2 per website); reading, duplicate checks,
+  saving and link following stay one at a time in ranked order. Offline test: same stored sources as one at a time,
+  2.1 s instead of 4.9 s for 16 pages that each take 0.25 s to answer. Real websites not yet measured (K-68).
+- `app/ingest.py`: downloads are written to disk while they arrive (`files/dl-*.part`, renamed when complete);
+  cut-off downloads are deleted at startup (`jobs.recover_interrupted`).
+- `app/config.py`: `WFD_FETCH_PARALLEL` (default 4, 1–8; 1 = earlier behaviour) and `WFD_FETCH_PER_HOST` (default 2, 1–4).
+- Files: `app/config.py`, `app/ingest.py`, `app/research.py`, `app/jobs.py`, `web/app.js`,
+  `tests/test_parallel_fetch.py` (new, 40 checks). No migration, no prompt / coding / export change, no paid request.
+- Tests (2026-11-13, offline, $0): all 21 suites pass, run with `httpx` 0.28.1, `httpcore` 1.0.7 and `openai` 3.50.0
+  loaded from their GitHub sources via `PYTHONPATH` (PyPI unreachable; not committed). See TEST_PLAN §1.
+
 ## 2026-11-13 — "Search only" and "Search & analyze" (merged to `main` 2026-11-13 with owner approval, together with D-044) — D-045
 - K-61 fixed before merge (owner request): the Re-run research dialog shows the coding-provider choice (Claude only /
   GPT only / Claude + GPT) whenever Search & analyze is selected; the server checks it exactly like the first form

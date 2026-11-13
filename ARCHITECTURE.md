@@ -73,7 +73,9 @@ prompts or keys) · `schema_migrations` · `suggestions_provider_archive` (used 
 2. **Search** — 10 source-type templates × pages (provider permitting). Every query logged with provider name.
 3. **Fetch & dedupe** — candidates ranked by identity score then source type (AAR, government first); up to
    `max_fetch` (60) attempts; exact duplicates by content hash, near-duplicates by shingle containment ≥ 0.6;
-   relevance check on full text; follow up to 4 promising links per relevant page.
+   relevance check on full text; follow up to 4 promising links per relevant page. Downloads only: up to
+   `WFD_FETCH_PARALLEL` (4) at once, `WFD_FETCH_PER_HOST` (2) per website, written to disk as they arrive; everything
+   else one source at a time in ranked order (D-046). Working time per stage is kept in `jobs.state_json` → `timings`.
 4. **Gap check** — for each model-coded variable, retrieve top passages and score evidence strength; weak ones (< 0.35) drive follow-up queries.
 5. **Follow-up search** — up to `max_search_rounds` (3) rounds of up to 8 gap queries; stops when a round adds no sources.
 6. **Coding** — resolve the mode's provider plan (pause if a needed key is missing) → free model availability check →

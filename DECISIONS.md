@@ -449,3 +449,25 @@ the run's evidence is unchanged.
 the coding provider(s), validated like the first form.
 **Usable evidence.** Analysis requires at least one passage from a read, selected, non-duplicate, non-irrelevant source;
 otherwise no job (API) and no coding call (pipeline).
+
+## D-046 · 2026-11-13 · Faster reading step: several downloads at once; time per step shown — On branch `perf/stage-timing-parallel-fetch` (not merged, not deployed; owner approved building steps 0 and 1 on 2026-11-13, approval to merge still needed)
+**Why.** The owner asked how to make the site produce results faster. Every step ran one at a time; the reading step
+waited up to 30 s per page for up to 60 pages, and there was no record of where a run's time went.
+**Step 0 — measure.** `Ctx.tick()` adds working time to `state["timings"][stage]` (seconds) at every stage change and
+every save; the Progress page shows it. Time while a job waits for the researcher or the server is down is not counted
+(the clock restarts when the job resumes). Measurement only: nothing reads it to decide anything.
+**Step 1 — downloads in parallel, everything else as before.** Only `fetch_url` (network wait + writing the file) runs
+on up to `WFD_FETCH_PARALLEL` threads (default 4, range 1–8), at most `WFD_FETCH_PER_HOST` (default 2) per website.
+Limit checks, text extraction, duplicate / near-duplicate / relevance checks, saving and link following still happen
+one source at a time in ranked order on the job thread, so the stored sources are the same as before (tested).
+Downloads are started only as far ahead as the reading limit still allows, so no page beyond the limit is requested.
+**Memory.** `fetch_url` now writes the body to disk as it arrives instead of holding it in memory (measured: four
+39 MB files at once ≈ 13 MB extra instead of ≈ 241 MB), which the 512 MB server needs for parallel downloads (K-17).
+**Not a case setting.** The two numbers are server environment variables, not case settings, so no case's analysis
+configuration, evidence snapshot or cache identity changes. `WFD_FETCH_PARALLEL=1` is exactly the earlier behaviour
+(no download threads) and can be set in the Render dashboard without a code change.
+**Unchanged.** User-Agent, access rules (401/402/403/429 recorded as failed, never bypassed), size cap, timeouts,
+ranking, limits, costs (no paid request is added or removed), prompts, coding, export. No database migration.
+**Not done (need separate approval).** Parallel search queries (step 2), parallel coding batches / providers (step 3,
+needs budget reservation before each request), larger Render plan or more than one job at a time (step 4, paid).
+

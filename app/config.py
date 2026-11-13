@@ -87,6 +87,19 @@ DEFAULT_SETTINGS = {
     "run_mode": "search_analyze",               # first research run: pause after research, before any paid model request
 }
 
+def _int_env(name: str, default: int, lo: int, hi: int) -> int:
+    try:
+        return max(lo, min(hi, int(os.environ.get(name, default))))
+    except (TypeError, ValueError):
+        return default
+
+
+# D-046: how many source downloads may wait on the network at the same time during the reading step (1 = one at a
+# time, exactly the earlier behaviour). Reading/extracting the downloaded files still happens one at a time, in ranked
+# order. Server-wide (not a case setting), so it is no part of any case's analysis configuration or cache identity.
+FETCH_PARALLEL = _int_env("WFD_FETCH_PARALLEL", 4, 1, 8)
+FETCH_PER_HOST = _int_env("WFD_FETCH_PER_HOST", 2, 1, 4)   # at most this many simultaneous downloads from one website
+
 # Limits that an approval may raise — always to an explicit number, never to "unlimited".
 RAISABLE_LIMITS = ("budget_usd", "openai_budget_usd", "max_openai_attempts_per_case", "max_model_attempts_per_case", "max_fetch")
 # max_fetch counts every page read for the case (all runs); ceiling protects the 512 MB server (K-17), D-044

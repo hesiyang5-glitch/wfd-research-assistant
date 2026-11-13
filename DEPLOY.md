@@ -210,6 +210,8 @@ an OpenAI value there; human-reviewed values are unaffected.)
   Growing `nr_throttled` / `throttled_usec` = the process is being paused for exceeding its CPU allowance. After the fix the thread counts should be 1.
 - 如果修复后仍反复出现：考虑更大的实例或单独的后台服务（**需付费，先征得同意**）。
   If it still recurs after the fix: consider a larger instance or a separate worker service (**paid; ask first**).
+- 同时下载（D-046，合并后才生效）：读取来源时最多 4 个下载同时等待网络（每个网站最多 2 个）。如果合并后在读取阶段出现健康检查失败或网站频繁返回 429，在 Render → Environment 添加 `WFD_FETCH_PARALLEL` = `1`（恢复为一次一个；保存后 Render 会重启服务约 1–2 分钟，不需要改代码，不产生费用）。
+  Parallel downloads (D-046, only after it is merged): while reading sources, up to 4 downloads wait on the network at once (2 per website). If health checks fail during the reading step or sites answer 429 more often after the merge, add `WFD_FETCH_PARALLEL` = `1` under Render → Environment (back to one at a time; saving restarts the service for about 1–2 minutes; no code change, no cost).
 
 ## 费用上限 · Spending limits
 

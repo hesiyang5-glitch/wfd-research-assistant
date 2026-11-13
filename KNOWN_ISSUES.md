@@ -75,6 +75,8 @@ Last reviewed: 2026-10-01 (commit `33a0c5e`). Severity: **High** (blocks correct
 | K-65 | There are no per-user case owners or permissions (one shared team password, K-19); the new endpoints use the same login. | Medium (pre-existing) |
 | K-66 | Source language is recorded only when a web page declares it (`<html lang>`, Content-Language, og:locale); PDFs and uploads have none; sources saved before 2026-11-13 have no language or search-run id. | Low |
 | K-67 | The static interface preview (`tools/build_preview.py`) was not updated for D-045 (it is not part of the app). | Low |
+| K-68 | D-046 (branch `perf/stage-timing-parallel-fetch`, not merged): parallel downloads and the time line are tested offline only (local test websites, TEST-FIXTURE search). Not measured: real speed-up on real websites, CPU throttling / health checks on the 0.5-CPU Render instance while 4 downloads run (K-38), whether 2 simultaneous requests make some sites answer 429 more often. Switch off without a code change: set `WFD_FETCH_PARALLEL=1` in Render. | Medium |
+| K-69 | D-046 and the crash marker (D-042): the marker names the source being read/extracted. If the server stops while other downloads are in flight, that source is the one recorded as "skipped after restart" even in the unlikely case that a download, not the extraction, caused the stop (downloads now use little memory, D-046). A wrongly skipped source can be added again by hand on the Sources tab. | Low |
 
 ## Codebook / workbook issues (need PI decisions; app flags them, never guesses)
 

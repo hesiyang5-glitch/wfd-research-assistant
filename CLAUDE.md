@@ -95,6 +95,7 @@ python3 -m tests.test_visual         # no wrapped button/tab/tag text, hover fee
 python3 -m tests.test_query_expansion # country/language queries, keyword discovery, local-name relevance (D-043; TEST-FIXTURE search)
 python3 -m tests.test_fetch_limit     # per-case reading limit counts all runs; raise on an existing case (1–300, logged) (D-044)
 python3 -m tests.test_search_only     # Search only vs Search & analyze: stop after retrieval, sources export, continue later (D-045)
+python3 -m tests.test_parallel_fetch  # parallel downloads give the same sources, limits/cancel/failures, time per step (D-046)
 ```
 
 Tests need the Texas-flood sample PDFs: set `WFD_TEST_PDFS=/path/to/folder` (they are in the claude.ai
