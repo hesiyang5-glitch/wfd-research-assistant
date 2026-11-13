@@ -6,7 +6,7 @@ Completed changes, newest first. Commit hashes refer to `hesiyang5-glitch/wfd-re
 
 
 
-## 2026-11-13 — Review table: no sideways scrollbar on computer screens (branch `fix/review-no-hscroll`, not merged, not deployed) — D-041 follow-up
+## 2026-11-13 — Review table: no sideways scrollbar on computer screens (merged to `main` 2026-11-13 with owner approval) — D-041 follow-up
 - Cause: the "-9 / not documented" reason tag ("Not documented (nothing found in the sources read)", added with
   PI-M1…M4) could not wrap, so a row carrying it made the table up to ~430 px wider than its box; the wider variable
   column from the previous entry (a hard minimum width) added to it. The fixture case used for that entry had no such

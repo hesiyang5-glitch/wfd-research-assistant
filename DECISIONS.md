@@ -380,7 +380,7 @@ by id; S numbers, stored rows, evidence retrieval, prompts, cache keys, costs an
 is stored only in the browser (`localStorage` `wfd_src_sort`). Variable names still break only after an underscore
 (D-040). **Not changed:** the automatic source type. It is a keyword rule, so a news article *about* an after-action
 report is typed `aar` and sorts first until a researcher corrects it in the Type box (K-57).
-**Follow-up 2026-11-13 (owner request; branch `fix/review-no-hscroll`, NOT merged; awaiting owner approval).** The Review
+**Follow-up 2026-11-13 (owner request; branch `fix/review-no-hscroll`, merged to `main` 2026-11-13 with owner approval).** The Review
 table must not scroll sideways on a computer screen; all seven columns stay visible. So the variable column width is a
 preference (240 px) instead of a minimum, long tags inside cells wrap, and between 1001 and 1240 px the detail panel
 sits below the table. Phones keep sideways scrolling with the pinned variable column.
