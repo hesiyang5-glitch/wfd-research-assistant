@@ -78,6 +78,12 @@ def recover_interrupted() -> dict:
                                         "updated_at": time.time()})
             continue
         st = json.loads(j.get("state_json") or "{}")
+        crashed = st.pop("fetch_in_progress", None)
+        if crashed and crashed.get("url"):
+            from .research import CRASH_SKIP_REASON, save_source
+            sid = save_source(j["case_id"], crashed, None, "failed", CRASH_SKIP_REASON)
+            db.insert("job_log", {"job_id": j["id"], "at": time.time(), "stage": j.get("stage") or "", "level": "warn",
+                                  "message": f"retrieval failed S{sid}: {crashed['url']}: {CRASH_SKIP_REASON}"})
         st["awaiting"] = "interrupted"
         st["interrupted_stage"] = j.get("stage")
         db.update("jobs", j["id"], {"status": "needs_input", "state_json": json.dumps(st), "updated_at": time.time(),

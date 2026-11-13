@@ -384,3 +384,13 @@ report is typed `aar` and sorts first until a researcher corrects it in the Type
 table must not scroll sideways on a computer screen; all seven columns stay visible. So the variable column width is a
 preference (240 px) instead of a minimum, long tags inside cells wrap, and between 1001 and 1240 px the detail panel
 sits below the table. Phones keep sideways scrolling with the pinned variable column.
+
+## D-042 · 2026-11-13 · Skip a source that was being read when the server stopped — Active (branch `fix/skip-source-that-crashed`, not merged)
+**Decision.** Record the URL being fetched in the job state before reading it. At startup recovery, a job that was
+reading a URL is paused as before (D-033) and that URL is stored as a failed source with a plain reason, so Resume
+does not read it again. It is never retried automatically; the owner can add its text manually.
+**Why.** Without this, a source that stops the server is read again first on every Resume (owner report 2026-11-13).
+A restart from a deploy can also mark an innocent source as skipped; that costs at most one source, which is visible
+in the run log and Sources tab, against an endless pause loop.
+**Not done here.** Reading PDFs in a separate memory-limited process (so one file cannot stop the server) — larger
+change, proposed only if the crash is confirmed to be memory.

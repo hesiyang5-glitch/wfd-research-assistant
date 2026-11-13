@@ -400,8 +400,24 @@ def fetch_candidates(ctx: Ctx, cands: list[dict], found_via: str = "search") -> 
     return n
 
 
+CRASH_SKIP_REASON = ("skipped: the server restarted while reading this source (it may be too large or too complex "
+                     "for the server's memory). Not retried automatically; add the text manually if it is needed.")
+
+
 def fetch_one(ctx: Ctx, url: str, meta: dict) -> int:
     meta = {**meta, "url": url}
+    # Remember which source is being read before reading it. If reading it takes the server down, startup recovery
+    # records it as failed (jobs.recover_interrupted), so Resume skips it instead of crashing on it again.
+    ctx.state["fetch_in_progress"] = {k: meta.get(k, "") for k in ("url", "title", "snippet", "origin", "found_via")}
+    ctx.save()
+    try:
+        return _fetch_one(ctx, url, meta)
+    finally:
+        ctx.state.pop("fetch_in_progress", None)
+        ctx.save()
+
+
+def _fetch_one(ctx: Ctx, url: str, meta: dict) -> int:
     try:
         res = fetch_url(url)
         meta.update(res)
