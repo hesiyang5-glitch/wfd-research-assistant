@@ -6,7 +6,7 @@ Completed changes, newest first. Commit hashes refer to `hesiyang5-glitch/wfd-re
 
 
 
-## 2026-11-24 — Claude thinking tokens recorded (branch `feature/claude-thinking-tokens`, NOT merged, NOT deployed) — D-046
+## 2026-11-24 — Claude thinking tokens recorded (merged to `main` 2026-11-24 with owner approval) — D-046
 - `app/llm/clients.py`: new `anthropic_thinking_tokens()`; `AnthropicClient.complete` returns `reasoning_tokens` from
   `usage.output_tokens_details.thinking_tokens` (None when not reported). `app/coding.py` already stores
   `reasoning_tokens` in `model_calls` and `usage` and shows "(N reasoning)" in the run log, so Claude's figure now

@@ -450,7 +450,7 @@ the coding provider(s), validated like the first form.
 **Usable evidence.** Analysis requires at least one passage from a read, selected, non-duplicate, non-irrelevant source;
 otherwise no job (API) and no coding call (pipeline).
 
-## D-046 · 2026-11-24 · Record Claude's thinking tokens — Proposed (branch `feature/claude-thinking-tokens`, not merged)
+## D-046 · 2026-11-24 · Record Claude's thinking tokens — Active (merged to `main` 2026-11-24 with owner approval)
 **Context.** Live ledger check (owner, 2026-11-24, case 13): Claude's billed `output_tokens` per batch were about
 2.5–3× the size of the visible JSON reply on large batches and about 1.4–2× on small ones. The most likely reason is
 that `claude-sonnet-5-5` already thinks adaptively before answering, even though the app never sends a `thinking`
