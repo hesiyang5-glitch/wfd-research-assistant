@@ -25,6 +25,13 @@ Completed changes, newest first. Commit hashes refer to `hesiyang5-glitch/wfd-re
   schema: `test_ui_labels`, `test_export_labels`, `test_providers` (prompt hash), `test_missingness` (version check),
   `test_evidence_status` (schema v3). Test stand-ins in `test_multiselect_validation` and `test_bulk_agreement` now
   answer with per-code statuses (they model new-version replies).
+## 2026-11-24 — Claude thinking tokens recorded (merged to `main` 2026-11-24 with owner approval) — D-046
+- `app/llm/clients.py`: new `anthropic_thinking_tokens()`; `AnthropicClient.complete` returns `reasoning_tokens` from
+  `usage.output_tokens_details.thinking_tokens` (None when not reported). `app/coding.py` already stores
+  `reasoning_tokens` in `model_calls` and `usage` and shows "(N reasoning)" in the run log, so Claude's figure now
+  appears there too (and in the Usage export column that already existed).
+- Unchanged: request body, prompts, generation settings, cache keys, analysis version, cost math, database schema.
+- Tests: new `tests/test_thinking_tokens.py` (15, offline, real `AnthropicClient` with scripted HTTP replies).
 
 ## 2026-11-13 — "Search only" and "Search & analyze" (merged to `main` 2026-11-13 with owner approval, together with D-044) — D-045
 - K-61 fixed before merge (owner request): the Re-run research dialog shows the coding-provider choice (Claude only /

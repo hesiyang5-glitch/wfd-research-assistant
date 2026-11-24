@@ -87,6 +87,19 @@ _AVAILABLE_OK: dict = {}
 AVAILABLE_TTL = 600  # a successful free availability check is remembered for 10 minutes
 
 
+def anthropic_thinking_tokens(usage: dict) -> int | None:
+    """Thinking tokens Claude used for one reply, from `usage.output_tokens_details.thinking_tokens` (D-046).
+
+    Record-keeping only: thinking tokens are already included in `output_tokens`, which stays the billing total, so cost
+    math does not change. The thinking text itself is never stored. None = the API did not report the breakdown
+    (older replies, or a model/API version without it) — unknown, not zero."""
+    details = (usage or {}).get("output_tokens_details")
+    if not isinstance(details, dict):
+        return None
+    v = details.get("thinking_tokens")
+    return v if isinstance(v, int) and not isinstance(v, bool) and v >= 0 else None
+
+
 class AnthropicClient(LLMClient):
     provider = "anthropic"
 
@@ -153,6 +166,7 @@ class AnthropicClient(LLMClient):
             text = "".join(b.get("text", "") for b in j.get("content", []) if b.get("type") == "text")
             u = j.get("usage", {})
             return {"text": text, "input_tokens": u.get("input_tokens"), "output_tokens": u.get("output_tokens"),
+                    "reasoning_tokens": anthropic_thinking_tokens(u),
                     "stop_reason": j.get("stop_reason"), "request_id": r.headers.get("request-id") if hasattr(r, "headers") else None,
                     "response_id": j.get("id"), "attempts": n, "status": "completed"}
         raise LLMError(last or "failed after retries", attempts=n)

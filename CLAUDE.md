@@ -98,6 +98,7 @@ python3 -m tests.test_query_expansion # country/language queries, keyword discov
 python3 -m tests.test_fetch_limit     # per-case reading limit counts all runs; raise on an existing case (1–300, logged) (D-044)
 python3 -m tests.test_search_only     # Search only vs Search & analyze: stop after retrieval, sources export, continue later (D-045)
 python3 -m tests.test_code_evidence_status # per-code evidence status for multi-select; 'Same codes — some uncertain' (D-047)
+python3 -m tests.test_thinking_tokens # Claude thinking tokens recorded in model_calls/usage; request, cost and cache key unchanged (D-046)
 ```
 
 Tests need the Texas-flood sample PDFs: set `WFD_TEST_PDFS=/path/to/folder` (they are in the claude.ai
