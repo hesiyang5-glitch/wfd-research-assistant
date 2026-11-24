@@ -50,6 +50,8 @@ If a request conflicts with an established requirement here, point out the confl
 - Evidence status (SUPPORTED / INFERRED / AMBIGUOUS / INSUFFICIENT / CONFLICTING, D-038) is separate from
   validation status. Never turn INFERRED into a final value automatically, never force a value for the other three,
   and never let model agreement upgrade an evidence status.
+- (D-047) Multi-select codes each carry their own evidence status; a variable is no stronger than its weakest kept
+  code, and the same code set with a code not SUPPORTED by both providers is never treated as plain agreement.
 - Claude and OpenAI are EQUAL independent providers (no primary/secondary/reviewer; D-036). They interpret the same
   shared evidence snapshot with the same analysis version and never see each other's answers. Agreement is not
   verification. Matched-version and cross-version comparisons are distinguished (D-035 retained): cross-version results
@@ -95,6 +97,7 @@ python3 -m tests.test_visual         # no wrapped button/tab/tag text, hover fee
 python3 -m tests.test_query_expansion # country/language queries, keyword discovery, local-name relevance (D-043; TEST-FIXTURE search)
 python3 -m tests.test_fetch_limit     # per-case reading limit counts all runs; raise on an existing case (1–300, logged) (D-044)
 python3 -m tests.test_search_only     # Search only vs Search & analyze: stop after retrieval, sources export, continue later (D-045)
+python3 -m tests.test_code_evidence_status # per-code evidence status for multi-select; 'Same codes — some uncertain' (D-047)
 ```
 
 Tests need the Texas-flood sample PDFs: set `WFD_TEST_PDFS=/path/to/folder` (they are in the claude.ai

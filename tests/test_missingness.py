@@ -149,7 +149,7 @@ def main():
     sp = coding.SYSTEM_PROMPT
     check("6g prompt states the -9 rules (Unknown: / Not applicable:, INSUFFICIENT, only where defined) and the prompt "
           "version changed", "begin \"rationale\" with \"Unknown:\"" in sp and "Not applicable:" in sp
-          and coding.PROMPT_VERSION == "wfd-prompt-2026-11-13"
+          and coding.PROMPT_VERSION >= "wfd-prompt-2026-11-13"  # later deliberate prompt versions keep these rules (D-047: 2026-11-24)
           and "begin the rationale with 'Unknown:'" in coding.field_spec_text(F["TRANSMISSION_LATENCY"]))
 
     print("\n[1c] PI-M4 option (c): 'nothing documented' codes from silence (owner decision 2026-11-13)")

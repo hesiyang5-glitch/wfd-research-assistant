@@ -15,8 +15,9 @@ import hashlib
 import json
 import re
 
-RESPONSE_SCHEMA_VERSION = "wfd-batch-v2"  # v2 (D-038): evidence_status, rule_unclear, alternatives, missing_evidence
+RESPONSE_SCHEMA_VERSION = "wfd-batch-v3"  # v3 (D-047): per-code evidence_status in options; v2 (D-038): evidence_status, rule_unclear, alternatives, missing_evidence
 EVIDENCE_STATUSES = ["SUPPORTED", "INFERRED", "AMBIGUOUS", "INSUFFICIENT", "CONFLICTING"]
+CODE_EVIDENCE_STATUSES = ["SUPPORTED", "INFERRED", "CONFLICTING"]  # D-047: status of one selected code
 STATUSES = ["suggested", "insufficient_evidence", "disputed", "rule_unclear"]  # v1 replies (read only)
 STANCES = ["supports", "contradicts", "alternative"]
 
@@ -72,8 +73,10 @@ def build_batch_schema(fields: list[dict], passage_ids: list[str]) -> dict:
                 "rule_unclear": {"type": "boolean"},
                 "evidence": {"type": "array", "items": ev_ref},
                 "options": {"type": "array", "items": {
-                    "type": "object", "additionalProperties": False, "required": ["code", "evidence"],
-                    "properties": {"code": opt_code, "evidence": {"type": "array", "items": ev_ref}}}},
+                    "type": "object", "additionalProperties": False, "required": ["code", "evidence_status", "evidence"],
+                    "properties": {"code": opt_code,
+                                   "evidence_status": {"type": "string", "enum": CODE_EVIDENCE_STATUSES},
+                                   "evidence": {"type": "array", "items": ev_ref}}}},
                 "alternatives": {"type": "array", "items": {
                     "type": "object", "additionalProperties": False, "required": ["value", "evidence"],
                     "properties": {"value": opt_code if (f["type"] == "categorical" and codes) else {"type": "string"},
@@ -131,6 +134,10 @@ def normalize_structured(data, fields: list[dict]) -> list[dict]:
         for ev in (item.get("evidence") or []):
             if not isinstance(ev, dict) or ev.get("stance") not in STANCES:
                 raise SchemaViolation(f"invalid evidence entry for {f['name']}")
+        for o in (item.get("options") or []):
+            ces = o.get("evidence_status") if isinstance(o, dict) else None
+            if ces is not None and ces not in CODE_EVIDENCE_STATUSES:
+                raise SchemaViolation(f"invalid code evidence_status for {f['name']}")
         alts = []
         for a in (item.get("alternatives") or []):
             if isinstance(a, dict) and isinstance(a.get("value"), list):

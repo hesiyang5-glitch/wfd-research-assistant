@@ -50,8 +50,8 @@ const modeText = (m) => (MODE_TEXT[m] ? L(MODE_TEXT[m][0], MODE_TEXT[m][1]) : m)
 const modeHelp = (m) => (MODE_HELP[m] ? L(MODE_HELP[m][0], MODE_HELP[m][1]) : "");
 const INTERP_TEXT = { independent: ["独立结果", "independent result"], cross_model_review: ["跨模型复核（看过另一模型的答案，仅供审核）", "cross-model review (saw the other model's answer — audit only)"] };
 const interpText = (r) => (INTERP_TEXT[r] ? L(INTERP_TEXT[r][0], INTERP_TEXT[r][1]) : (r || ""));
-const COMP_BADGE = { model_agreement: "ok", value_disagreement: "bad", evidence_disagreement: "warn", one_provider_blank: "warn", invalid_provider_output: "bad", needs_human_review: "dispute", human_approved: "ok" };
-const COMP_TEXT = { model_agreement: ["模型一致", "Model agreement"], value_disagreement: ["取值不一致", "Value disagreement"], evidence_disagreement: ["证据不一致", "Evidence disagreement"], one_provider_blank: ["一方为空", "One provider blank"], invalid_provider_output: ["模型输出无效", "Invalid provider output"], both_insufficient: ["均证据不足", "Both insufficient"], needs_human_review: ["需人工复核", "Needs human review"], human_approved: ["人工已确认", "Human approved"] };
+const COMP_BADGE = { model_agreement: "ok", value_disagreement: "bad", evidence_disagreement: "warn", uncertain_codes: "warn", one_provider_blank: "warn", invalid_provider_output: "bad", needs_human_review: "dispute", human_approved: "ok" };
+const COMP_TEXT = { model_agreement: ["模型一致", "Model agreement"], value_disagreement: ["取值不一致", "Value disagreement"], evidence_disagreement: ["证据不一致", "Evidence disagreement"], uncertain_codes: ["编码相同，部分存疑", "Same codes — some uncertain"], one_provider_blank: ["一方为空", "One provider blank"], invalid_provider_output: ["模型输出无效", "Invalid provider output"], both_insufficient: ["均证据不足", "Both insufficient"], needs_human_review: ["需人工复核", "Needs human review"], human_approved: ["人工已确认", "Human approved"] };
 const compText = (c) => (COMP_TEXT[c] ? L(COMP_TEXT[c][0], COMP_TEXT[c][1]) : c);
 const CELL_TEXT = { not_run: ["未运行", "Not run"], suggested: ["建议", "Suggested"], disputed: ["有争议", "Disputed"], partially_valid: ["部分有效", "Partially valid"], no_supported_value: ["无证据支持的值", "No supported value"], stopped: ["已停止", "Stopped"], failed: ["失败", "Failed"], invalid_output: ["输出无效", "Invalid output"], limit_reached: ["达到上限，未编码", "Limit reached"] };
 const cellText = (st) => (CELL_TEXT[st] ? L(CELL_TEXT[st][0], CELL_TEXT[st][1]) : st);
@@ -67,6 +67,26 @@ function esBadge(es, recorded) {
   if (!es && !recorded) return "";
   return ` <span class="badge ${ES_BADGE[es] || "warn"} es-badge" data-es="${esc(es || "missing")}" title="${esc(ES_HELP[es] ? L(ES_HELP[es][0], ES_HELP[es][1]) : L("回复未给出证据状态", "The reply gave no evidence status"))}">${esc(esText(es))}</span>`;
 }
+// D-047: per-code evidence status of a multi-select value. A code that is not SUPPORTED is marked in place ("1?"),
+// so agreement on the code set cannot hide which code rests on an inference.
+const CODE_ES_MARK = { INFERRED: "?", CONFLICTING: "!" };
+function codeValHtml(value, codeStatuses) {
+  const cs = codeStatuses || [];
+  if (!cs.length) return esc(value);
+  const by = {};
+  cs.forEach((c) => { by[String(c.code).toUpperCase()] = c.evidence_status || null; });
+  return String(value).split(/\s*,\s*/).filter(Boolean).map((code) => {
+    const k = code.toUpperCase();
+    if (!(k in by) || by[k] === "SUPPORTED") return esc(code);
+    const st = by[k];
+    const tip = L("此编码的证据状态", "Evidence status of this code") + ": " + esText(st);
+    return `<span class="code-unsure" data-cs="${esc(st || "missing")}" title="${esc(tip)}">${esc(code)}<sup>${CODE_ES_MARK[st] || "?"}</sup></span>`;
+  }).join(", ");
+}
+function codeStatusLine(cs, who) {
+  if (!cs || !cs.length) return "";
+  return `<div class="small code-es-line"><b>${L("各编码证据状态", "Evidence status per code")}${who ? ` (${esc(who)})` : ""}:</b> ${cs.map((c) => `<span class="mono">${esc(c.code)}</span> ${esBadge(c.evidence_status, true)}`).join(" · ")}</div>`;
+}
 // D-039 (owner decisions 2026-11-12): which meaning a model's -9 has
 const MR_TEXT = { unknown: ["未知（所读资料未提及）", "Unknown (not mentioned in the sources read)"], not_applicable: ["不适用", "Not applicable"], not_stated: ["未说明（规则生效前保存）", "not stated (saved before the -9 reason rule)"], not_documented: ["未记录（所读资料未提及）", "Not documented (nothing found in the sources read)"] };
 const mrBadge = (r) => (r && MR_TEXT[r] ? ` <span class="badge wrap ${r === "not_stated" ? "" : "info"} mr-badge" data-mr="${esc(r)}" title="${esc(L("缺失/未记录编码的含义", "Meaning of the missing / absence code"))}">${esc(L(MR_TEXT[r][0], MR_TEXT[r][1]))}</span>` : "");
@@ -75,6 +95,7 @@ function statusLines(m) {
   const alts = (m.alternatives || []);
   return `<div class="small es-lines"><b>${L("证据状态", "Evidence status")}:</b> ${esc(esText(m.evidence_status))}${m.evidence_status && ES_HELP[m.evidence_status] ? ` <span class="muted">— ${esc(L(ES_HELP[m.evidence_status][0], ES_HELP[m.evidence_status][1]))}</span>` : (!m.evidence_recorded ? ` <span class="muted">${L("（此结果早于证据状态功能）", "(result predates evidence statuses)")}</span>` : "")}
     · <b>${L("验证状态", "Validation status")}:</b> ${esc(vsText(m.validation_state))}</div>
+    ${codeStatusLine(m.code_statuses)}
     ${alts.length ? `<div class="small"><b>${L("其他候选值", "Alternative values")}:</b> ${alts.map((a) => `<span class="mono">${esc(a.value)}</span>${a.provider ? ` (${esc(PROV[a.provider] || a.provider)})` : ""} [${(a.evidence || []).map((e) => esc(e.id)).join(", ")}]`).join("; ")}</div>` : ""}
     ${m.missing_reason ? `<div class="small"><b>${L("缺失/未记录编码的含义", "Meaning of the missing / absence code")}:</b>${mrBadge(m.missing_reason)}</div>` : ""}
     ${m.missing_evidence ? `<div class="small"><b>${L("缺少的证据", "Missing evidence")}:</b> ${esc(m.missing_evidence)}</div>` : ""}
@@ -88,7 +109,7 @@ function cellHtml(cell, row) {
   const roleNote = c.interpretation === "cross_model_review" ? ` <span class="badge warn" title="${esc(interpText("cross_model_review"))}">${L("跨模型复核", "cross-model")}</span>` : "";
   const esTag = ["suggested", "disputed", "partially_valid", "no_supported_value"].includes(c.state) ? esBadge(c.evidence_status, c.evidence_recorded) : "";
   if (["suggested", "disputed", "partially_valid"].includes(c.state) && c.value) {
-    return `<div class="cell-val st-${c.state}"><span class="mono">${esc(c.value.slice(0, 48))}</span>${mrBadge(c.missing_reason)}${esTag}${c.state === "disputed" ? ` <span class="cell-tag st-disputed">${esc(cellText("disputed"))}</span>` : ""}${c.state === "partially_valid" ? ` <span class="cell-tag st-invalid_output" title="${esc(L("部分选项未通过验证，已被拒绝；保留的是有证据支持的选项", "Some selections failed validation and were rejected; the supported selections are kept"))}">${esc(cellText("partially_valid"))}</span>` : ""}${c.changed ? ` <span class="badge warn" title="${esc(L("上次", "previous") + ": " + (c.previous_value || "∅"))}">Δ</span>` : ""}${roleNote}</div>${stopNote}`;
+    return `<div class="cell-val st-${c.state}"><span class="mono">${c.code_statuses && c.code_statuses.length ? codeValHtml(c.value, c.code_statuses) : esc(c.value.slice(0, 48))}</span>${mrBadge(c.missing_reason)}${esTag}${c.state === "disputed" ? ` <span class="cell-tag st-disputed">${esc(cellText("disputed"))}</span>` : ""}${c.state === "partially_valid" ? ` <span class="cell-tag st-invalid_output" title="${esc(L("部分选项未通过验证，已被拒绝；保留的是有证据支持的选项", "Some selections failed validation and were rejected; the supported selections are kept"))}">${esc(cellText("partially_valid"))}</span>` : ""}${c.changed ? ` <span class="badge warn" title="${esc(L("上次", "previous") + ": " + (c.previous_value || "∅"))}">Δ</span>` : ""}${roleNote}</div>${stopNote}`;
   }
   const icon = { not_run: "—", no_supported_value: "∅", stopped: "⏸", failed: "✕", invalid_output: "⚠", limit_reached: "⛔", disputed: "≠" }[c.state] || "";
   return `<span class="cell-tag st-${esc(c.state)}">${icon} ${esc(cellText(c.state))}</span>${esTag}${roleNote}${stopNote}`;
@@ -771,8 +792,8 @@ async function tabReview(c, body) {
   drawRows();
   if (WB.sel) drawDetail(c);
 }
-const AG_BADGE = { eligible: "info", eligible_evidence_difference: "info", eligible_cross_version: "warn", cross_version_disagreement: "bad", confirmed: "ok", cross_model_review: "warn", value_disagreement: "bad", both_insufficient: "", claude_only: "", openai_only: "", validation_failed: "bad", pending: "dispute" };
-const AG_TEXT = { eligible: ["独立一致 — 分析版本相同", "Independent agreement — matched analysis version"], eligible_cross_version: ["跨版本一致 — 请核对版本差异", "Cross-version agreement — review version differences"], cross_version_disagreement: ["跨版本不一致 — 模型差异和输入差异都可能有影响", "Cross-version disagreement — model and input differences may both contribute"], cross_model_review: ["跨模型复核（仅供审核）— 非独立", "Cross-model review (audit only) — not independent"], eligible_evidence_difference: ["独立一致 — 分析版本相同（支持来源不同）", "Independent agreement — matched analysis version (different supporting sources)"], confirmed: ["独立一致 — 已人工确认", "Independent model agreement — human confirmed"], value_disagreement: ["取值不一致", "Value disagreement"], both_insufficient: ["均证据不足", "Both insufficient"], claude_only: ["仅 Claude", "Claude only"], openai_only: ["仅 GPT", "GPT only"], validation_failed: ["验证失败", "Validation failed"], pending: ["待人工复核", "Pending human review"] };
+const AG_BADGE = { eligible: "info", eligible_evidence_difference: "info", eligible_cross_version: "warn", cross_version_disagreement: "bad", confirmed: "ok", cross_model_review: "warn", value_disagreement: "bad", both_insufficient: "", claude_only: "", openai_only: "", validation_failed: "bad", pending: "dispute", uncertain_codes: "warn" };
+const AG_TEXT = { eligible: ["独立一致 — 分析版本相同", "Independent agreement — matched analysis version"], eligible_cross_version: ["跨版本一致 — 请核对版本差异", "Cross-version agreement — review version differences"], cross_version_disagreement: ["跨版本不一致 — 模型差异和输入差异都可能有影响", "Cross-version disagreement — model and input differences may both contribute"], cross_model_review: ["跨模型复核（仅供审核）— 非独立", "Cross-model review (audit only) — not independent"], eligible_evidence_difference: ["独立一致 — 分析版本相同（支持来源不同）", "Independent agreement — matched analysis version (different supporting sources)"], confirmed: ["独立一致 — 已人工确认", "Independent model agreement — human confirmed"], value_disagreement: ["取值不一致", "Value disagreement"], both_insufficient: ["均证据不足", "Both insufficient"], claude_only: ["仅 Claude", "Claude only"], openai_only: ["仅 GPT", "GPT only"], validation_failed: ["验证失败", "Validation failed"], pending: ["待人工复核", "Pending human review"], uncertain_codes: ["编码相同，部分存疑", "Same codes — some uncertain"] };
 const agText = (s) => (AG_TEXT[s] ? L(AG_TEXT[s][0], AG_TEXT[s][1]) : s);
 async function openBulkConfirm(c) {
   let d;
@@ -860,7 +881,7 @@ function drawDetail(c) {
     ${s.status ? `<div class="row"><span class="badge">${esc(s.status)}</span><span class="small muted">${t("basis")}: ${esc(s.basis || "")}${s.provider ? ` · ${esc(PROV[s.provider] || s.provider)} ${esc(s.model || "")}` : ""}</span></div>
       <div class="val" style="font-size:14px;margin:6px 0">${esc(s.value) || `<span class="muted">(blank)</span>`}</div>
       ${s.value && r.codes.length ? `<div class="small">${esc(codeLabel(r, s.value))}</div>` : ""}
-      ${s.basis === "model" ? (s.display_kind === "two_providers" ? `<div class="small es-lines"><b>${L("证据状态", "Evidence status")}:</b> ${Object.entries(s.evidence_statuses || {}).map(([p, es]) => `${esc(PROV[p] || p)}: ${esc(esText(es))}`).join(" · ")} <span class="muted">${L("（模型一致不会提升证据状态）", "(agreement never upgrades an evidence status)")}</span> · <b>${L("验证状态", "Validation status")}:</b> ${esc(vsText(s.validation_state))}</div>${s.evidence_review_reason ? `<div class="small muted">${esc(s.evidence_review_reason)}</div>` : ""}` : statusLines(s)) : ""}
+      ${s.basis === "model" ? (s.display_kind === "two_providers" ? `<div class="small es-lines"><b>${L("证据状态", "Evidence status")}:</b> ${Object.entries(s.evidence_statuses || {}).map(([p, es]) => `${esc(PROV[p] || p)}: ${esc(esText(es))}`).join(" · ")} <span class="muted">${L("（模型一致不会提升证据状态）", "(agreement never upgrades an evidence status)")}</span> · <b>${L("验证状态", "Validation status")}:</b> ${esc(vsText(s.validation_state))}</div>${s.evidence_review_reason ? `<div class="small muted">${esc(s.evidence_review_reason)}</div>` : ""}${Object.entries(s.code_statuses_by_provider || {}).map(([p, cs]) => codeStatusLine(cs, PROV[p] || p)).join("")}` : statusLines(s)) : ""}
       ${s.stale ? `<div class="callout bad small">${t("stale")}: ${esc(s.stale_reason)} <button class="small" id="recodeOne">${t("recode")}</button></div>` : ""}
       ${r.previous ? `<div class="diff">${t("prev_run")}: <b class="mono">${esc(r.previous.value || "(blank)")}</b> (${esc(r.previous.status)}) → <b class="mono">${esc(s.value || "(blank)")}</b> (${esc(s.status)})</div>` : ""}
       ${s.rationale ? `<p><b>${t("rationale")}:</b> ${esc(s.rationale)}</p>` : ""}

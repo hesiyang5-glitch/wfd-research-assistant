@@ -6,6 +6,26 @@ Completed changes, newest first. Commit hashes refer to `hesiyang5-glitch/wfd-re
 
 
 
+## 2026-11-24 — Per-code evidence status for multi-select variables (branch `feature/per-code-evidence-status`, NOT merged, NOT deployed) — D-047
+- Owner finding (Palisade Fires, POPULATION_RESPONSE_OBSERVED): both models chose 1, 4, 5 but Claude's doubt about code
+  1 was only in free text, and equal code sets counted as agreement.
+- Prompt rule 3 + both reply formats ask for an evidence status per selected code (SUPPORTED / INFERRED / CONFLICTING)
+  and "the variable is no stronger than its weakest code"; `PROMPT_VERSION` `wfd-prompt-2026-11-24`; OpenAI schema
+  `wfd-batch-v3`.
+- `app/validator.py`: each kept code's status stored in `validation_json.selections` (and options). `app/evidence_status.py`:
+  `CODE_EVIDENCE_STATUSES`, `code_statuses`, `uncertain_codes`, consistency warnings (`code_evidence_status_missing`,
+  `invalid_code_evidence_status`, `variable_status_stronger_than_code`), `review_required` names the uncertain codes.
+- `app/coding.py`: comparison `uncertain_codes` ("Same codes — some codes not supported by both") with the codes and both
+  statuses; rows carry `code_statuses`; the combined view keeps them per provider. `app/agreement.py`: rule 8, status
+  `uncertain_codes` ("Same codes — some uncertain"), never eligible. `app/export.py`: Pending category; new
+  Provider_Suggestions column "Code evidence status" (e.g. `1=INFERRED; 4=SUPPORTED; 5=SUPPORTED`).
+- `web/app.js`, `web/styles.css`: uncertain code marked in the cell (`1?` INFERRED, `1!` CONFLICTING, tooltip); new
+  comparison / agreement labels (bilingual); detail panel lists the status per code.
+- Tests: new `tests/test_code_evidence_status.py` (33, incl. browser check). Deliberate re-pins for the new prompt /
+  schema: `test_ui_labels`, `test_export_labels`, `test_providers` (prompt hash), `test_missingness` (version check),
+  `test_evidence_status` (schema v3). Test stand-ins in `test_multiselect_validation` and `test_bulk_agreement` now
+  answer with per-code statuses (they model new-version replies).
+
 ## 2026-11-13 — "Search only" and "Search & analyze" (merged to `main` 2026-11-13 with owner approval, together with D-044) — D-045
 - K-61 fixed before merge (owner request): the Re-run research dialog shows the coding-provider choice (Claude only /
   GPT only / Claude + GPT) whenever Search & analyze is selected; the server checks it exactly like the first form

@@ -21,6 +21,9 @@ Eligible only when ALL hold (D-036, replaces the D-035 separate-runs rule of 202
  7. (D-038) Both providers reported evidence status SUPPORTED. INFERRED, AMBIGUOUS, CONFLICTING, INSUFFICIENT or a
     missing status are never confirmed in bulk — agreement does not upgrade an evidence status. Results stored before
     evidence statuses existed (status "not recorded") keep their earlier eligibility, with that disclosed.
+ 8. (D-047) For multi-select values, every kept code is SUPPORTED by both providers (per-code evidence status). The same
+    code set with one code INFERRED, CONFLICTING or without a status is never confirmed in bulk. Results stored before
+    per-code statuses existed keep the variable-level rule 7.
 Two blank answers are 'Both insufficient', never an agreed value.
 """
 from __future__ import annotations
@@ -52,6 +55,7 @@ LABELS = {
     "openai_only": "GPT only",
     "validation_failed": "Validation failed",
     "pending": "Pending human review",
+    "uncertain_codes": "Same codes — some uncertain",
 }
 COMPLETED = ("suggested", "rule_unclear", "disputed", "insufficient_evidence", "validation_failed", "partially_valid")
 
@@ -154,7 +158,7 @@ def assess(case_id: int, field: dict, sset: dict | None, review: dict | None) ->
         problems.append("a provider marked it disputed or the rule unclear")
     if a.get("counter") or b.get("counter"):
         problems.append("a provider reported contradicting or alternative evidence")
-    not_recorded = []
+    not_recorded, uncertain = [], {}
     for who, r in (("Claude", a), ("GPT", b)):
         es = es_mod.evidence_status_of(r)
         if es_mod.recorded(r):
@@ -164,6 +168,12 @@ def assess(case_id: int, field: dict, sset: dict | None, review: dict | None) ->
                 problems.append(f"{who} marked the evidence {es} — agreement does not upgrade it to SUPPORTED")
         else:
             not_recorded.append(who)
+        weak = es_mod.uncertain_codes(r)
+        if weak:
+            uncertain[who] = weak
+            problems.append(f"{who} marked code(s) " + ", ".join(f"{c['code']} {c['evidence_status'] or 'without a status'}"
+                                                                 for c in weak)
+                            + " — agreement on the codes does not make them SUPPORTED")
     if a.get("stale") or b.get("stale"):
         problems.append("cites a source that was excluded later")
     if not a.get("evidence") or not b.get("evidence"):
@@ -185,6 +195,9 @@ def assess(case_id: int, field: dict, sset: dict | None, review: dict | None) ->
             problems.append("evidence given to the two models for this variable was not identical")
     if review and review.get("action") == "deferred":
         problems.append("deferred by a reviewer")
+    if uncertain:  # D-047: same code set, but some codes rest on an inference — say which, never bulk-eligible
+        return out("uncertain_codes", "; ".join(problems), uncertain_codes={k: [c["code"] for c in v] for k, v in
+                                                                             uncertain.items()}, **vinfo)
     if problems:
         return out("pending", "; ".join(problems), **vinfo)
     src_a = {e.get("source_id") for e in a.get("evidence") or []}

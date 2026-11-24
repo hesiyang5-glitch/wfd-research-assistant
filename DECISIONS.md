@@ -449,3 +449,36 @@ the run's evidence is unchanged.
 the coding provider(s), validated like the first form.
 **Usable evidence.** Analysis requires at least one passage from a read, selected, non-duplicate, non-irrelevant source;
 otherwise no job (API) and no coding call (pipeline).
+
+## D-047 · 2026-11-24 · Per-code evidence status for multi-select variables — Proposed (branch `feature/per-code-evidence-status`, not merged)
+**Context (owner finding, Palisade Fires, POPULATION_RESPONSE_OBSERVED).** The evidence status (D-038) is one per
+variable. In a multi-select variable a model can be sure of some codes and unsure of one: Claude explained in
+"unresolved" why code 1 (confusion) rests on weak evidence while codes 4 and 5 are well documented, but it could only
+label the whole variable. When both models returned 1, 4, 5 the comparison treated the equal code sets as agreement,
+so the one code that most needed a reviewer's eye was hidden in free text.
+**Decision.** For multi-select variables each selected code in `options` also carries a **code evidence status**:
+SUPPORTED, INFERRED or CONFLICTING (same meanings, judged for that code alone; AMBIGUOUS / INSUFFICIENT describe a whole
+variable and are not used per code — a code without a defensible basis is not selected). Rules:
+(1) the variable's status must be no stronger than its weakest kept code — if it is (e.g. variable SUPPORTED, code 1
+INFERRED) that is a consistency warning, the variable needs human review, and no status is ever rewritten or upgraded;
+(2) a kept code that is not SUPPORTED (or has no status) makes the variable need human review: never exported as an
+unreviewed value, never used to derive another field, never bulk-confirmed — even when both providers chose the same
+codes; (3) when both providers chose the same codes but a code is not SUPPORTED by both, the comparison is
+**"Same codes — some uncertain"** (`uncertain_codes`), naming each such code with both providers' statuses, and the
+variable goes to Pending review; (4) a new-version reply that omits a per-code status, or gives an unknown one, is kept
+and shown with the code as "not recorded", flagged, and not cached (like a missing variable status, D-038); it is never a
+validation failure; (5) rejected codes (D-037) have no status; single-select variables are unchanged.
+**Where.** Prompt rule 3 and both reply formats (`PROMPT_VERSION` `wfd-prompt-2026-11-24`); OpenAI strict schema
+`wfd-batch-v3` (options require `evidence_status` ∈ the three); `validator.py` stores each kept code's status in
+`validation_json.selections`; `evidence_status.py` (`code_statuses`, `uncertain_codes`, consistency checks,
+`review_required`); `coding.compare_pair` (`uncertain_codes`); `agreement.py` (rule 8, status `uncertain_codes`);
+`export.py` (Pending category, "Code evidence status" column in Provider_Suggestions); `web/app.js` (an uncertain code
+is marked in the cell, e.g. `1?` for INFERRED and `1!` for CONFLICTING, with a tooltip; detail panel lists the status per
+code for each provider). No database migration (stored inside `validation_json`).
+**Versioning and cost.** New analysis version: earlier results stay visible and comparable as cross-version (D-035/
+D-036), show no per-code statuses and keep the variable-level rules; no cached reply is reused for the new version, so
+re-analysing a case sends new (paid) requests. Extra output is small (about 10 tokens per selected code); output
+allowances are unchanged.
+**Limit.** The per-code status is the model's own judgement; the server checks its form and consistency, not whether
+the inference is sound. Human review remains the safeguard.
+

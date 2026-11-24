@@ -304,3 +304,9 @@ details summary:hover { color: var(--ink); }
   *, *::before, *::after { transition: none !important; animation: none !important; }
   button:hover:not(:disabled), .chip:hover, .pcard:hover:not(.off) { transform: none; }
 }
+
+/* D-047: a selected code that is not SUPPORTED (INFERRED "?", CONFLICTING "!", no status "?") */
+.code-unsure { color: var(--warn); border-bottom: 1px dotted var(--warn); cursor: help; }
+.code-unsure sup { font-size: 10px; font-weight: 700; margin-left: 1px; }
+.code-unsure[data-cs="CONFLICTING"] { color: var(--bad); border-bottom-color: var(--bad); }
+.code-es-line .es-badge { margin-left: 2px; }

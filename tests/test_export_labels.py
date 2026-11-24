@@ -41,8 +41,9 @@ socket.socket.connect = _guard
 PIN_SCHEMA = "b07a226b09013245"  # D-045 (2026-11-13): + sources.language, sources.job_id (additive). Was 5f231bf5a2af2aad
 # Re-pinned 2026-11-13 (and 2026-11-12): the prompt changed DELIBERATELY for D-039 owner decisions (wfd-prompt-2026-11-13); a label-only
 # change must still leave these values identical.
-PIN_CACHE = {"anthropic": "llm3:4b480f1f335cd5eba1a5c6ebf54a1c8ea821b41cfa78690118f9ca884264b1c8",
-             "openai": "llm3:cbdbf2fcbb60f1891b6c364251943983aa07f10e02018e1754cc5d3d7515a46d"}
+# re-pinned 2026-11-24: D-047 changed the prompt and the OpenAI schema DELIBERATELY (new analysis version)
+PIN_CACHE = {"anthropic": "llm3:2a53f5e21c769f67c7fdf76b078a1f73372d92dccad15aa3436eb706ecd50e38",
+             "openai": "llm3:83f1fb9b071ab5c539c68d0ea07c961fd55c345aaa26136c1a3e69f72f3642e4"}
 RAW = {"anthropic", "openai", "anthropic+openai", "independent", "cross_model_review", "dual_independent", "anthropic_only",
        "openai_only", "anthropic_primary_openai_review", "single", "tavily", "bulk_independent_agreement",
        "bulk_separate_run_agreement", "matched_version", "cross_version"}

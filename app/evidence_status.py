@@ -20,6 +20,11 @@ Rules enforced here and in app/agreement.py / app/export.py:
 4. Human-approved final values live in the `reviews` table and are never touched by this module.
 5. Agreement between providers never upgrades an evidence status (agreement is not verification).
 6. Each variable is classified on its own evidence, so cause uncertainty cannot erase a supported failure phenomenon.
+7. (D-047) For a multi-select variable each selected code also carries its own code evidence status (SUPPORTED,
+   INFERRED or CONFLICTING), so a reviewer can see WHICH code rests on an inference. The variable's status may not be
+   stronger than its weakest kept code; if it is, that is a consistency warning and the variable needs human review —
+   no status is ever rewritten or upgraded. A code that is not SUPPORTED makes the variable ineligible for bulk
+   confirmation and for unreviewed export, even when both providers chose the same codes.
 
 Rows stored before this layer existed have NULL evidence/validation status: shown as "not recorded" and never
 rewritten (the validation status of such rows is derived from their stored status at read time).
@@ -29,6 +34,10 @@ from __future__ import annotations
 import json
 
 EVIDENCE_STATUSES = ("SUPPORTED", "INFERRED", "AMBIGUOUS", "INSUFFICIENT", "CONFLICTING")
+# D-047: status of ONE selected code of a multi-select variable. AMBIGUOUS / INSUFFICIENT describe a whole variable
+# (several values reasonable / no defensible value) and are not used per code: a code without a defensible basis is
+# simply not selected.
+CODE_EVIDENCE_STATUSES = ("SUPPORTED", "INFERRED", "CONFLICTING")
 VALIDATION_STATUSES = ("valid", "partially_valid", "invalid")
 LEGACY_MODEL_STATUSES = ("suggested", "insufficient_evidence", "disputed", "rule_unclear")
 
@@ -56,7 +65,50 @@ WARN = {
     "conflicting_without_counter_evidence": "marked CONFLICTING but no valid contradicting or alternative citation was given",
     "alternative_rejected": "alternative value {value!r} was not kept: {why}",
     "missing_evidence_not_described": "marked {es} but did not say what evidence is missing",
+    "code_evidence_status_missing": "no code evidence status for selected code(s) {codes} — shown as not recorded; "
+                                    "needs human review",
+    "invalid_code_evidence_status": "code {code}: evidence status {raw!r} is not one of "
+                                    + ", ".join(CODE_EVIDENCE_STATUSES) + " — shown as not recorded",
+    "variable_status_stronger_than_code": "the variable is marked {es} but code(s) {codes} are not SUPPORTED — the "
+                                          "variable is no stronger than its weakest code; needs human review",
 }
+
+
+def read_code_evidence_status(option: dict) -> tuple[str | None, str | None]:
+    """(status or None, raw value when it was given but is not a permitted code status). Used by the validator."""
+    raw = (option or {}).get("evidence_status")
+    if raw is None or raw == "":
+        return None, None
+    if isinstance(raw, str) and raw.strip().upper() in CODE_EVIDENCE_STATUSES:
+        return raw.strip().upper(), None
+    return None, str(raw)[:40]
+
+
+def _selections(row: dict) -> list:
+    v = row.get("validation")
+    if not isinstance(v, dict):
+        try:
+            v = json.loads(row.get("validation_json") or "{}")
+        except (TypeError, ValueError):
+            v = {}
+    sel = (v or {}).get("selections") or []
+    return sel if isinstance(sel, list) else []
+
+
+def code_statuses(row: dict) -> list[dict]:
+    """[{code, evidence_status}] for the KEPT codes of a multi-select suggestion, or [] when the row predates per-code
+    statuses (D-047) or is not multi-select. evidence_status None = the reply gave none for that code."""
+    sel = [x for x in _selections(row) if isinstance(x, dict) and x.get("outcome") == "valid" and "evidence_status" in x]
+    return [{"code": x.get("code"), "evidence_status": x.get("evidence_status")} for x in sel]
+
+
+def uncertain_codes(row: dict) -> list[dict]:
+    """Kept codes whose own status is not SUPPORTED (INFERRED, CONFLICTING or not recorded)."""
+    return [c for c in code_statuses(row) if c["evidence_status"] != "SUPPORTED"]
+
+
+def _code_list(codes: list[dict]) -> str:
+    return ", ".join(f"{c['code']} ({c['evidence_status'] or 'not recorded'})" for c in codes)
 
 
 def read_evidence_status(item: dict) -> tuple[str | None, list[str], list[str]]:
@@ -142,6 +194,24 @@ def resolve(field: dict, item: dict, v: dict, passages: dict, validate, *, requi
     warnings += alt_warn
     if alt_warn:
         codes.append("alternative_rejected")
+
+    # D-047: per-code evidence status of a multi-select value (kept codes only)
+    kept_sel = [x for x in (v.get("selections") or []) if x.get("outcome") == "valid" and "evidence_status" in x]
+    if kept_sel and value and es != "INSUFFICIENT":
+        for x in kept_sel:
+            if x.get("evidence_status_raw") is not None:
+                warnings.append(WARN["invalid_code_evidence_status"].format(code=x["code"], raw=x["evidence_status_raw"]))
+                codes.append("invalid_code_evidence_status")
+        missing_codes = [x["code"] for x in kept_sel if x.get("evidence_status") is None]
+        if missing_codes and require_status:
+            warnings.append(WARN["code_evidence_status_missing"].format(codes=", ".join(map(str, missing_codes))))
+            codes.append("code_evidence_status_missing")
+            complete = False  # like a missing variable status: shown, flagged, never cached
+        weak = [x for x in kept_sel if x.get("evidence_status") in ("INFERRED", "CONFLICTING")]
+        if es == "SUPPORTED" and weak:
+            warnings.append(WARN["variable_status_stronger_than_code"].format(
+                es=es, codes=", ".join(f"{x['code']} ({x['evidence_status']})" for x in weak)))
+            codes.append("variable_status_stronger_than_code")
 
     if es == "INSUFFICIENT" and keep_unknown:
         status = "suggested"  # "-9" Unknown / absence code; evidence status stays INSUFFICIENT -> human review
@@ -237,8 +307,12 @@ def review_required(row: dict) -> str:
     if not recorded(row):
         return ""
     es = evidence_status_of(row)
+    weak = uncertain_codes(row) if str(row.get("value") or "").strip() else []
     if es == "SUPPORTED":
-        return ""
+        # D-047: a variable is no stronger than its weakest kept code
+        return f"code(s) not SUPPORTED: {_code_list(weak)} — needs human review" if weak else ""
+    if es in ("INFERRED", "AMBIGUOUS", "CONFLICTING") and weak:
+        return f"evidence status {es}; uncertain code(s): {_code_list(weak)} — needs human review"
     if es == "INSUFFICIENT" and str(row.get("value") or "").strip() == "-9":
         return ("-9 = Unknown: not found in the passages the model read — needs human review against the sources "
                 "(owner decision D-039)")

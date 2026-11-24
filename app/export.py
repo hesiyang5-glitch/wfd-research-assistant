@@ -77,10 +77,10 @@ def case_results(case_id: int) -> dict:
         if cat == "insufficient" and s is None and not analyzed:
             cat = "not_analyzed"
         if comp and cat not in ("confirmed", "rule_missing") and comp["status"] not in (
-                "model_agreement", "both_insufficient", "evidence_disagreement"):
+                "model_agreement", "both_insufficient", "evidence_disagreement", "uncertain_codes"):
             cat = "disputed"  # providers disagree (or one output is invalid): route to human review
-        if comp and comp["status"] == "evidence_disagreement" and cat not in ("confirmed", "rule_missing"):
-            cat = "pending"  # same value, different sources: individual or bulk human review
+        if comp and comp["status"] in ("evidence_disagreement", "uncertain_codes") and cat not in ("confirmed", "rule_missing"):
+            cat = "pending"  # same value, but different sources / some codes not SUPPORTED (D-047): human review
         comp_out = None
         if comp:
             st = "human_approved" if (r and r["action"] in ("accepted", "edited", "cleared")) else comp["status"]
@@ -117,6 +117,7 @@ def _cells_out(cells: dict | None) -> dict:
                     "evidence_status": (row or {}).get("evidence_status"),
                     "evidence_recorded": bool((row or {}).get("evidence_recorded")),
                     "missing_reason": (row or {}).get("missing_reason") or "",
+                    "code_statuses": (row or {}).get("code_statuses") or [],
                     "validation_state": (row or {}).get("validation_state"),
                     "suggestion_id": (row or {}).get("id"), "model": (row or {}).get("model") or (row or {}).get("run_model"),
                     "interpretation": interp_of(row) if row else None, "cache_status": (row or {}).get("cache_status"),
@@ -126,6 +127,12 @@ def _cells_out(cells: dict | None) -> dict:
                     "previous_value": (c.get("previous") or {}).get("value") if c.get("previous") else None,
                     "changed": bool(c.get("previous"))}
     return out
+
+
+def code_status_text(s: dict) -> str:
+    """D-047: per-code evidence status of a multi-select suggestion, e.g. '1=INFERRED; 4=SUPPORTED'; '' when the row
+    has none (not multi-select, or stored before per-code statuses)."""
+    return "; ".join(f"{c.get('code')}={c.get('evidence_status') or 'not recorded'}" for c in (s.get("code_statuses") or []))
 
 
 MISSING_REASON_TEXT = {"unknown": "Unknown (not mentioned in the sources read)",
@@ -312,7 +319,7 @@ def xlsx(case_id: int, include_unreviewed=False) -> bytes:
     wp.append(["Variable", "Provider", "Model", "Interpretation", "Suggested value", "Status", "Rationale", "Unresolved",
                "Cache status", "Evidence version", "Analysis version", "Run", "Original run", "Generated at",
                "Comparison", "Human-approved value", "Evidence status", "Validation status", "Alternative values",
-               "Missing evidence", "Missing / absence reason"])
+               "Missing evidence", "Missing / absence reason", "Code evidence status"])
     for row in res["rows"]:
         rv = row["review"] if (row["review"] and row["review"]["action"] in ("accepted", "edited", "cleared")) else None
         for s in row.get("providers") or []:
@@ -325,7 +332,7 @@ def xlsx(case_id: int, include_unreviewed=False) -> bytes:
                        dt.datetime.fromtimestamp(ga).isoformat(timespec="seconds") if ga else "",
                        (row.get("comparison") or {}).get("label", ""), (rv or {}).get("value", "") if rv else "",
                        s.get("evidence_status") or "not recorded", s.get("validation_state") or "",
-                       _alts_text(s), s.get("missing_evidence") or "", missing_reason_text(s)])
+                       _alts_text(s), s.get("missing_evidence") or "", missing_reason_text(s), code_status_text(s)])
 
     wbk = wb.create_sheet("Bulk_Confirmations")
     bcols = ["batch_id", "variable", "value", "claude_suggestion_id", "openai_suggestion_id", "claude_model", "openai_model",

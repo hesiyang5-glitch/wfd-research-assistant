@@ -324,6 +324,12 @@ def validate(field: dict, item: dict, passages: dict) -> dict:
                     warnings.append(f"'{p}' is not one of the codebook's listed examples (list is open) — confirm wording")
                 o = opt_map.get(p.upper())
                 if o is not None:
+                    # D-047: the model's own evidence status for this code (checked for consistency in
+                    # evidence_status.resolve; an unknown value is reported there, never a validation failure)
+                    from .evidence_status import read_code_evidence_status
+                    sel["evidence_status"], raw_bad = read_code_evidence_status(o)
+                    if raw_bad is not None:
+                        sel["evidence_status_raw"] = raw_bad
                     good, bad = _check(o.get("evidence") or [], passages, f"option {code}")
                     sr = _support_reason(good)
                     sel["evidence"] = [g for g in good if g["stance"] == "supports"]
@@ -347,7 +353,8 @@ def validate(field: dict, item: dict, passages: dict) -> dict:
             if sel["outcome"] == "valid":
                 kept.append(code)
                 all_ev += sel["evidence"]
-                options_out.append({"code": code, "evidence": sel["evidence"]})
+                options_out.append({"code": code, "evidence": sel["evidence"],
+                                    **({"evidence_status": sel["evidence_status"]} if "evidence_status" in sel else {})})
             reasons += sel["reasons"]
             selections.append(sel)
         rejected_citations = [{"reason": c, "message": m} for c, m in top_bad]

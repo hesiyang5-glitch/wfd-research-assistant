@@ -174,7 +174,7 @@ def main():
     sch = build_batch_schema([F["SYSTEM_LEVEL"], F["SYSTEM_INVOLVED"]], ["S1-P1"])
     item = sch["properties"]["results"]["properties"][prop_key(0, "SYSTEM_LEVEL")]
     check("10 schema v2 requires evidence_status (enum of the five), alternatives, missing_evidence, rule_unclear",
-          RESPONSE_SCHEMA_VERSION == "wfd-batch-v2"
+          RESPONSE_SCHEMA_VERSION == "wfd-batch-v3"  # v3 (D-047) keeps every v2 requirement and adds per-code status
           and {"evidence_status", "alternatives", "missing_evidence", "rule_unclear"} <= set(item["required"])
           and item["properties"]["evidence_status"]["enum"] == list(es_mod.EVIDENCE_STATUSES)
           and "status" not in item["properties"])

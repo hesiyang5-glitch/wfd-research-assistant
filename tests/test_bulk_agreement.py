@@ -77,7 +77,7 @@ class Model:
                 ev.append({"id": pid, "quote": text.strip()[:40], "stance": "alternative"})
             codes = [c.strip() for c in spec["value"].split(",")] if spec.get("multi") else []
             res.append({"variable": n, "value": spec["value"], "status": "suggested", "evidence_status": "SUPPORTED", "evidence": ev,
-                        "options": [{"code": c, "evidence": ev[:1]} for c in codes] if len(codes) > 1 else [],
+                        "options": [{"code": c, "evidence_status": "SUPPORTED", "evidence": ev[:1]} for c in codes] if len(codes) > 1 else [],  # D-047
                         "rationale": f"{self.provider} rationale", "unresolved": ""})
         return {"text": json.dumps({"results": res}), "input_tokens": 1000, "output_tokens": 200, "stop_reason": "end_turn",
                 "attempts": 1}

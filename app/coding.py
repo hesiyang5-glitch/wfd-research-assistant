@@ -43,6 +43,10 @@ Rules you must follow:
      Unknown below); say in "missing_evidence" what evidence would be needed. Blank is the default.
    - CONFLICTING: credible passages materially support incompatible interpretations. Cite both sides (stance
      "contradicts" or "alternative"); "value" may be "" or your best candidate.
+   For a MULTI-SELECT variable, also give EACH selected code in "options" its own "evidence_status" — SUPPORTED,
+   INFERRED or CONFLICTING, with the meanings above judged for that code alone — so a reviewer can see which code rests
+   on an inference. The variable's "evidence_status" must be no stronger than its weakest selected code (if any
+   selected code is INFERRED, the variable is at most INFERRED). Do not select a code that has no defensible basis.
    Do not use 0 or any other ordinary code to mean "not found". The special missing value -9 may be used ONLY for a
    variable whose rules below define it ("Special missing values defined for THIS variable"); never for any other
    variable. For those variables only:
@@ -78,7 +82,8 @@ JSON_REPLY_FORMAT = """Reply with a single JSON object: {"results": [ ... one ob
  "evidence_status": "SUPPORTED" | "INFERRED" | "AMBIGUOUS" | "INSUFFICIENT" | "CONFLICTING",
  "rule_unclear": false,
  "evidence": [{"id": "S1-P3", "quote": "<verbatim>", "stance": "supports" | "contradicts" | "alternative"}],
- "options": [{"code": "<code>", "evidence": [{"id": "...", "quote": "...", "stance": "supports"}]}],
+ "options": [{"code": "<code>", "evidence_status": "SUPPORTED" | "INFERRED" | "CONFLICTING",
+              "evidence": [{"id": "...", "quote": "...", "stance": "supports"}]}],
  "alternatives": [{"value": "<another permitted value>", "evidence": [{"id": "...", "quote": "...", "stance": "supports"}]}],
  "missing_evidence": "<what evidence would establish or settle the value; empty if none>",
  "rationale": "<1-3 sentences linking evidence to the codebook definition>",
@@ -92,7 +97,8 @@ STRUCTURED_REPLY_FORMAT = """Reply in the JSON structure defined by the response
 "" (or an empty list) when there is no defensible value. "evidence_status": SUPPORTED | INFERRED | AMBIGUOUS |
 INSUFFICIENT | CONFLICTING (rule 3). "rule_unclear": true only when the codebook rule itself is unclear.
 "evidence": passage id + VERBATIM quote + stance ("supports" | "contradicts" | "alternative"). "options": for
-multi-select variables, one entry per selected code with its own supporting evidence (otherwise an empty list).
+multi-select variables, one entry per selected code with its own evidence status (SUPPORTED | INFERRED | CONFLICTING,
+judged for that code alone; rule 3) and its own supporting evidence (otherwise an empty list).
 "alternatives": other permitted values that remain reasonably supported, each with cited evidence (otherwise empty).
 "missing_evidence": what evidence would establish or settle the value, or "". "rationale": 1-3 sentences linking
 evidence to the codebook definition. "unresolved": open questions, conflicts or rule problems, or "".
@@ -101,7 +107,7 @@ evidence to the codebook definition. "unresolved": open questions, conflicts or 
 STRUCTURED_SYSTEM_PROMPT = PROMPT_RULES + STRUCTURED_REPLY_FORMAT
 
 # Bump when the prompt text, prompt assembly or reply handling changes; part of every cache key.
-PROMPT_VERSION = "wfd-prompt-2026-11-13"  # 2026-11-13: PI-M4 absence codes; 2026-11-12: -9 Unknown / Not applicable (D-039)
+PROMPT_VERSION = "wfd-prompt-2026-11-24"  # 2026-11-24: per-code evidence status (D-047); 2026-11-13: PI-M4 absence codes; 2026-11-12: -9 Unknown / Not applicable (D-039)
 EVIDENCE_STATUS_SINCE = "wfd-prompt-2026-10-06"  # results from earlier prompt versions have no evidence status
 EVIDENCE_STATUSES = ("SUPPORTED", "INFERRED", "AMBIGUOUS", "INSUFFICIENT", "CONFLICTING")
 
@@ -1102,6 +1108,7 @@ COMPARISON_LABELS = {
     "model_agreement": "Model agreement",
     "value_disagreement": "Value disagreement",
     "evidence_disagreement": "Evidence disagreement",
+    "uncertain_codes": "Same codes — some codes not supported by both",
     "one_provider_blank": "One provider blank",
     "invalid_provider_output": "Invalid provider output",
     "both_insufficient": "Both insufficient",
@@ -1135,6 +1142,22 @@ def compare_pair(a: dict, b: dict) -> dict:
         return {"status": "one_provider_blank"}
     if va != vb:
         return {"status": "value_disagreement"}
+    # D-047: same codes, but a provider marked one of them INFERRED / CONFLICTING (or gave it no status). Agreement on
+    # the code set must not hide that — the uncertain codes are named so the reviewer knows where to look.
+    ca = {str(c["code"]).upper(): c["evidence_status"] for c in es_mod.code_statuses(a)}
+    cb = {str(c["code"]).upper(): c["evidence_status"] for c in es_mod.code_statuses(b)}
+    if ca or cb:
+        codes = []
+        for code in sorted(va, key=lambda x: (len(x), x)):
+            sa_, sb_ = ca.get(code), cb.get(code)
+            if (ca and sa_ != "SUPPORTED") or (cb and sb_ != "SUPPORTED"):
+                codes.append({"code": code, "anthropic": sa_ if ca else "not recorded",
+                              "openai": sb_ if cb else "not recorded"})
+        if codes:
+            return {"status": "uncertain_codes", "codes": codes,
+                    "note": "same codes, but not every code is SUPPORTED by both providers: " + "; ".join(
+                        f"{c['code']} (Claude {c['anthropic'] or 'no status'}, GPT {c['openai'] or 'no status'})"
+                        for c in codes)}
     sa = {e.get("source_id") for e in a.get("evidence") or []}
     sb = {e.get("source_id") for e in b.get("evidence") or []}
     if sa and sb and not (sa & sb):
@@ -1158,6 +1181,7 @@ def _load_row(s: dict) -> dict:
     s["evidence_recorded"] = es_mod.recorded(s)
     s["validation_state"] = es_mod.validation_status_of(s)
     s["evidence_review_reason"] = es_mod.review_required(s)
+    s["code_statuses"] = es_mod.code_statuses(s)  # D-047: [] for rows stored before per-code statuses
     s["missing_reason"] = missing_reason_of(s)
     return s
 
@@ -1311,6 +1335,8 @@ def _combined_view(rows: list[dict]) -> dict:
             "evidence_status": (rows[0].get("evidence_status") if len({r.get("evidence_status") for r in rows}) == 1
                                 else "MIXED"),
             "evidence_recorded": any(r.get("evidence_recorded") for r in rows),
+            # D-047: each provider's per-code statuses, never merged into one
+            "code_statuses_by_provider": {r["provider"]: r.get("code_statuses") or [] for r in rows},
             "validation_state": "partially_valid" if any(r.get("validation_state") == "partially_valid" for r in rows)
             else ("invalid" if any(r.get("validation_state") == "invalid" for r in rows) else "valid"),
             "evidence_review_reason": "; ".join(f"{PROVIDER_DISPLAY.get(r['provider'], r['provider'])}: "

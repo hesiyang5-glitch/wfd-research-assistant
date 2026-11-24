@@ -59,7 +59,7 @@ def main():
     f_si = F["SYSTEM_INVOLVED"]
     P = {"S1-P1": {"text": TEXT, "source_id": 1}, "S1-P2": {"text": "Sirens were not part of the county plan.", "source_id": 1}}
     sup = lambda pid, q: {"id": pid, "quote": q, "stance": "supports"}
-    opt = lambda c, *ev: {"code": c, "evidence": list(ev)}
+    opt = lambda c, *ev: {"code": c, "evidence_status": "SUPPORTED", "evidence": list(ev)}  # D-047: per-code status
 
     print("\n[1] Validator: per-selection validation")
     v = validate(f_si, {"value": "WEA, LOCAL", "evidence": [], "options": [opt("WEA", sup("S1-P1", WEA_Q)),
