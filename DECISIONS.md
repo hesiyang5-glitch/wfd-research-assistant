@@ -449,3 +449,23 @@ the run's evidence is unchanged.
 the coding provider(s), validated like the first form.
 **Usable evidence.** Analysis requires at least one passage from a read, selected, non-duplicate, non-irrelevant source;
 otherwise no job (API) and no coding call (pipeline).
+
+## D-046 · 2026-11-24 · Record Claude's thinking tokens — Proposed (branch `feature/claude-thinking-tokens`, not merged)
+**Context.** Live ledger check (owner, 2026-11-24, case 13): Claude's billed `output_tokens` per batch were about
+2.5–3× the size of the visible JSON reply on large batches and about 1.4–2× on small ones. The most likely reason is
+that `claude-sonnet-5-5` already thinks adaptively before answering, even though the app never sends a `thinking`
+parameter. The app could not show this: `AnthropicClient.complete` kept only the text blocks and the total
+`output_tokens`, so Claude's `reasoning_tokens` were always empty while OpenAI's were recorded. This matters for the
+provider comparison (is the SUPPORTED vs INFERRED difference about thinking or about model calibration?) and for output
+headroom (thinking counts against `max_tokens`).
+**Decision.** Read `usage.output_tokens_details.thinking_tokens` from each Claude reply and store it in the existing
+`reasoning_tokens` columns of `model_calls` and `usage` (the same columns OpenAI uses). Missing or malformed breakdown →
+NULL (unknown, never 0). The thinking text itself is never kept.
+**What does not change.** The request body (no `thinking` / `output_config` parameter is sent), prompts, generation
+settings, cache keys and analysis version — so cached replies stay valid and no re-analysis is needed. Cost math is
+unchanged: thinking tokens are already inside `output_tokens`, which stays the billing total. No migration (columns
+exist since the OpenAI-provider migration).
+**Limit.** Whether the live API reports this breakdown for `claude-sonnet-5-5` is not verified (offline tests use scripted
+replies). If it does not, the column stays NULL and nothing else changes. Turning thinking on/off or setting Claude's
+effort is a separate, not-yet-decided change (it would alter the analysis version and cost).
+
