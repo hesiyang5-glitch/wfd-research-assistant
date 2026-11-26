@@ -450,7 +450,7 @@ the coding provider(s), validated like the first form.
 **Usable evidence.** Analysis requires at least one passage from a read, selected, non-duplicate, non-irrelevant source;
 otherwise no job (API) and no coding call (pipeline).
 
-## D-047 · 2026-11-24 · Per-code evidence status for multi-select variables — Proposed (branch `feature/per-code-evidence-status`, not merged)
+## D-047 · 2026-11-24 · Per-code evidence status for multi-select variables — Active (merged to `main` 2026-11-25 with owner approval)
 **Context (owner finding, Palisade Fires, POPULATION_RESPONSE_OBSERVED).** The evidence status (D-038) is one per
 variable. In a multi-select variable a model can be sure of some codes and unsure of one: Claude explained in
 "unresolved" why code 1 (confusion) rests on weak evidence while codes 4 and 5 are well documented, but it could only

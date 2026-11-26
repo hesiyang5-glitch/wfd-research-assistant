@@ -6,7 +6,7 @@ Completed changes, newest first. Commit hashes refer to `hesiyang5-glitch/wfd-re
 
 
 
-## 2026-11-24 — Per-code evidence status for multi-select variables (branch `feature/per-code-evidence-status`, NOT merged, NOT deployed) — D-047
+## 2026-11-24 — Per-code evidence status for multi-select variables (merged to `main` 2026-11-25 with owner approval) — D-047
 - Owner finding (Palisade Fires, POPULATION_RESPONSE_OBSERVED): both models chose 1, 4, 5 but Claude's doubt about code
   1 was only in free text, and equal code sets counted as agreement.
 - Prompt rule 3 + both reply formats ask for an evidence status per selected code (SUPPORTED / INFERRED / CONFLICTING)
