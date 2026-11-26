@@ -74,6 +74,7 @@ DEFAULT_SETTINGS = {
     # --- model providers (OpenAI support, 2026-10-01). The OpenAI model comes from the OPENAI_MODEL environment variable.
     "coding_mode": "single",            # single (original: one provider via model_provider) | anthropic_only | openai_only |
                                         # dual_independent | anthropic_primary_openai_review | openai_primary_anthropic_review
+    "claude_structured_output": True,           # D-048: Claude replies constrained by the batch JSON Schema (off = JSON-in-text)
     "openai_reasoning_effort": "medium",        # low | medium | high | xhigh | max (gpt-6.1-sol default: medium)
     "openai_reasoning_reserve_tokens": 16000,   # added to the visible-output allowance (reasoning counts as output)
     "openai_max_output_tokens": 32000,          # hard cap on max_output_tokens per OpenAI request

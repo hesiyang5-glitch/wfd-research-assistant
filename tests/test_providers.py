@@ -60,7 +60,7 @@ def answer_for(var: str, prompt: str, policy: dict) -> dict:
         quote = text.strip()[:70]
         ev = [{"id": pid, "quote": quote, "stance": "supports"}]
         codes = [c.strip() for c in policy[var].split(",") if c.strip()]
-        opts = [{"code": c, "evidence": ev} for c in codes] if len(codes) > 1 else []  # multi-select: evidence per code
+        opts = [{"code": c, "evidence_status": "SUPPORTED", "evidence": ev} for c in codes] if len(codes) > 1 else []  # multi-select: evidence + status per code (D-037, D-047)
         return {"variable": var, "value": policy[var], "status": "suggested", "evidence_status": "SUPPORTED", "evidence": ev, "options": opts,
                 # D-039 (owner decision 2026-11-12): a -9 must say which meaning it has
                 "rationale": ("Unknown: " if policy[var] == "-9" else "") + "test rationale", "unresolved": ""}
@@ -167,7 +167,12 @@ class ANMock:
         r = R()
         r.status_code = 200
         r.headers = {"request-id": f"req_an_{len(self.requests)}"}
-        payload = {"id": "msg_x", "content": [{"type": "text", "text": js.dumps({"results": [answer_for(n, user, self.policy) for n in names]})}],
+        if json.get("output_config"):  # D-048: structured request → reply in the schema's keyed form
+            from app.llm.structured import prop_key
+            reply = {"results": {prop_key(i, n): answer_for(n, user, self.policy) for i, n in enumerate(names)}}
+        else:
+            reply = {"results": [answer_for(n, user, self.policy) for n in names]}
+        payload = {"id": "msg_x", "content": [{"type": "text", "text": js.dumps(reply)}],
                    "usage": {"input_tokens": 1000, "output_tokens": 300}, "stop_reason": "end_turn"}
         r.text = js.dumps(payload)
         r.json = lambda: payload

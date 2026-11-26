@@ -99,6 +99,8 @@ python3 -m tests.test_fetch_limit     # per-case reading limit counts all runs; 
 python3 -m tests.test_search_only     # Search only vs Search & analyze: stop after retrieval, sources export, continue later (D-045)
 python3 -m tests.test_code_evidence_status # per-code evidence status for multi-select; 'Same codes — some uncertain' (D-047)
 python3 -m tests.test_thinking_tokens # Claude thinking tokens recorded in model_calls/usage; request, cost and cache key unchanged (D-046)
+python3 -m tests.test_claude_structured # Claude structured outputs: schema form, request, setting, failures never cached, versions unchanged (D-048)
+python3 -m tools.claude_schema_live_check # ONE small PAID live request (asks first) — Claude compiles the largest batch schema? (K-70)
 ```
 
 Tests need the Texas-flood sample PDFs: set `WFD_TEST_PDFS=/path/to/folder` (they are in the claude.ai
@@ -117,7 +119,7 @@ Project under `WFD project/sources/20250704-TX01/`). Tests run fully offline.
 | `app/coding.py` | prompt rules, batching, worst-case budget checks, derived/admin fields |
 | `app/validator.py` | server-side validation of codes, quotes, evidence IDs, missing-value rules |
 | `app/llm/clients.py` | Anthropic and OpenAI-compatible adapters, provider resolution, retry policy, cost math |
-| `app/llm/openai_responses.py`, `app/llm/structured.py` | OpenAI (official SDK, Responses API) and its strict per-batch schema |
+| `app/llm/openai_responses.py`, `app/llm/structured.py` | OpenAI (official SDK, Responses API) and the strict per-batch schema (OpenAI form; Claude form for structured outputs, D-048) |
 | `app/migrations.py` | additive DB migration; `rollback` / `restore` |
 | `app/export.py` | TSV / XLSX / workbook-aligned case row / JSON |
 | `app/server.py`, `app/auth.py`, `app/jobs.py`, `app/db.py` | HTTP API, login, background jobs, SQLite |

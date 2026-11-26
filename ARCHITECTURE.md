@@ -41,9 +41,9 @@ standard-library server plus SQLite installs in one step and runs anywhere Pytho
 | `app/retrieval.py` | Per-case index, built once per evidence set and shared (`get_index`, D-033): BM25 + semantic ranking (embeddings if `EMBEDDING_MODEL` set, else LSA), reciprocal-rank fusion; variable queries built from codebook text only |
 | `app/coding.py` | Modes and provider plans (`resolve_plan`), shared evidence preparation (`prepare`), provider-neutral `run_coding` / `run_coding_plan`, server-side `CaseLimits` (budgets and attempt caps from the ledgers), cache keys v2, provider comparison (`suggestion_sets`, `compare_pair`). Batches variables by codebook section (≤40 passages and ≤12 variables per call — batch sizes, not caps; output allowance 1,500 + 1,200 tokens per variable, ceiling 16,000), builds prompts with the coding rules, worst-case budget check per call, failed-call accounting, safe caching, repeated-error stop, derived/admin field generation |
 | `app/validator.py` | Validates each suggestion: codebook codes, single vs multi-select, per-option evidence, `-9` only where defined, numeric/date formats, evidence IDs exist, quotes verbatim |
-| `app/llm/clients.py` | `AnthropicClient` (Messages API, no `temperature`), `OpenAICompatClient` (legacy, OpenAI-compatible servers via `OPENAI_BASE_URL`, provider `openai_compatible`); provider resolution (`make_client`, `get_client`, `provider_status`); retry only 429/529/connection errors; `LLMError` flags `possibly_billed`, `config_error`, `attempts`; cost math incl. long-context surcharge; stale-price notes |
+| `app/llm/clients.py` | `AnthropicClient` (Messages API, no `temperature`; structured output via `output_config.format` when `claude_structured_output` is on, D-048), `OpenAICompatClient` (legacy, OpenAI-compatible servers via `OPENAI_BASE_URL`, provider `openai_compatible`); provider resolution (`make_client`, `get_client`, `provider_status`); retry only 429/529/connection errors; `LLMError` flags `possibly_billed`, `config_error`, `attempts`; cost math incl. long-context surcharge; stale-price notes |
 | `app/llm/openai_responses.py` | `OpenAIResponsesClient`: official SDK, Responses API, strict Structured Outputs, SDK retries off, own retry rules, free model preflight, key redaction, usage incl. reasoning tokens and request ids |
-| `app/llm/structured.py` | Builds the strict per-batch JSON Schema from codebook entries; normalizes structured replies into the provider-neutral item format |
+| `app/llm/structured.py` | Builds the strict per-batch JSON Schema from codebook entries (OpenAI form; Claude form without `$ref` and without the per-batch passage-id enum, D-048); normalizes structured replies (enum values compared case-insensitively) into the provider-neutral item format |
 | `app/migrations.py` | Additive, repeatable migration; `rollback` / `restore` commands |
 | `app/export.py` | Assembles results (display suggestion, every provider's suggestion, comparison, review, category) and writes exports; disagreements never exported without a human value |
 | `app/auth.py` | Shared-password login, signed session tokens, lockout (per address + site-wide) |
@@ -122,7 +122,8 @@ server; `/api/status` reports only whether each key is set.
 - **One evidence corpus.** Search/fetch happen once per case. `prepare()` builds batches and prompts once per job; every
   provider gets the identical case + evidence prompt (same passage ids; batching is the same for both today, and each
   `model_calls` row records its variables and evidence ids/hash so any future difference is visible).
-- **Normalized results.** Claude replies (JSON text) and OpenAI replies (strict schema) are converted to the same item
+- **Normalized results.** Claude replies (structured output against the batch schema since D-048, or JSON text when the
+  setting `claude_structured_output` is off) and OpenAI replies (strict schema) are converted to the same item
   list and checked by the same validator. Stored per provider, model, role and run group; human reviews stay in `reviews`.
 - **Display / export.** One provider: its result. Two providers: a neutral combined view (agreed value or blank), never
   one provider's row. If providers

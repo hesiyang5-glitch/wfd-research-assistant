@@ -191,7 +191,7 @@ def api_put_settings(h, body, **_):
             continue
         if k == "coding_mode":
             v = check_mode(v, {**DEFAULT_SETTINGS, **cur}) or "single"
-        elif k == "pause_before_coding":
+        elif k in ("pause_before_coding", "claude_structured_output"):
             v = bool(v)
         elif k == "openai_reasoning_effort" and v not in REASONING_EFFORTS:
             raise ApiError(400, f"openai_reasoning_effort must be one of {', '.join(REASONING_EFFORTS)}")

@@ -182,6 +182,7 @@ citations, and leaves every final decision to a human reviewer.
 | Claude (Anthropic) workflow unchanged; default mode stays Claude-only | TESTED offline (prompt byte-identical; all earlier suites pass) |
 | OpenAI via official SDK + Responses API + strict Structured Outputs; model from `OPENAI_MODEL` (default `gpt-6.1-sol`); key only from `OPENAI_API_KEY` | TESTED offline (mocked transport); **live UNVERIFIED** |
 | Same evidence, codebook and validator for both providers; normalized result structure | TESTED offline |
+| Claude structured output (`output_config.format`, Claude schema form; setting `claude_structured_output`, default on), D-048 | TESTED offline; **live UNVERIFIED** (K-70: `tools/claude_schema_live_check.py`) |
 | Modes: Claude only, OpenAI only, Claude + OpenAI independent comparison — chosen on the first form and in Re-analyze; no automatic second provider; no primary/secondary/reviewer hierarchy (D-036, branch) | TESTED offline (incl. browser) |
 | Research once per case, shared by providers; results reference the same evidence snapshot and analysis version (D-036, branch) | TESTED offline |
 | Free availability check and one-request budget minimum before a case starts; pause after research before paid coding (D-036, branch) | TESTED offline; live checks **UNVERIFIED** |

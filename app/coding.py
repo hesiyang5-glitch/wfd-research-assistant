@@ -315,6 +315,8 @@ def resolve_plan(settings: dict, mode: str | None = None) -> tuple[list, str, st
         if c is not None and getattr(c, "provider", "") == "openai" and hasattr(c, "reasoning_effort"):
             c.reasoning_effort = str(settings.get("openai_reasoning_effort", c.reasoning_effort))
             c.timeout_s = float(settings.get("openai_timeout_seconds", c.timeout_s))
+        if c is not None and getattr(c, "provider", "") == "anthropic" and hasattr(c, "structured"):
+            c.structured = bool(settings.get("claude_structured_output", True))  # D-048
         return ([(c, "independent")] if c else []), mode, None
     plan = []
     for prov, role in MODES[mode]:
@@ -335,6 +337,14 @@ def provider_max_tokens(client, n_vars: int, settings: dict) -> int:
         cap = int(settings.get("openai_max_output_tokens", 32000))
         return min(cap, reserve + OUT_BASE_TOKENS + OUT_TOKENS_PER_VAR * n_vars)
     return batch_max_tokens(n_vars)
+
+
+def response_schema_for(client, fields: list[dict], ids: list[str]):
+    """The batch schema this client is asked to follow, or None for JSON-in-text (D-048: Claude gets its own form)."""
+    from .llm.structured import build_batch_schema
+    if not getattr(client, "supports_schema", False):
+        return None
+    return build_batch_schema(fields, ids, for_anthropic=getattr(client, "provider", "") == "anthropic")
 
 
 def system_prompt_for(client) -> str:
@@ -553,13 +563,15 @@ def analysis_spec(codebook: str, settings: dict) -> int:
 
 class _Spec:
     """Stand-in used for estimates when no live client object is needed."""
-    supports_schema = False
 
-    def __init__(self, provider, model):
+    def __init__(self, provider, model, structured: bool = False):
         self.provider, self.model = provider, model
+        self.supports_schema = bool(structured) and provider == "anthropic"
 
     def generation_settings(self):
-        return {"api": "messages"} if self.provider == "anthropic" else {}
+        if self.provider != "anthropic":
+            return {}
+        return {"api": "messages", "output": "json_schema"} if self.supports_schema else {"api": "messages"}
 
 
 def _estimate_one(case, settings, prep, client, role) -> dict:
@@ -573,7 +585,7 @@ def _estimate_one(case, settings, prep, client, role) -> dict:
         prompt = make_prompt(case, fs, ids, prep["pmap"], prep["smeta"])
         if role == "reviewer":
             prompt += "\n" + "x" * (len(fs) * 900)  # room for the primary model's suggestions (~250 tokens/variable)
-        schema = build_batch_schema(fs, ids) if getattr(client, "supports_schema", False) else None
+        schema = response_schema_for(client, fs, ids)
         t = estimate_tokens(system + prompt + (json.dumps(schema) if schema else ""))
         mo = provider_max_tokens(client, len(fs), settings)
         in_tok += t
@@ -598,7 +610,8 @@ def estimate(case: dict, settings: dict, variables: list[str] | None = None, pla
     prep = prepare(case, settings, variables)
     if not plan:
         plan = [(_Spec("anthropic" if settings.get("model_name", "").startswith("claude") else "other",
-                       settings.get("model_name", "claude-sonnet-5-5")), "primary")]
+                       settings.get("model_name", "claude-sonnet-5-5"),
+                       structured=bool(settings.get("claude_structured_output", True))), "primary")]
     per = [_estimate_one(case, settings, prep, c, role) for c, role in plan]
 
     def tot(k):
@@ -839,7 +852,7 @@ def run_coding(case: dict, settings: dict, client, job_id: int | None, log, budg
             prompt = make_prompt(case, fs, ids, pmap, smeta)
             if role == "reviewer":
                 prompt += review_block(fs, primary_rows or {}, (primary_rows or {}).get("_label", "primary model"))
-            rschema = build_batch_schema(fs, ids) if getattr(client, "supports_schema", False) else None
+            rschema = response_schema_for(client, fs, ids)
             est_in = estimate_tokens(system + prompt + (json.dumps(rschema) if rschema else ""))
             max_out = provider_max_tokens(client, len(fs), settings)
             # Worst case for this call: input estimate +25% and every allowed output token used.

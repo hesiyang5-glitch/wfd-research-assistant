@@ -101,14 +101,23 @@ def anthropic_thinking_tokens(usage: dict) -> int | None:
 
 
 class AnthropicClient(LLMClient):
+    """Claude via the Messages API. With `structured=True` (D-048, setting `claude_structured_output`) each coding
+    request carries the batch JSON Schema in `output_config.format`, so the reply is grammar-constrained like OpenAI's
+    strict structured output. With `structured=False` it is the earlier JSON-in-text format, byte for byte."""
     provider = "anthropic"
 
-    def __init__(self, model: str, key: str):
+    def __init__(self, model: str, key: str, structured: bool = False):
         super().__init__(model)
         self.key = key
+        self.structured = bool(structured)
+
+    @property
+    def supports_schema(self) -> bool:
+        return self.structured
 
     def generation_settings(self) -> dict:
-        return {"api": "messages"}
+        # part of the cache key: JSON-in-text replies are never reused for structured requests and vice versa
+        return {"api": "messages", "output": "json_schema"} if self.structured else {"api": "messages"}
 
     def check_available(self) -> None:
         """Free availability check before a case starts (D-036): GET /v1/models/{model} is not a billed request.
@@ -132,10 +141,13 @@ class AnthropicClient(LLMClient):
             raise LLMError(f"Anthropic availability check returned HTTP {r.status_code}; could not verify now.")
         _AVAILABLE_OK[("anthropic", self.model)] = time.time()
 
-    def complete(self, system, user, max_tokens=4000, max_attempts=4):
+    def complete(self, system, user, max_tokens=4000, max_attempts=4, schema=None):
         # No `temperature`: current Claude models reject it ("temperature is deprecated for this model").
         body = {"model": self.model, "max_tokens": max_tokens, "system": system,
                 "messages": [{"role": "user", "content": user}]}
+        if schema is not None:
+            # Structured outputs (D-048): no beta header needed; the JSON comes back in the text block.
+            body["output_config"] = {"format": {"type": "json_schema", "schema": schema}}
         last = None
         n = 0
         for attempt in range(max(1, min(4, int(max_attempts)))):
@@ -161,6 +173,10 @@ class AnthropicClient(LLMClient):
                                f"{r.text[:200]}", possibly_billed=True, attempts=n)
             if r.status_code != 200:
                 cfg = r.status_code in (401, 403, 404)
+                if schema is not None and r.status_code == 400 and "too complex" in r.text.lower():
+                    raise LLMError("Claude rejected the response schema as too complex to compile (HTTP 400, not billed). "
+                                   "Turn off 'Claude structured output' in Settings to use the JSON-text format, or "
+                                   "lower the variables/passages per request.", attempts=n)
                 raise LLMError(f"HTTP {r.status_code}: {r.text[:300]}", config_error=cfg, attempts=n)
             j = r.json()
             text = "".join(b.get("text", "") for b in j.get("content", []) if b.get("type") == "text")
@@ -240,7 +256,8 @@ def make_client(provider: str, model: str, settings: dict | None = None) -> LLMC
     """Build exactly the named provider, or None when its key is not configured."""
     settings = settings or {}
     if provider == "anthropic" and env("ANTHROPIC_API_KEY"):
-        return AnthropicClient(model if (model or "").startswith("claude") else "claude-sonnet-5-5", env("ANTHROPIC_API_KEY"))
+        return AnthropicClient(model if (model or "").startswith("claude") else "claude-sonnet-5-5", env("ANTHROPIC_API_KEY"),
+                               structured=bool(settings.get("claude_structured_output", True)))
     if provider == "openai" and env("OPENAI_API_KEY") and not env("OPENAI_BASE_URL"):
         from .openai_responses import OpenAIResponsesClient
         return OpenAIResponsesClient(openai_model(), env("OPENAI_API_KEY"),

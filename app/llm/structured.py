@@ -7,7 +7,13 @@
 - Property keys are sanitized (codebook names contain spaces, "/" and parentheses); the exact variable name is kept in
   a one-value `variable` enum inside each entry.
 The schema narrows what the model can return; the server validator (app/validator.py) still checks every value,
-quote and evidence id afterwards, exactly as for Claude.
+quote and evidence id afterwards, for both providers.
+
+Claude variant (D-048, `for_anthropic=True`): same structure and the same code enums, with two differences that keep
+Anthropic's grammar compilation cheap and cacheable: the evidence object is written inline (Anthropic does not document
+`$ref`/`$defs` support) and the passage id is a plain string instead of a per-batch enum (that enum changes every batch
+and would force a new grammar compilation each time). The validator still rejects any id that was not sent. Anthropic
+does not guarantee the capitalization of enum values, so `normalize_structured` compares them case-insensitively.
 """
 from __future__ import annotations
 
@@ -53,8 +59,18 @@ def _value_schema(f: dict) -> dict:
     return {"type": "string", "description": desc}
 
 
-def build_batch_schema(fields: list[dict], passage_ids: list[str]) -> dict:
-    ev_ref = {"$ref": "#/$defs/evidence"}
+def _evidence_object(passage_ids: list[str] | None) -> dict:
+    pid = ({"type": "string", "enum": list(passage_ids) or ["NONE"]} if passage_ids is not None else
+           {"type": "string", "description": "A passage id from the EVIDENCE PASSAGES list, e.g. S12-P3."})
+    return {"type": "object", "additionalProperties": False, "required": ["id", "quote", "stance"],
+            "properties": {"id": pid,
+                           "quote": {"type": "string", "description": "Verbatim text copied from that passage."},
+                           "stance": {"type": "string", "enum": STANCES}}}
+
+
+def build_batch_schema(fields: list[dict], passage_ids: list[str], for_anthropic: bool = False) -> dict:
+    """OpenAI form (default, unchanged): evidence via $ref, passage ids as an enum. Claude form: see module doc."""
+    ev_ref = _evidence_object(None) if for_anthropic else {"$ref": "#/$defs/evidence"}
     props, keys = {}, []
     for i, f in enumerate(fields):
         k = prop_key(i, f["name"])
@@ -86,16 +102,38 @@ def build_batch_schema(fields: list[dict], passage_ids: list[str]) -> dict:
                 "unresolved": {"type": "string"},
             },
         }
-    return {
+    out = {
         "type": "object", "additionalProperties": False, "required": ["results"],
         "properties": {"results": {"type": "object", "additionalProperties": False, "required": keys,
                                    "properties": props}},
-        "$defs": {"evidence": {
-            "type": "object", "additionalProperties": False, "required": ["id", "quote", "stance"],
-            "properties": {"id": {"type": "string", "enum": list(passage_ids) or ["NONE"]},
-                           "quote": {"type": "string", "description": "Verbatim text copied from that passage."},
-                           "stance": {"type": "string", "enum": STANCES}}}},
     }
+    if not for_anthropic:
+        out["$defs"] = {"evidence": _evidence_object(passage_ids)}
+    return out
+
+
+def schema_complexity(schema) -> dict:
+    """Counts Anthropic limits by (optional properties, union types) plus overall size — for tests and the live check."""
+    acc = {"optional": 0, "union": 0, "enum_values": 0, "properties": 0, "refs": 0}
+
+    def walk(o):
+        if isinstance(o, dict):
+            if isinstance(o.get("properties"), dict):
+                acc["properties"] += len(o["properties"])
+                acc["optional"] += len(set(o["properties"]) - set(o.get("required") or []))
+            if "anyOf" in o or "oneOf" in o or isinstance(o.get("type"), list):
+                acc["union"] += 1
+            if "enum" in o:
+                acc["enum_values"] += len(o["enum"])
+            if "$ref" in o:
+                acc["refs"] += 1
+            for v in o.values():
+                walk(v)
+        elif isinstance(o, list):
+            for v in o:
+                walk(v)
+    walk(schema)
+    return acc
 
 
 def schema_hash(schema: dict) -> str:
@@ -104,6 +142,29 @@ def schema_hash(schema: dict) -> str:
 
 class SchemaViolation(ValueError):
     pass
+
+
+def _canon(v, allowed: list[str]):
+    """Map a string enum value to its canonical spelling, ignoring case; unknown values are returned unchanged."""
+    if not isinstance(v, str):
+        return v
+    for a in allowed:
+        if v.strip().casefold() == a.casefold():
+            return a
+    return v
+
+
+def _canon_codes(v, f: dict):
+    codes = _codes(f) if f.get("type") == "categorical" else []
+    if not codes:
+        return v
+    if isinstance(v, list):
+        return [_canon(x, codes) for x in v]
+    return _canon(v, codes)
+
+
+def _canon_evidence(evs):
+    return [{**e, "stance": _canon(e.get("stance"), STANCES)} if isinstance(e, dict) else e for e in (evs or [])]
 
 
 def normalize_structured(data, fields: list[dict]) -> list[dict]:
@@ -117,6 +178,19 @@ def normalize_structured(data, fields: list[dict]) -> list[dict]:
         item = res.get(prop_key(i, f["name"]))
         if not isinstance(item, dict):
             raise SchemaViolation(f"reply does not match the response schema (no entry for {f['name']})")
+        # Anthropic does not guarantee enum capitalization: canonicalize enum-typed fields before checking them.
+        # (OpenAI replies already use the exact spelling, so this changes nothing for them.)
+        item = {**item, "variable": _canon(item.get("variable"), [f["name"]]),
+                "evidence_status": _canon(item.get("evidence_status"), EVIDENCE_STATUSES),
+                "value": _canon_codes(item.get("value"), f),
+                "evidence": _canon_evidence(item.get("evidence")),
+                "options": [{**o, "code": _canon_codes(o.get("code"), f),
+                             "evidence_status": _canon(o.get("evidence_status"), CODE_EVIDENCE_STATUSES),
+                             "evidence": _canon_evidence(o.get("evidence"))} if isinstance(o, dict) else o
+                            for o in (item.get("options") or [])],
+                "alternatives": [{**a, "value": _canon_codes(a.get("value"), f),
+                                  "evidence": _canon_evidence(a.get("evidence"))} if isinstance(a, dict) else a
+                                 for a in (item.get("alternatives") or [])]}
         if item.get("variable") != f["name"]:
             raise SchemaViolation(f"reply entry for {f['name']} names a different variable")
         es = item.get("evidence_status")

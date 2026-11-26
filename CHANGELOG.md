@@ -6,6 +6,21 @@ Completed changes, newest first. Commit hashes refer to `hesiyang5-glitch/wfd-re
 
 
 
+## 2026-11-25 — Claude structured outputs (branch `feature/claude-structured-outputs`, NOT merged, NOT deployed) — D-048
+- `app/llm/clients.py`: `AnthropicClient(structured=...)`; with a schema the request carries `output_config.format`
+  (json_schema); clear not-billed error for "Schema is too complex"; generation settings gain `"output": "json_schema"`
+  (cache identity). `make_client` reads the new setting.
+- `app/llm/structured.py`: `build_batch_schema(..., for_anthropic=True)` (inline evidence, plain-string passage id;
+  OpenAI form unchanged); `schema_complexity()`; `normalize_structured` canonicalizes enum values case-insensitively.
+- `app/coding.py`: `response_schema_for(client, ...)` used for requests and estimates; single-mode Claude follows the
+  setting; `_Spec` estimates count the schema. `app/config.py` + `app/server.py` + `web/app.js`: setting
+  `claude_structured_output` (default on; Settings → model section, bilingual help).
+- Unchanged: `PROMPT_VERSION`, shared rules, analysis version, GPT schema / prompt / cache keys.
+- New `tools/claude_schema_live_check.py` (one small paid request, asks first; not run). New
+  `tests/test_claude_structured.py` (28, offline). `tests/test_providers.py`: the Anthropic mock answers in schema form
+  when a schema is sent, and multi-select stand-in answers carry per-code statuses (D-047) — **not run here** (no
+  `openai` package in this environment).
+
 ## 2026-11-24 — Per-code evidence status for multi-select variables (merged to `main` 2026-11-25 with owner approval) — D-047
 - Owner finding (Palisade Fires, POPULATION_RESPONSE_OBSERVED): both models chose 1, 4, 5 but Claude's doubt about code
   1 was only in free text, and equal code sets counted as agreement.

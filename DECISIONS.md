@@ -500,3 +500,28 @@ exist since the OpenAI-provider migration).
 replies). If it does not, the column stays NULL and nothing else changes. Turning thinking on/off or setting Claude's
 effort is a separate, not-yet-decided change (it would alter the analysis version and cost).
 
+## D-048 · 2026-11-25 · Claude structured outputs — Proposed (branch `feature/claude-structured-outputs`, not merged)
+**Context.** GPT's replies are constrained by the strict batch schema (D-023); Claude's were JSON written as text,
+following instructions only. That asymmetry cost real money (owner check 2026-11-24: call 298, case 11, 5,349 output
+tokens, "model reply was not valid JSON") and made format problems possible on one side only (cf. the D-037 top-level
+evidence case). Anthropic's Messages API now supports structured outputs (`output_config.format`, no beta header).
+**Decision.** Claude coding requests carry the batch JSON Schema in `output_config.format` (setting
+`claude_structured_output`, **on by default**, switchable in Settings). Claude gets its own schema form: the same
+structure, required keys and code enums as OpenAI's, but (a) the evidence object is inline (Anthropic does not document
+`$ref`/`$defs`) and (b) the passage id is a plain string, not the per-batch enum — that enum changes every batch and
+would force a new grammar compilation (Anthropic caches compiled grammars only while the schema structure is unchanged);
+the validator already rejects any id that was not sent. Claude then receives `STRUCTURED_SYSTEM_PROMPT` (same rules,
+schema-oriented format text). Enum values are compared case-insensitively (Anthropic does not guarantee their
+capitalization). Refusal and max_tokens replies are discarded and not cached (existing provider-neutral rules); a
+"Schema is too complex" 400 is not billed and names the setting.
+**What does not change.** `PROMPT_VERSION`, the shared rules, `RESPONSE_SCHEMA_VERSION` and batching → the **analysis
+version is unchanged** (wire format is provider-specific, D-036), so Claude results stay matched-version with existing GPT
+results. GPT's schema, prompt and cache keys are byte-identical. Claude's cache key changes (generation settings gain
+`"output": "json_schema"`), so re-analysing a case with Claude sends new (paid) requests; switching the setting off
+restores the earlier request and cache identity exactly.
+**Limit / live check.** Tested offline only. Before merging, one small paid live request (`python3 -m
+tools.claude_schema_live_check`, about $0.03, owner approval) should confirm that Anthropic compiles the largest real
+batch schema (12 variables: 301 properties, 422 enum values, 0 optional, 0 union types) and how long compilation takes.
+Each distinct variable grouping is a separate grammar (compiled once, cached 24 h), so a case's first Claude run may be
+slower.
+
