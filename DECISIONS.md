@@ -524,4 +524,10 @@ tools.claude_schema_live_check`, about $0.03, owner approval) should confirm tha
 batch schema (12 variables: 301 properties, 422 enum values, 0 optional, 0 union types) and how long compilation takes.
 Each distinct variable grouping is a separate grammar (compiled once, cached 24 h), so a case's first Claude run may be
 slower.
+**Option 1 — identical schema for both models (owner question 2026-11-26).** The only schema difference between the
+providers is the passage-id guard (plus `$ref` vs inline). It does not affect coding judgments: a wrong id is either
+impossible (GPT) or rejected by the validator (Claude). The same live check also sends GPT's exact schema to Claude
+three times (ids set 1, the same again, a different ids set). Rule fixed before running: if all three are accepted and
+readable and a different ids set adds under 5 s compared with the repeat, Claude switches to GPT's form (identical
+schemas, no change or cost on the GPT side); otherwise the Claude form stays and the difference is documented.
 

@@ -100,7 +100,7 @@ python3 -m tests.test_search_only     # Search only vs Search & analyze: stop af
 python3 -m tests.test_code_evidence_status # per-code evidence status for multi-select; 'Same codes — some uncertain' (D-047)
 python3 -m tests.test_thinking_tokens # Claude thinking tokens recorded in model_calls/usage; request, cost and cache key unchanged (D-046)
 python3 -m tests.test_claude_structured # Claude structured outputs: schema form, request, setting, failures never cached, versions unchanged (D-048)
-python3 -m tools.claude_schema_live_check # ONE small PAID live request (asks first) — Claude compiles the largest batch schema? (K-70)
+python3 -m tools.claude_schema_live_check # 4 small PAID live requests (asks first): Claude form OK? GPT's schema usable for Claude? (K-70)
 ```
 
 Tests need the Texas-flood sample PDFs: set `WFD_TEST_PDFS=/path/to/folder` (they are in the claude.ai

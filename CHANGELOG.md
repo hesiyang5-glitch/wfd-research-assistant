@@ -16,7 +16,8 @@ Completed changes, newest first. Commit hashes refer to `hesiyang5-glitch/wfd-re
   setting; `_Spec` estimates count the schema. `app/config.py` + `app/server.py` + `web/app.js`: setting
   `claude_structured_output` (default on; Settings → model section, bilingual help).
 - Unchanged: `PROMPT_VERSION`, shared rules, analysis version, GPT schema / prompt / cache keys.
-- New `tools/claude_schema_live_check.py` (one small paid request, asks first; not run). New
+- New `tools/claude_schema_live_check.py` (asks first; not run): request A checks the Claude form; B1–B3 send GPT's exact
+  schema (same ids twice, then different ids) to decide option 1 — identical schemas for both models (rule in D-048). New
   `tests/test_claude_structured.py` (28, offline). `tests/test_providers.py`: the Anthropic mock answers in schema form
   when a schema is sent, and multi-select stand-in answers carry per-code statuses (D-047) — **not run here** (no
   `openai` package in this environment).
